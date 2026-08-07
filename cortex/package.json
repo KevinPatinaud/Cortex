@@ -1,0 +1,31 @@
+{
+  "name": "node-simple-server",
+  "version": "1.0.0",
+  "description": "Serveur HTTP Node.js simple",
+  "type": "module",
+  "scripts": {
+    "start": "npx kill-port 3000 && npm.cmd run build && tsx src/back/controller/server.ts",
+    "dev": "tsx watch src/back/controller/server.ts",
+    "web": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "^1.0.9",
+    "express": "^5.2.1",
+    "lucide-react": "^1.29.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.1.2",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@vitejs/plugin-react": "^6.0.5",
+    "tsx": "^4.23.11",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.0"
+  }
+}

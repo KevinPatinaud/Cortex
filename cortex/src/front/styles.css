@@ -1,0 +1,135 @@
+:root {
+  color: #172126;
+  background: #f4f6f1;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+}
+
+main {
+  display: grid;
+  min-height: 100vh;
+  padding: 12vh clamp(1.5rem, 7vw, 7rem);
+  align-content: center;
+  background: linear-gradient(120deg, #e7efe7, #f9f6eb 65%, #e5edf0);
+}
+
+.eyebrow {
+  margin: 0 0 1rem;
+  color: #446352;
+  font-family: "Courier New", monospace;
+  font-size: 0.8rem;
+  letter-spacing: 0.12em;
+}
+
+h1 {
+  max-width: 12ch;
+  margin: 0;
+  font-size: clamp(3rem, 8vw, 7rem);
+  font-weight: 400;
+  line-height: 0.95;
+}
+
+.intro,
+.response,
+.error {
+  max-width: 38rem;
+  margin: 2rem 0 0;
+  font-family: "Courier New", monospace;
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+button {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 2.75rem;
+  margin-top: 2rem;
+  padding: 0.65rem 1rem;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid #274b38;
+  border-radius: 4px;
+  background: #274b38;
+  color: #fff;
+  cursor: pointer;
+  font-family: "Courier New", monospace;
+  font-size: 0.9rem;
+}
+
+button:hover:not(:disabled) {
+  background: #183425;
+}
+
+button:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+dialog {
+  width: min(32rem, calc(100% - 2rem));
+  padding: 2rem;
+  border: 1px solid #274b38;
+  border-radius: 6px;
+  background: #f9f6eb;
+  color: #172126;
+  font-family: "Courier New", monospace;
+}
+
+dialog::backdrop {
+  background: rgb(23 33 38 / 55%);
+}
+
+dialog form {
+  display: grid;
+  gap: 1rem;
+}
+
+dialog h2,
+dialog p {
+  margin: 0;
+}
+
+dialog input {
+  min-height: 2.75rem;
+  padding: 0.65rem;
+  border: 1px solid #446352;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.dialog-actions button {
+  margin-top: 0;
+}
+
+.secondary-button {
+  background: transparent;
+  color: #274b38;
+}
+
+.secondary-button:hover:not(:disabled) {
+  background: #e7efe7;
+}
+
+.response {
+  padding: 1rem 1.25rem;
+  border-left: 4px solid #446352;
+  background: rgb(255 255 255 / 45%);
+}
+
+.error {
+  color: #9e2626;
+}
