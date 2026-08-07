@@ -1,8 +1,11 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
+import { FolderPlus } from "lucide-react";
 import {
+  getSavedProjects,
   saveProjectDirectory,
   selectProjectDirectory
 } from "../../../services/projectApi.ts";
+import { ProjectList } from "./ProjectList.tsx";
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Une erreur inattendue est survenue.";
@@ -12,10 +15,40 @@ export function ProjectDirectoryManager() {
   const directoryDialog = useRef<HTMLDialogElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [directoryPath, setDirectoryPath] = useState("");
+  const [projects, setProjects] = useState<string[]>([]);
   const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
+  const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [isSelecting, setIsSelecting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadProjects(): Promise<void> {
+      try {
+        const savedProjects = await getSavedProjects();
+
+        if (isMounted) {
+          setProjects(savedProjects);
+        }
+      } catch (requestError) {
+        if (isMounted) {
+          setError(getErrorMessage(requestError));
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingProjects(false);
+        }
+      }
+    }
+
+    void loadProjects();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (isModalOpen && !directoryDialog.current?.open) {
@@ -49,7 +82,8 @@ export function ProjectDirectoryManager() {
     setSaveMessage("");
 
     try {
-      await saveProjectDirectory(directoryPath);
+      const result = await saveProjectDirectory(directoryPath);
+      setProjects(result.projects);
       setSaveMessage("Le repertoire du projet a ete enregistre.");
       setIsModalOpen(false);
     } catch (requestError) {
@@ -66,15 +100,37 @@ export function ProjectDirectoryManager() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={handleDirectorySelection}
-        disabled={isSelecting}
-      >
-        {isSelecting ? "Ouverture du selecteur..." : "Selectionner un repertoire"}
-      </button>
-      {saveMessage && <p className="response">{saveMessage}</p>}
-      {error && !isModalOpen && <p className="error" role="alert">{error}</p>}
+      <aside className="project-sidebar" aria-label="Gestion des projets">
+        <header className="project-sidebar__header">
+          <p className="project-sidebar__eyebrow">Espace de travail</p>
+          <div className="project-sidebar__title-row">
+            <h2>Projets</h2>
+            <span className="project-sidebar__count" aria-label={`${projects.length} projets`}>
+              {projects.length}
+            </span>
+          </div>
+        </header>
+
+        <div className="project-sidebar__content">
+          <ProjectList projects={projects} isLoading={isLoadingProjects} />
+        </div>
+
+        <footer className="project-sidebar__footer">
+          <div className="project-sidebar__feedback" aria-live="polite">
+            {saveMessage && <p className="success-message">{saveMessage}</p>}
+            {error && !isModalOpen && <p className="error" role="alert">{error}</p>}
+          </div>
+          <button
+            className="project-sidebar__add-button"
+            type="button"
+            onClick={handleDirectorySelection}
+            disabled={isSelecting}
+          >
+            <FolderPlus aria-hidden="true" size={18} />
+            {isSelecting ? "Ouverture..." : "Ajouter un projet"}
+          </button>
+        </footer>
+      </aside>
 
       {isModalOpen && (
         <dialog

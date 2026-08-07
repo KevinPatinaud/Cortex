@@ -11,6 +11,21 @@ interface DirectorySelectionResponse {
   directoryPath: string | null;
 }
 
+interface ProjectsResponse {
+  projects: string[];
+}
+
+export async function getSavedProjects(): Promise<string[]> {
+  const response = await fetch("/api/projects");
+  const data = await response.json() as ProjectsResponse & ApiErrorResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || "Impossible de charger les projets.");
+  }
+
+  return data.projects;
+}
+
 export async function saveProjectDirectory(
   directoryPath: string
 ): Promise<SaveProjectResponse> {
