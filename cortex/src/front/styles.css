@@ -168,7 +168,8 @@ main {
   color: #a9c4b2;
 }
 
-.project-list__item > span {
+.project-list__details {
+  flex: 1;
   min-width: 0;
 }
 
@@ -185,6 +186,32 @@ main {
   font-size: 0.86rem;
   font-weight: 600;
   line-height: 1.35;
+}
+
+.project-list__delete-button {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  flex: 0 0 auto;
+  padding: 0;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #80968a;
+  opacity: 0;
+  transition: color 160ms ease, background 160ms ease, opacity 160ms ease;
+}
+
+.project-list__item:hover .project-list__delete-button,
+.project-list__delete-button:focus-visible,
+.project-list__delete-button:disabled {
+  opacity: 1;
+}
+
+.project-list__delete-button:hover:not(:disabled) {
+  background: rgb(201 82 72 / 16%);
+  color: #efaaa3;
 }
 
 .project-list__item small {

@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { FolderPlus } from "lucide-react";
 import {
+  deleteProjectDirectory,
   getSavedProjects,
   saveProjectDirectory,
   selectProjectDirectory
@@ -19,6 +20,7 @@ export function ProjectDirectoryManager() {
   const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [deletingProjectPath, setDeletingProjectPath] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -93,6 +95,31 @@ export function ProjectDirectoryManager() {
     }
   }
 
+  async function handleDeleteProject(projectPath: string): Promise<void> {
+    const projectName = projectPath.split(/[\\/]/).filter(Boolean).at(-1) || projectPath;
+    const deletionConfirmed = window.confirm(
+      `Supprimer le projet « ${projectName} » de la liste ?`
+    );
+
+    if (!deletionConfirmed) {
+      return;
+    }
+
+    setDeletingProjectPath(projectPath);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const result = await deleteProjectDirectory(projectPath);
+      setProjects(result.projects);
+      setSaveMessage("Le projet a ete supprime.");
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
+    } finally {
+      setDeletingProjectPath(null);
+    }
+  }
+
   function closeModal(): void {
     setError("");
     setIsModalOpen(false);
@@ -112,7 +139,12 @@ export function ProjectDirectoryManager() {
         </header>
 
         <div className="project-sidebar__content">
-          <ProjectList projects={projects} isLoading={isLoadingProjects} />
+          <ProjectList
+            projects={projects}
+            isLoading={isLoadingProjects}
+            deletingProjectPath={deletingProjectPath}
+            onDelete={(projectPath) => void handleDeleteProject(projectPath)}
+          />
         </div>
 
         <footer className="project-sidebar__footer">

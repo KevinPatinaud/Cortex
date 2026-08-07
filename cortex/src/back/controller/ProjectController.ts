@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import type { DirectoryPickerService } from "../engine/service/projectService/DirectoryPickerService.ts";
 import type { ProjectService } from "../engine/service/projectService/ProjectService.ts";
 
-interface SaveProjectRequestBody {
+interface ProjectPathRequestBody {
   directoryPath?: unknown;
 }
 
@@ -15,7 +15,7 @@ export function createProjectController(
   router.post(
     "/save",
     async (
-      request: Request<Record<string, never>, unknown, SaveProjectRequestBody>,
+      request: Request<Record<string, never>, unknown, ProjectPathRequestBody>,
       response: Response
     ) => {
       const directoryPath = typeof request.body.directoryPath === "string"
@@ -54,6 +54,44 @@ export function createProjectController(
       });
     }
   });
+
+  router.delete(
+    "/",
+    async (
+      request: Request<Record<string, never>, unknown, ProjectPathRequestBody>,
+      response: Response
+    ) => {
+      const directoryPath = typeof request.body.directoryPath === "string"
+        ? request.body.directoryPath.trim()
+        : "";
+
+      if (!directoryPath) {
+        response.status(400).json({
+          error: "Le chemin du repertoire est obligatoire."
+        });
+        return;
+      }
+
+      try {
+        const result = await projectService.deleteProject(directoryPath);
+
+        if (!result.deleted) {
+          response.status(404).json({ error: "Le projet est introuvable." });
+          return;
+        }
+
+        response.json({
+          message: "Projet supprime.",
+          projects: result.projects
+        });
+      } catch (error) {
+        console.error("Impossible de supprimer le projet :", error);
+        response.status(500).json({
+          error: "Impossible de supprimer le projet."
+        });
+      }
+    }
+  );
 
   router.post(
     "/select-directory",

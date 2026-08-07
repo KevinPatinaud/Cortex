@@ -6,6 +6,11 @@ interface ProjectConfiguration {
   directoryPath?: unknown;
 }
 
+export interface DeleteProjectResult {
+  projects: string[];
+  deleted: boolean;
+}
+
 export class ProjectService {
   constructor(private readonly configurationFile: string) {}
 
@@ -66,6 +71,29 @@ export class ProjectService {
 
       throw error;
     }
+  }
+
+  async deleteProject(directoryPath: string): Promise<DeleteProjectResult> {
+    if (!directoryPath.trim()) {
+      throw new TypeError("Le chemin du repertoire est obligatoire.");
+    }
+
+    const normalizedPath = path.normalize(directoryPath.trim());
+    const projects = await this.getProjects();
+    const remainingProjects = projects.filter(
+      (projectPath) => !this.pathsAreEqual(projectPath, normalizedPath)
+    );
+    const deleted = remainingProjects.length !== projects.length;
+
+    if (deleted) {
+      await writeFile(
+        this.configurationFile,
+        JSON.stringify({ projects: remainingProjects }, null, 2),
+        "utf8"
+      );
+    }
+
+    return { projects: remainingProjects, deleted };
   }
 
   private pathsAreEqual(firstPath: string, secondPath: string): boolean {

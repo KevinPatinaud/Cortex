@@ -7,6 +7,11 @@ export interface SaveProjectResponse {
   projects: string[];
 }
 
+export interface DeleteProjectResponse {
+  message: string;
+  projects: string[];
+}
+
 interface DirectorySelectionResponse {
   directoryPath: string | null;
 }
@@ -40,6 +45,25 @@ export async function saveProjectDirectory(
 
   if (!response.ok) {
     throw new Error(data.error || "Impossible d'enregistrer le repertoire.");
+  }
+
+  return data;
+}
+
+export async function deleteProjectDirectory(
+  directoryPath: string
+): Promise<DeleteProjectResponse> {
+  const response = await fetch("/api/projects", {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ directoryPath })
+  });
+  const data = await response.json() as DeleteProjectResponse & ApiErrorResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || "Impossible de supprimer le projet.");
   }
 
   return data;
