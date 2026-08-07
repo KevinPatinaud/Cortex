@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { FolderPlus } from "lucide-react";
+import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
 import {
   deleteProjectDirectory,
   getSavedProjects,
@@ -161,6 +162,7 @@ export function ProjectDirectoryManager() {
             <FolderPlus aria-hidden="true" size={18} />
             {isSelecting ? "Ouverture..." : "Ajouter un projet"}
           </button>
+          <AgentEngineStatus />
         </footer>
       </aside>
 

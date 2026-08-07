@@ -1,13 +1,26 @@
 import { Router, type Request, type Response } from "express";
-import type { CopilotService } from "../engine/service/iaService/CopilotService.ts";
+import type { AgentService } from "../engine/service/iaService/AgentService.ts";
 
 interface AskAgentRequestBody {
   prompt?: unknown;
   model?: unknown;
 }
 
-export function createAgentController(copilotService: CopilotService): Router {
+export function createAgentController(agentService: AgentService): Router {
   const router = Router();
+
+  router.get("/status", async (_request: Request, response: Response) => {
+    try {
+      response.json(await agentService.getStatus());
+    } catch (error) {
+      console.error("Impossible de detecter le moteur IA :", error);
+      response.status(500).json({
+        engine: null,
+        label: null,
+        error: "Impossible de detecter le moteur IA."
+      });
+    }
+  });
 
   router.post(
     "/ask",
@@ -18,9 +31,9 @@ export function createAgentController(copilotService: CopilotService): Router {
       const prompt = typeof request.body.prompt === "string"
         ? request.body.prompt.trim()
         : "";
-      const model = typeof request.body.model === "string"
-        ? request.body.model
-        : "gpt-5.6-luna";
+      const model = typeof request.body.model === "string" && request.body.model.trim()
+        ? request.body.model.trim()
+        : undefined;
 
       if (!prompt) {
         response.status(400).json({ error: "Le prompt est obligatoire." });
@@ -28,11 +41,13 @@ export function createAgentController(copilotService: CopilotService): Router {
       }
 
       try {
-        response.json({ answer: await copilotService.ask(prompt, model) });
+        response.json({ answer: await agentService.ask(prompt, model) });
       } catch (error) {
-        console.error("Impossible d'obtenir une reponse de Copilot :", error);
+        console.error("Impossible d'obtenir une reponse du moteur IA :", error);
         response.status(503).json({
-          error: "Copilot est indisponible. Verifiez que vous etes connecte a Copilot CLI."
+          error: error instanceof Error
+            ? error.message
+            : "Le moteur IA est indisponible."
         });
       }
     }
