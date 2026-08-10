@@ -29,10 +29,16 @@ export interface AgentDefinition {
   prompt: string;
 }
 
+export interface ProjectInstructions {
+  fileName: string;
+  content: string | null;
+}
+
 export interface AgentProject {
   projectId: string;
   engine: AgentEngine;
   agents: AgentDefinition[];
+  instructions: ProjectInstructions;
 }
 
 export interface AgentRunOutput {
@@ -45,12 +51,25 @@ type ProjectDirectory = ProjectContentOutput["root"];
 interface AgentProjectConfiguration {
   engine: AgentEngine;
   rootDirectory: ".codex" | ".claude" | ".github";
+  instructionsFileName: "AGENTS.md" | "CLAUDE.md";
 }
 
 const agentProjectConfigurations: AgentProjectConfiguration[] = [
-  { engine: "codex", rootDirectory: ".codex" },
-  { engine: "claude", rootDirectory: ".claude" },
-  { engine: "copilot", rootDirectory: ".github" }
+  {
+    engine: "codex",
+    rootDirectory: ".codex",
+    instructionsFileName: "AGENTS.md"
+  },
+  {
+    engine: "claude",
+    rootDirectory: ".claude",
+    instructionsFileName: "CLAUDE.md"
+  },
+  {
+    engine: "copilot",
+    rootDirectory: ".github",
+    instructionsFileName: "AGENTS.md"
+  }
 ];
 
 export class AgentUseCase {
@@ -195,7 +214,11 @@ export class AgentUseCase {
     this.actualLoadedProject = {
       projectId: projectContent.id,
       engine: configuration.engine,
-      agents
+      agents,
+      instructions: this.loadProjectInstructions(
+        projectContent.root,
+        configuration.instructionsFileName
+      )
     };
     this.actualLoadedProjectDirectoryPath = projectContent.directoryPath;
 
@@ -225,6 +248,27 @@ export class AgentUseCase {
     );
 
     return matchingEntry?.type === "directory" ? matchingEntry : null;
+  }
+
+  private loadProjectInstructions(
+    rootDirectory: ProjectDirectory,
+    fileName: ProjectInstructions["fileName"]
+  ): ProjectInstructions {
+    const instructionsFile = rootDirectory.children.find(
+      (entry) => entry.type === "file" &&
+        entry.name.toLowerCase() === fileName.toLowerCase()
+    );
+
+    if (!instructionsFile || instructionsFile.type !== "file") {
+      return { fileName, content: null };
+    }
+
+    return {
+      fileName: instructionsFile.name,
+      content: instructionsFile.encoding === "base64"
+        ? Buffer.from(instructionsFile.content, "base64").toString("utf8")
+        : instructionsFile.content
+    };
   }
 
   private getAgentSessionKey(projectId: string, agentId: string): string {

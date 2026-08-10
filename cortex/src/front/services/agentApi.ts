@@ -16,10 +16,16 @@ export interface AgentDefinition {
   prompt: string;
 }
 
+export interface ProjectInstructions {
+  fileName: string;
+  content: string | null;
+}
+
 export interface AgentProject {
   projectId: string;
   engine: AgentEngine;
   agents: AgentDefinition[];
+  instructions: ProjectInstructions;
 }
 
 interface ApiErrorResponse {

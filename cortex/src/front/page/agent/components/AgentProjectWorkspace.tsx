@@ -105,9 +105,15 @@ function AgentCard({ agent, index, projectId }: AgentCardProps) {
           </dl>
         )}
       </header>
-      <p className="agent-card__description">
-        {agent.description || "Aucune description."}
-      </p>
+      <details className="agent-card__prompt">
+        <summary>
+          <span className="agent-card__prompt-description">
+            {agent.description || "Aucune description."}
+          </span>
+          <ChevronDown aria-hidden="true" size={15} strokeWidth={1.7} />
+        </summary>
+        <pre>{agent.prompt || "Aucune instruction."}</pre>
+      </details>
       {agent.reasoningEffort && (
         <dl className="agent-card__configuration">
           <div>
@@ -116,13 +122,6 @@ function AgentCard({ agent, index, projectId }: AgentCardProps) {
           </div>
         </dl>
       )}
-      <details className="agent-card__prompt">
-        <summary>
-          <span>Instructions</span>
-          <ChevronDown aria-hidden="true" size={15} strokeWidth={1.7} />
-        </summary>
-        <pre>{agent.prompt || "Aucune instruction."}</pre>
-      </details>
       <div className="agent-card__run-feedback" aria-live="polite">
         {error && (
           <p className="agent-card__run-error" role="alert">{error}</p>
@@ -198,6 +197,15 @@ export function AgentProjectWorkspace({
   project,
   content
 }: AgentProjectWorkspaceProps) {
+  const tabsId = useId();
+  const [activeTab, setActiveTab] = useState<"instructions" | "agents">(
+    "agents"
+  );
+
+  useEffect(() => {
+    setActiveTab("agents");
+  }, [content?.projectId]);
+
   if (!project || !content) {
     return (
       <section className="workspace-content">
@@ -211,33 +219,95 @@ export function AgentProjectWorkspace({
   }
 
   const projectName = getProjectName(project.directoryPath);
+  const agentsTabLabel = `Workflow (${content.agents.length} agent${
+    content.agents.length > 1 ? "s" : ""
+  })`;
+  const instructionsTabId = `${tabsId}-instructions-tab`;
+  const instructionsPanelId = `${tabsId}-instructions-panel`;
+  const agentsTabId = `${tabsId}-agents-tab`;
+  const agentsPanelId = `${tabsId}-agents-panel`;
 
   return (
     <section className="workspace-content workspace-content--project">
       <header className="agent-project__header">
         <p className="eyebrow">Projet {content.engine}</p>
         <h1>{projectName}</h1>
-        <p className="intro">
-          {content.agents.length} agent{content.agents.length > 1 ? "s" : ""}
-          {" "}configure{content.agents.length > 1 ? "s" : ""}.
-        </p>
+        <div className="agent-project__tabs" role="tablist" aria-label="Contenu du projet">
+          <button
+            className={`agent-project__tab${
+              activeTab === "instructions" ? " agent-project__tab--active" : ""
+            }`}
+            id={instructionsTabId}
+            type="button"
+            role="tab"
+            aria-controls={instructionsPanelId}
+            aria-selected={activeTab === "instructions"}
+            onClick={() => setActiveTab("instructions")}
+          >
+            Instructions projet
+          </button>
+          <button
+            className={`agent-project__tab${
+              activeTab === "agents" ? " agent-project__tab--active" : ""
+            }`}
+            id={agentsTabId}
+            type="button"
+            role="tab"
+            aria-controls={agentsPanelId}
+            aria-selected={activeTab === "agents"}
+            onClick={() => setActiveTab("agents")}
+          >
+            {agentsTabLabel}
+          </button>
+        </div>
       </header>
 
-      {content.agents.length === 0 ? (
-        <p className="agent-project__empty">
-          Aucun agent n'est configure dans ce projet.
-        </p>
+      {activeTab === "instructions" ? (
+        <section
+          className="project-instructions"
+          id={instructionsPanelId}
+          role="tabpanel"
+          aria-labelledby={instructionsTabId}
+          tabIndex={0}
+        >
+          <header className="project-instructions__header">
+            <span>Fichier d'instructions</span>
+            <h2>{content.instructions.fileName}</h2>
+          </header>
+          {content.instructions.content !== null ? (
+            <pre>{content.instructions.content || "Le fichier est vide."}</pre>
+          ) : (
+            <p className="project-instructions__empty">
+              Le fichier {content.instructions.fileName} est introuvable à la
+              racine du projet.
+            </p>
+          )}
+        </section>
       ) : (
-        <div className="agent-project__grid">
-          {content.agents.map((agent, index) => (
-            <AgentCard
-              agent={agent}
-              index={index}
-              key={`${content.projectId}:${agent.id}`}
-              projectId={content.projectId}
-            />
-          ))}
-        </div>
+        <section
+          className="agent-project__agents-panel"
+          id={agentsPanelId}
+          role="tabpanel"
+          aria-labelledby={agentsTabId}
+          tabIndex={0}
+        >
+          {content.agents.length === 0 ? (
+            <p className="agent-project__empty">
+              Aucun agent n'est configuré dans ce projet.
+            </p>
+          ) : (
+            <div className="agent-project__grid">
+              {content.agents.map((agent, index) => (
+                <AgentCard
+                  agent={agent}
+                  index={index}
+                  key={`${content.projectId}:${agent.id}`}
+                  projectId={content.projectId}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       )}
     </section>
   );

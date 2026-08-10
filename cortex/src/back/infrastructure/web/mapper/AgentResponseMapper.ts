@@ -39,6 +39,7 @@ export interface AgentProjectResponse {
   projectId: string;
   engine: AgentProject["engine"];
   agents: AgentProject["agents"];
+  instructions: AgentProject["instructions"];
 }
 
 export interface AgentRunResponse {
@@ -62,7 +63,8 @@ export function toAgentProjectResponse(
   return {
     projectId: project.projectId,
     engine: project.engine,
-    agents: project.agents
+    agents: project.agents,
+    instructions: project.instructions
   };
 }
 
