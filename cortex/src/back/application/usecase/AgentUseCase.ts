@@ -84,6 +84,51 @@ const agentProjectConfigurations: AgentProjectConfiguration[] = [
   }
 ];
 
+const AGENT_RESPONSE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["status", "items", "notes"],
+  properties: {
+    status: {
+      type: "string",
+      enum: ["success", "partial", "blocked", "error"]
+    },
+    items: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["content"],
+        properties: {
+          content: {
+            type: "string"
+          }
+        }
+      }
+    },
+    notes: {
+      type: ["string", "null"]
+    }
+  }
+} as const;
+
+const AGENT_RESPONSE_FORMAT_INSTRUCTIONS = `
+Return exactly one valid JSON object as your final answer.
+
+Requirements:
+- The output must conform exactly to the provided JSON Schema.
+- Do not use Markdown code fences.
+- Do not include text before or after the JSON object.
+- Include every required property.
+- Do not add undeclared properties.
+- Use "blocked" when required information or authorization is missing.
+- Use "error" when execution fails.
+- Set "notes" to null when there is nothing additional to report.
+
+JSON Schema:
+${JSON.stringify(AGENT_RESPONSE_SCHEMA, null, 2)}
+`.trim();
+
 export class AgentUseCase {
   private actualLoadedProject: AgentProject | null = null;
   private actualLoadedProjectDirectoryPath: string | null = null;
@@ -150,9 +195,10 @@ export class AgentUseCase {
 
     const workflow = this.getAgentWorkflow(normalizedProjectId, agent.id);
     const sessionId = workflow?.sessionId;
-    const executionPrompt = sessionId
+    const taskPrompt = sessionId
       ? additionalInstructions || agent.prompt
       : this.withAdditionalInstructions(agent.prompt, additionalInstructions);
+    const executionPrompt = this.withAgentResponseFormat(taskPrompt);
     const result = await this.agentService.execute(
       this.actualLoadedProject.engine,
       executionPrompt,
@@ -347,5 +393,9 @@ export class AgentUseCase {
     }
 
     return `${prompt}\n\nPrécisions de l'utilisateur :\n${additionalInstructions}`;
+  }
+
+  private withAgentResponseFormat(prompt: string): string {
+    return `${prompt.trimEnd()}\n\n${AGENT_RESPONSE_FORMAT_INSTRUCTIONS}`;
   }
 }
