@@ -31,6 +31,10 @@ export function toCodexAgentDefinitions(
     .map((file) => {
       const contentTomlFile = parseTomlFile(file);
       const registeredAgent = registeredAgents.get(file.relativePath);
+      const model = readString(contentTomlFile.model);
+      const reasoningEffort = readString(
+        contentTomlFile.model_reasoning_effort
+      );
 
       return {
         name: readString(contentTomlFile.name) ||
@@ -39,6 +43,8 @@ export function toCodexAgentDefinitions(
         description: readString(contentTomlFile.description) ||
           registeredAgent?.description ||
           "",
+        ...(model ? { model } : {}),
+        ...(reasoningEffort ? { reasoningEffort } : {}),
         prompt: readString(contentTomlFile.developer_instructions) || ""
       };
     });

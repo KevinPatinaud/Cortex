@@ -9,6 +9,8 @@ export interface AgentStatus {
 export interface AgentDefinition {
   name: string;
   description: string;
+  model?: string;
+  reasoningEffort?: string;
   prompt: string;
 }
 
@@ -43,6 +45,20 @@ export async function loadAgentProject(
 
   if (!response.ok) {
     throw new Error(data.error || "Impossible de charger le projet.");
+  }
+
+  return data;
+}
+
+export async function getActualLoadedAgentProject(): Promise<AgentProject | null> {
+  const response = await fetch("/api/agents/projects/actual");
+  const data = await response.json() as
+    (AgentProject & ApiErrorResponse) | null;
+
+  if (!response.ok) {
+    throw new Error(
+      data?.error || "Impossible de restaurer le projet actuel."
+    );
   }
 
   return data;

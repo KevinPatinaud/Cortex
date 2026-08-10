@@ -24,13 +24,37 @@ export function toClaudeAgentDefinitions(
 
 function toClaudeAgentDefinition(file: ProjectFile): AgentDefinition {
   const markdown = parseMarkdownFrontmatter(decodeFile(file));
+  const model = readAttribute(markdown.attributes, "model");
+  const reasoningEffort = readAttribute(
+    markdown.attributes,
+    "effort",
+    "reasoning-effort",
+    "reasoning_effort"
+  );
 
   return {
     name: markdown.attributes.name?.trim() ||
       file.name.replace(/\.md$/i, ""),
     description: markdown.attributes.description?.trim() || "",
+    ...(model ? { model } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
     prompt: markdown.body.trim()
   };
+}
+
+function readAttribute(
+  attributes: Record<string, string>,
+  ...keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = attributes[key]?.trim();
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 function findAgentsDirectory(

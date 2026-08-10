@@ -1,4 +1,4 @@
-import { Bot } from "lucide-react";
+import { Bot, ChevronDown } from "lucide-react";
 import type { AgentProject } from "../../../services/agentApi.ts";
 import type { Project } from "../../../services/projectApi.ts";
 
@@ -55,14 +55,31 @@ export function AgentProjectWorkspace({
                   <span>Agent {index + 1}</span>
                   <h2>{agent.name}</h2>
                 </div>
+                {agent.model && (
+                  <dl className="agent-card__model">
+                    <dt>Modele</dt>
+                    <dd>{agent.model}</dd>
+                  </dl>
+                )}
               </header>
               <p className="agent-card__description">
                 {agent.description || "Aucune description."}
               </p>
-              <div className="agent-card__prompt">
-                <span>Instructions</span>
+              {agent.reasoningEffort && (
+                <dl className="agent-card__configuration">
+                  <div>
+                    <dt>Effort de raisonnement</dt>
+                    <dd>{agent.reasoningEffort}</dd>
+                  </div>
+                </dl>
+              )}
+              <details className="agent-card__prompt">
+                <summary>
+                  <span>Instructions</span>
+                  <ChevronDown aria-hidden="true" size={15} strokeWidth={1.7} />
+                </summary>
                 <pre>{agent.prompt || "Aucune instruction."}</pre>
-              </div>
+              </details>
             </article>
           ))}
         </div>

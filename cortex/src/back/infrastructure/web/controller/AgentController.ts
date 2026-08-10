@@ -14,6 +14,11 @@ import { asyncRoute } from "../middleware/HttpErrorMiddleware.ts";
 export function createAgentController(agentUseCase: AgentUseCase): Router {
   const router = Router();
 
+  router.get("/projects/actual", (_request, response) => {
+    const project = agentUseCase.getActualLoadedProject();
+    response.json(project ? toAgentProjectResponse(project) : null);
+  });
+
   router.get(
     "/projects/:projectId",
     asyncRoute<unknown, { projectId: string }>(async (request, response) => {

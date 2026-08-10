@@ -22,6 +22,8 @@ export interface AskAgentInput {
 export interface AgentDefinition {
   name: string;
   description: string;
+  model?: string;
+  reasoningEffort?: string;
   prompt: string;
 }
 
@@ -54,6 +56,10 @@ export class AgentUseCase {
 
   getStatus(): Promise<AgentStatus> {
     return this.agentService.getStatus();
+  }
+
+  getActualLoadedProject(): AgentProject | null {
+    return this.actualLoadedProject;
   }
 
   ask(input: AskAgentInput): Promise<string> {

@@ -99,6 +99,8 @@ main {
 }
 
 .agent-card {
+  width: 100%;
+  max-width: 48rem;
   min-width: 0;
   padding: 1.4rem;
   border: 1px solid rgb(39 75 56 / 18%);
@@ -119,8 +121,12 @@ main {
   color: #446352;
 }
 
+.agent-card__header > div {
+  min-width: 0;
+}
+
 .agent-card__header span,
-.agent-card__prompt > span {
+.agent-card__prompt summary span {
   color: #657b6f;
   font-family: "Courier New", monospace;
   font-size: 0.65rem;
@@ -135,6 +141,33 @@ main {
   overflow-wrap: anywhere;
 }
 
+.agent-card__model {
+  min-width: 0;
+  margin: 0 0 0 auto;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid rgb(39 75 56 / 13%);
+  border-radius: 5px;
+  background: rgb(231 239 231 / 55%);
+  flex: 0 1 auto;
+  text-align: right;
+}
+
+.agent-card__model dt {
+  color: #657b6f;
+  font-family: "Courier New", monospace;
+  font-size: 0.54rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agent-card__model dd {
+  margin: 0.15rem 0 0;
+  overflow-wrap: anywhere;
+  color: #263c31;
+  font-family: "Courier New", monospace;
+  font-size: 0.68rem;
+}
+
 .agent-card__description {
   min-height: 2.8rem;
   margin: 1rem 0;
@@ -142,9 +175,63 @@ main {
   line-height: 1.45;
 }
 
+.agent-card__configuration {
+  display: flex;
+  margin: 0 0 1rem;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.agent-card__configuration > div {
+  min-width: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgb(39 75 56 / 13%);
+  border-radius: 5px;
+  background: rgb(231 239 231 / 55%);
+}
+
+.agent-card__configuration dt {
+  color: #657b6f;
+  font-family: "Courier New", monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agent-card__configuration dd {
+  margin: 0.2rem 0 0;
+  overflow-wrap: anywhere;
+  color: #263c31;
+  font-family: "Courier New", monospace;
+  font-size: 0.72rem;
+}
+
 .agent-card__prompt {
   padding-top: 1rem;
   border-top: 1px solid rgb(39 75 56 / 13%);
+}
+
+.agent-card__prompt summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.agent-card__prompt summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-card__prompt summary > svg {
+  flex: 0 0 auto;
+  color: #657b6f;
+  transition: transform 160ms ease;
+}
+
+.agent-card__prompt[open] summary > svg {
+  transform: rotate(180deg);
 }
 
 .agent-card__prompt pre {

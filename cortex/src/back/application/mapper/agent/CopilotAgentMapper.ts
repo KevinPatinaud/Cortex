@@ -24,13 +24,39 @@ export function toCopilotAgentDefinitions(
 
 function toCopilotAgentDefinition(file: ProjectFile): AgentDefinition {
   const markdown = parseMarkdownFrontmatter(decodeFile(file));
+  const model = readAttribute(markdown.attributes, "model");
+  const reasoningEffort = readAttribute(
+    markdown.attributes,
+    "reasoning-effort",
+    "reasoning_effort",
+    "model-reasoning-effort",
+    "model_reasoning_effort",
+    "effort"
+  );
 
   return {
     name: markdown.attributes.name?.trim() ||
       file.name.replace(/\.agent\.md$/i, ""),
     description: markdown.attributes.description?.trim() || "",
+    ...(model ? { model } : {}),
+    ...(reasoningEffort ? { reasoningEffort } : {}),
     prompt: markdown.body.trim()
   };
+}
+
+function readAttribute(
+  attributes: Record<string, string>,
+  ...keys: string[]
+): string | undefined {
+  for (const key of keys) {
+    const value = attributes[key]?.trim();
+
+    if (value) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 function findAgentsDirectory(

@@ -2,6 +2,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { FolderPlus } from "lucide-react";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
 import {
+  getActualLoadedAgentProject,
   loadAgentProject,
   type AgentProject
 } from "../../../services/agentApi.ts";
@@ -45,10 +46,24 @@ export function ProjectDirectoryManager({
 
     async function loadProjects(): Promise<void> {
       try {
-        const savedProjects = await getSavedProjects();
+        const [savedProjects, actualLoadedProject] = await Promise.all([
+          getSavedProjects(),
+          getActualLoadedAgentProject()
+        ]);
 
         if (isMounted) {
           setProjects(savedProjects);
+
+          if (actualLoadedProject) {
+            const actualProject = savedProjects.find(
+              (project) => project.id === actualLoadedProject.projectId
+            );
+
+            if (actualProject) {
+              setSelectedProjectId(actualProject.id);
+              onProjectLoaded(actualProject, actualLoadedProject);
+            }
+          }
         }
       } catch (requestError) {
         if (isMounted) {
