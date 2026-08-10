@@ -4,8 +4,8 @@
   "description": "Serveur HTTP Node.js simple",
   "type": "module",
   "scripts": {
-    "start": "npx kill-port 3000 && npm.cmd run build && tsx src/back/controller/server.ts",
-    "dev": "tsx watch src/back/controller/server.ts",
+    "start": "npx kill-port 3000 && npm.cmd run build && tsx src/back/infrastructure/web/controller/server.ts",
+    "dev": "tsx watch src/back/infrastructure/web/controller/server.ts",
     "web": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
@@ -16,7 +16,8 @@
     "express": "^5.2.1",
     "lucide-react": "^1.29.0",
     "react": "^19.2.8",
-    "react-dom": "^19.2.8"
+    "react-dom": "^19.2.8",
+    "smol-toml": "^1.7.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",

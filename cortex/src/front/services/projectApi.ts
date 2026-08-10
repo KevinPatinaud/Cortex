@@ -2,14 +2,19 @@ interface ApiErrorResponse {
   error?: string;
 }
 
+export interface Project {
+  id: string;
+  directoryPath: string;
+}
+
 export interface SaveProjectResponse {
   message: string;
-  projects: string[];
+  projects: Project[];
 }
 
 export interface DeleteProjectResponse {
   message: string;
-  projects: string[];
+  projects: Project[];
 }
 
 interface DirectorySelectionResponse {
@@ -17,10 +22,10 @@ interface DirectorySelectionResponse {
 }
 
 interface ProjectsResponse {
-  projects: string[];
+  projects: Project[];
 }
 
-export async function getSavedProjects(): Promise<string[]> {
+export async function getSavedProjects(): Promise<Project[]> {
   const response = await fetch("/api/projects");
   const data = await response.json() as ProjectsResponse & ApiErrorResponse;
 

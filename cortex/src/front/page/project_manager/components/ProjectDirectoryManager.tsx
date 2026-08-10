@@ -4,6 +4,7 @@ import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx"
 import {
   deleteProjectDirectory,
   getSavedProjects,
+  type Project,
   saveProjectDirectory,
   selectProjectDirectory
 } from "../../../services/projectApi.ts";
@@ -17,11 +18,11 @@ export function ProjectDirectoryManager() {
   const directoryDialog = useRef<HTMLDialogElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [directoryPath, setDirectoryPath] = useState("");
-  const [projects, setProjects] = useState<string[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
-  const [deletingProjectPath, setDeletingProjectPath] = useState<string | null>(null);
+  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -96,8 +97,9 @@ export function ProjectDirectoryManager() {
     }
   }
 
-  async function handleDeleteProject(projectPath: string): Promise<void> {
-    const projectName = projectPath.split(/[\\/]/).filter(Boolean).at(-1) || projectPath;
+  async function handleDeleteProject(project: Project): Promise<void> {
+    const projectName = project.directoryPath.split(/[\\/]/).filter(Boolean).at(-1) ||
+      project.directoryPath;
     const deletionConfirmed = window.confirm(
       `Supprimer le projet « ${projectName} » de la liste ?`
     );
@@ -106,18 +108,18 @@ export function ProjectDirectoryManager() {
       return;
     }
 
-    setDeletingProjectPath(projectPath);
+    setDeletingProjectId(project.id);
     setError("");
     setSaveMessage("");
 
     try {
-      const result = await deleteProjectDirectory(projectPath);
+      const result = await deleteProjectDirectory(project.directoryPath);
       setProjects(result.projects);
       setSaveMessage("Le projet a ete supprime.");
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
-      setDeletingProjectPath(null);
+      setDeletingProjectId(null);
     }
   }
 
@@ -143,8 +145,8 @@ export function ProjectDirectoryManager() {
           <ProjectList
             projects={projects}
             isLoading={isLoadingProjects}
-            deletingProjectPath={deletingProjectPath}
-            onDelete={(projectPath) => void handleDeleteProject(projectPath)}
+            deletingProjectId={deletingProjectId}
+            onDelete={(project) => void handleDeleteProject(project)}
           />
         </div>
 

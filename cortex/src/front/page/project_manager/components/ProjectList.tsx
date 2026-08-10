@@ -1,10 +1,11 @@
 import { Folder, Trash2 } from "lucide-react";
+import type { Project } from "../../../services/projectApi.ts";
 
 interface ProjectListProps {
-  projects: string[];
+  projects: Project[];
   isLoading: boolean;
-  deletingProjectPath: string | null;
-  onDelete: (directoryPath: string) => void;
+  deletingProjectId: string | null;
+  onDelete: (project: Project) => void;
 }
 
 function getProjectName(directoryPath: string): string {
@@ -15,7 +16,7 @@ function getProjectName(directoryPath: string): string {
 export function ProjectList({
   projects,
   isLoading,
-  deletingProjectPath,
+  deletingProjectId,
   onDelete
 }: ProjectListProps) {
   if (isLoading) {
@@ -32,23 +33,27 @@ export function ProjectList({
 
   return (
     <ul className="project-list">
-      {projects.map((directoryPath) => {
-        const projectName = getProjectName(directoryPath);
+      {projects.map((project) => {
+        const projectName = getProjectName(project.directoryPath);
 
         return (
-          <li className="project-list__item" key={directoryPath} title={directoryPath}>
+          <li
+            className="project-list__item"
+            key={project.id}
+            title={project.directoryPath}
+          >
             <Folder aria-hidden="true" size={18} strokeWidth={1.8} />
             <span className="project-list__details">
               <strong>{projectName}</strong>
-              <small>{directoryPath}</small>
+              <small>{project.directoryPath}</small>
             </span>
             <button
               className="project-list__delete-button"
               type="button"
               aria-label={`Supprimer ${projectName}`}
               title={`Supprimer ${projectName}`}
-              onClick={() => onDelete(directoryPath)}
-              disabled={deletingProjectPath === directoryPath}
+              onClick={() => onDelete(project)}
+              disabled={deletingProjectId === project.id}
             >
               <Trash2 aria-hidden="true" size={16} />
             </button>
