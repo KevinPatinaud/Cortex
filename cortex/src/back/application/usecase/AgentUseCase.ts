@@ -24,9 +24,15 @@ export interface AgentDefinition {
   name: string;
   description: string;
   hasSession: boolean;
+  conversation: AgentConversationMessage[];
   model?: string;
   reasoningEffort?: string;
   prompt: string;
+}
+
+export interface AgentConversationMessage {
+  role: "user" | "agent";
+  content: string;
 }
 
 export interface ProjectInstructions {
@@ -44,6 +50,12 @@ export interface AgentProject {
 export interface AgentRunOutput {
   answer: string;
   hasSession: boolean;
+  conversation: AgentConversationMessage[];
+}
+
+interface AgentWorkflowState {
+  sessionId: string;
+  conversation: AgentConversationMessage[];
 }
 
 type ProjectDirectory = ProjectContentOutput["root"];
@@ -75,7 +87,10 @@ const agentProjectConfigurations: AgentProjectConfiguration[] = [
 export class AgentUseCase {
   private actualLoadedProject: AgentProject | null = null;
   private actualLoadedProjectDirectoryPath: string | null = null;
-  private readonly agentSessionIds = new Map<string, string>();
+  private readonly agentWorkflows = new Map<
+    string,
+    Map<string, AgentWorkflowState>
+  >();
 
   constructor(
     private readonly agentService: AgentService,
@@ -133,8 +148,8 @@ export class AgentUseCase {
       );
     }
 
-    const sessionKey = this.getAgentSessionKey(normalizedProjectId, agent.id);
-    const sessionId = this.agentSessionIds.get(sessionKey);
+    const workflow = this.getAgentWorkflow(normalizedProjectId, agent.id);
+    const sessionId = workflow?.sessionId;
     const executionPrompt = sessionId
       ? additionalInstructions || agent.prompt
       : this.withAdditionalInstructions(agent.prompt, additionalInstructions);
@@ -159,13 +174,43 @@ export class AgentUseCase {
       );
     }
 
-    this.agentSessionIds.set(sessionKey, effectiveSessionId);
+    const conversation: AgentConversationMessage[] = [
+      ...(workflow?.conversation ?? []),
+      ...(additionalInstructions
+        ? [{ role: "user" as const, content: additionalInstructions }]
+        : []),
+      { role: "agent", content: result.answer }
+    ];
+
+    this.setAgentWorkflow(normalizedProjectId, agent.id, {
+      sessionId: effectiveSessionId,
+      conversation
+    });
     agent.hasSession = true;
+    agent.conversation = [...conversation];
 
     return {
       answer: result.answer,
-      hasSession: true
+      hasSession: true,
+      conversation: [...conversation]
     };
+  }
+
+  resetWorkflow(projectId: string): void {
+    const normalizedProjectId = projectId.trim();
+
+    if (!normalizedProjectId) {
+      throw new ValidationError("Le projet a reinitialiser est obligatoire.");
+    }
+
+    this.agentWorkflows.delete(normalizedProjectId);
+
+    if (this.actualLoadedProject?.projectId === normalizedProjectId) {
+      for (const agent of this.actualLoadedProject.agents) {
+        agent.hasSession = false;
+        agent.conversation = [];
+      }
+    }
   }
 
   async loadProject(projectId: string): Promise<AgentProject> {
@@ -206,9 +251,9 @@ export class AgentUseCase {
       : [];
 
     for (const agent of agents) {
-      agent.hasSession = this.agentSessionIds.has(
-        this.getAgentSessionKey(projectContent.id, agent.id)
-      );
+      const workflow = this.getAgentWorkflow(projectContent.id, agent.id);
+      agent.hasSession = Boolean(workflow);
+      agent.conversation = [...(workflow?.conversation ?? [])];
     }
 
     this.actualLoadedProject = {
@@ -271,8 +316,26 @@ export class AgentUseCase {
     };
   }
 
-  private getAgentSessionKey(projectId: string, agentId: string): string {
-    return JSON.stringify([projectId, agentId]);
+  private getAgentWorkflow(
+    projectId: string,
+    agentId: string
+  ): AgentWorkflowState | undefined {
+    return this.agentWorkflows.get(projectId)?.get(agentId);
+  }
+
+  private setAgentWorkflow(
+    projectId: string,
+    agentId: string,
+    workflow: AgentWorkflowState
+  ): void {
+    let projectWorkflows = this.agentWorkflows.get(projectId);
+
+    if (!projectWorkflows) {
+      projectWorkflows = new Map();
+      this.agentWorkflows.set(projectId, projectWorkflows);
+    }
+
+    projectWorkflows.set(agentId, workflow);
   }
 
   private withAdditionalInstructions(

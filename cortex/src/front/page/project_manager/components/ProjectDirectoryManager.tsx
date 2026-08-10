@@ -4,6 +4,7 @@ import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx"
 import {
   getActualLoadedAgentProject,
   loadAgentProject,
+  resetAgentProjectWorkflow,
   type AgentProject
 } from "../../../services/agentApi.ts";
 import {
@@ -13,20 +14,33 @@ import {
   saveProjectDirectory,
   selectProjectDirectory
 } from "../../../services/projectApi.ts";
+import { ConfirmationDialog } from "./ConfirmationDialog.tsx";
 import { ProjectList } from "./ProjectList.tsx";
 
 interface ProjectDirectoryManagerProps {
   onProjectLoaded: (project: Project, content: AgentProject) => void;
   onProjectCleared: (projectId: string) => void;
+  onProjectWorkflowReset: (projectId: string) => void;
+}
+
+interface ProjectConfirmation {
+  action: "reset" | "delete";
+  project: Project;
 }
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Une erreur inattendue est survenue.";
 }
 
+function getProjectName(project: Project): string {
+  return project.directoryPath.split(/[\\/]/).filter(Boolean).at(-1) ||
+    project.directoryPath;
+}
+
 export function ProjectDirectoryManager({
   onProjectLoaded,
-  onProjectCleared
+  onProjectCleared,
+  onProjectWorkflowReset
 }: ProjectDirectoryManagerProps) {
   const directoryDialog = useRef<HTMLDialogElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -36,10 +50,14 @@ export function ProjectDirectoryManager({
   const [error, setError] = useState("");
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [resettingProjectId, setResettingProjectId] = useState<string | null>(null);
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmation, setConfirmation] = useState<ProjectConfirmation | null>(
+    null
+  );
 
   useEffect(() => {
     let isMounted = true;
@@ -126,17 +144,7 @@ export function ProjectDirectoryManager({
     }
   }
 
-  async function handleDeleteProject(project: Project): Promise<void> {
-    const projectName = project.directoryPath.split(/[\\/]/).filter(Boolean).at(-1) ||
-      project.directoryPath;
-    const deletionConfirmed = window.confirm(
-      `Supprimer le projet « ${projectName} » de la liste ?`
-    );
-
-    if (!deletionConfirmed) {
-      return;
-    }
-
+  async function handleDeleteProject(project: Project): Promise<boolean> {
     setDeletingProjectId(project.id);
     setError("");
     setSaveMessage("");
@@ -150,10 +158,54 @@ export function ProjectDirectoryManager({
         setSelectedProjectId(null);
         onProjectCleared(project.id);
       }
+
+      return true;
     } catch (requestError) {
       setError(getErrorMessage(requestError));
+      return false;
     } finally {
       setDeletingProjectId(null);
+    }
+  }
+
+  async function handleResetWorkflow(project: Project): Promise<boolean> {
+    setResettingProjectId(project.id);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      await resetAgentProjectWorkflow(project.id);
+      onProjectWorkflowReset(project.id);
+      setSaveMessage("Le workflow a ete reinitialise.");
+      return true;
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
+      return false;
+    } finally {
+      setResettingProjectId(null);
+    }
+  }
+
+  function openConfirmation(
+    action: ProjectConfirmation["action"],
+    project: Project
+  ): void {
+    setError("");
+    setSaveMessage("");
+    setConfirmation({ action, project });
+  }
+
+  async function handleConfirmation(): Promise<void> {
+    if (!confirmation) {
+      return;
+    }
+
+    const succeeded = confirmation.action === "reset"
+      ? await handleResetWorkflow(confirmation.project)
+      : await handleDeleteProject(confirmation.project);
+
+    if (succeeded) {
+      setConfirmation(null);
     }
   }
 
@@ -196,17 +248,21 @@ export function ProjectDirectoryManager({
             projects={projects}
             isLoading={isLoadingProjects}
             deletingProjectId={deletingProjectId}
+            resettingProjectId={resettingProjectId}
             loadingProjectId={loadingProjectId}
             selectedProjectId={selectedProjectId}
             onSelect={(project) => void handleProjectSelection(project)}
-            onDelete={(project) => void handleDeleteProject(project)}
+            onResetWorkflow={(project) => openConfirmation("reset", project)}
+            onDelete={(project) => openConfirmation("delete", project)}
           />
         </div>
 
         <footer className="project-sidebar__footer">
           <div className="project-sidebar__feedback" aria-live="polite">
             {saveMessage && <p className="success-message">{saveMessage}</p>}
-            {error && !isModalOpen && <p className="error" role="alert">{error}</p>}
+            {error && !isModalOpen && !confirmation && (
+              <p className="error" role="alert">{error}</p>
+            )}
           </div>
           <button
             className="project-sidebar__add-button"
@@ -253,6 +309,42 @@ export function ProjectDirectoryManager({
             </div>
           </form>
         </dialog>
+      )}
+
+      {confirmation?.action === "reset" && (
+        <ConfirmationDialog
+          variant="reset"
+          title="Réinitialiser le workflow ?"
+          description="Vous vous appretez à réintialiser le workflow suivant :"
+          projectName={getProjectName(confirmation.project)}
+          confirmLabel="Réinitialiser"
+          pendingLabel="Réinitialisation..."
+          isPending={resettingProjectId === confirmation.project.id}
+          error={error || undefined}
+          onCancel={() => {
+            setError("");
+            setConfirmation(null);
+          }}
+          onConfirm={() => void handleConfirmation()}
+        />
+      )}
+
+      {confirmation?.action === "delete" && (
+        <ConfirmationDialog
+          variant="delete"
+          title="Supprimer ce projet ?"
+          description="Le projet sera retiré de Cortex. Les fichiers resteront présents sur le disque et ne seront pas supprimés."
+          projectName={getProjectName(confirmation.project)}
+          confirmLabel="Supprimer"
+          pendingLabel="Suppression..."
+          isPending={deletingProjectId === confirmation.project.id}
+          error={error || undefined}
+          onCancel={() => {
+            setError("");
+            setConfirmation(null);
+          }}
+          onConfirm={() => void handleConfirmation()}
+        />
       )}
     </>
   );

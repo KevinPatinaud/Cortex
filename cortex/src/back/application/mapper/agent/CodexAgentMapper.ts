@@ -45,6 +45,7 @@ export function toCodexAgentDefinitions(
           registeredAgent?.description ||
           "",
         hasSession: false,
+        conversation: [],
         ...(model ? { model } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),
         prompt: readString(contentTomlFile.developer_instructions) || ""

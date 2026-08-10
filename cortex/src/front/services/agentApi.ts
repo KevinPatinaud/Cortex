@@ -11,9 +11,15 @@ export interface AgentDefinition {
   name: string;
   description: string;
   hasSession: boolean;
+  conversation: AgentConversationMessage[];
   model?: string;
   reasoningEffort?: string;
   prompt: string;
+}
+
+export interface AgentConversationMessage {
+  role: "user" | "agent";
+  content: string;
 }
 
 export interface ProjectInstructions {
@@ -35,6 +41,7 @@ interface ApiErrorResponse {
 export interface AgentRunResult {
   answer: string;
   hasSession: boolean;
+  conversation: AgentConversationMessage[];
 }
 
 export async function getAgentStatus(): Promise<AgentStatus> {
@@ -105,6 +112,21 @@ export async function runAgent(
 
   return {
     answer: data.answer,
-    hasSession: data.hasSession
+    hasSession: data.hasSession,
+    conversation: data.conversation
   };
+}
+
+export async function resetAgentProjectWorkflow(
+  projectId: string
+): Promise<void> {
+  const response = await fetch(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/workflow/reset`,
+    { method: "POST" }
+  );
+  const data = await response.json() as ApiErrorResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || "Impossible de reinitialiser le workflow.");
+  }
 }

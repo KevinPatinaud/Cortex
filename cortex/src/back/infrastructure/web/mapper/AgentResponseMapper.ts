@@ -26,6 +26,11 @@ export const agentErrorMappings = {
     fallbackMessage: "Impossible d'executer l'agent.",
     logMessage: "Impossible d'executer l'agent :",
     exposeUnexpectedError: true
+  },
+  resetWorkflow: {
+    fallbackStatus: 500,
+    fallbackMessage: "Impossible de reinitialiser le workflow.",
+    logMessage: "Impossible de reinitialiser le workflow :"
   }
 } satisfies Record<string, ErrorMappingOptions>;
 
@@ -45,6 +50,7 @@ export interface AgentProjectResponse {
 export interface AgentRunResponse {
   answer: string;
   hasSession: boolean;
+  conversation: AgentRunOutput["conversation"];
 }
 
 export function toAgentStatusResponse(
@@ -71,6 +77,7 @@ export function toAgentProjectResponse(
 export function toAgentRunResponse(result: AgentRunOutput): AgentRunResponse {
   return {
     answer: result.answer,
-    hasSession: result.hasSession
+    hasSession: result.hasSession,
+    conversation: result.conversation
   };
 }

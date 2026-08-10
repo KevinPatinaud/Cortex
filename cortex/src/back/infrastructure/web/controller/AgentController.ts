@@ -41,6 +41,14 @@ export function createAgentController(agentUseCase: AgentUseCase): Router {
     }, agentErrorMappings.runAgent)
   );
 
+  router.post(
+    "/projects/:projectId/workflow/reset",
+    asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+      agentUseCase.resetWorkflow(request.params.projectId);
+      response.json({ message: "Le workflow a ete reinitialise." });
+    }, agentErrorMappings.resetWorkflow)
+  );
+
   router.get(
     "/status",
     asyncRoute(async (_request, response) => {

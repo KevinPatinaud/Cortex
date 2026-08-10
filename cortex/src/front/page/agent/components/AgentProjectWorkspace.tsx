@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Bot, ChevronDown, RotateCcw } from "lucide-react";
 import {
   runAgent,
+  type AgentConversationMessage,
   type AgentDefinition,
   type AgentProject
 } from "../../../services/agentApi.ts";
@@ -29,22 +30,24 @@ interface AgentCardProps {
   projectId: string;
 }
 
-interface AgentConversationMessage {
-  role: "user" | "agent";
-  content: string;
-}
-
 function AgentCard({ agent, index, projectId }: AgentCardProps) {
   const additionalInstructionsId = useId();
   const conversationRef = useRef<HTMLDivElement>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [hasSession, setHasSession] = useState(agent.hasSession);
   const [conversation, setConversation] = useState<AgentConversationMessage[]>(
-    []
+    agent.conversation
   );
   const [error, setError] = useState("");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
   const canRun = Boolean(agent.prompt.trim());
+
+  useEffect(() => {
+    setHasSession(agent.hasSession);
+    setConversation(agent.conversation);
+    setAdditionalInstructions("");
+    setError("");
+  }, [agent]);
 
   useEffect(() => {
     const conversationElement = conversationRef.current;
@@ -70,17 +73,7 @@ function AgentCard({ agent, index, projectId }: AgentCardProps) {
         agent.id,
         submittedInstructions
       );
-      const newMessages: AgentConversationMessage[] = [
-        ...(submittedInstructions
-          ? [{ role: "user" as const, content: submittedInstructions }]
-          : []),
-        { role: "agent", content: result.answer }
-      ];
-
-      setConversation((currentConversation) => [
-        ...currentConversation,
-        ...newMessages
-      ]);
+      setConversation(result.conversation);
       setHasSession(result.hasSession);
       setAdditionalInstructions("");
     } catch (requestError) {

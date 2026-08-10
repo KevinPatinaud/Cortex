@@ -1,13 +1,15 @@
-import { Folder, Trash2 } from "lucide-react";
+import { Folder, RotateCcw, Trash2 } from "lucide-react";
 import type { Project } from "../../../services/projectApi.ts";
 
 interface ProjectListProps {
   projects: Project[];
   isLoading: boolean;
   deletingProjectId: string | null;
+  resettingProjectId: string | null;
   loadingProjectId: string | null;
   selectedProjectId: string | null;
   onSelect: (project: Project) => void;
+  onResetWorkflow: (project: Project) => void;
   onDelete: (project: Project) => void;
 }
 
@@ -20,9 +22,11 @@ export function ProjectList({
   projects,
   isLoading,
   deletingProjectId,
+  resettingProjectId,
   loadingProjectId,
   selectedProjectId,
   onSelect,
+  onResetWorkflow,
   onDelete
 }: ProjectListProps) {
   if (isLoading) {
@@ -64,6 +68,16 @@ export function ProjectList({
                   {isProjectLoading ? "Chargement..." : project.directoryPath}
                 </small>
               </span>
+            </button>
+            <button
+              className="project-list__reset-button"
+              type="button"
+              aria-label={`Reinitialiser le workflow de ${projectName}`}
+              title={`Reinitialiser le workflow de ${projectName}`}
+              onClick={() => onResetWorkflow(project)}
+              disabled={resettingProjectId === project.id}
+            >
+              <RotateCcw aria-hidden="true" size={16} />
             </button>
             <button
               className="project-list__delete-button"

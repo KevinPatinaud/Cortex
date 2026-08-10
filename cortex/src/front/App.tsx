@@ -25,6 +25,25 @@ export function App() {
               : currentSelection
           );
         }}
+        onProjectWorkflowReset={(projectId) => {
+          setSelection((currentSelection) => {
+            if (currentSelection?.project.id !== projectId) {
+              return currentSelection;
+            }
+
+            return {
+              ...currentSelection,
+              content: {
+                ...currentSelection.content,
+                agents: currentSelection.content.agents.map((agent) => ({
+                  ...agent,
+                  hasSession: false,
+                  conversation: []
+                }))
+              }
+            };
+          });
+        }}
       />
       <AgentProjectWorkspace
         project={selection?.project ?? null}
