@@ -29,7 +29,7 @@ export function AgentEngineStatus() {
             label: null,
             error: error instanceof Error
               ? error.message
-              : "Impossible de detecter le moteur IA."
+              : "Impossible de détecter le moteur IA."
           });
         }
       } finally {
@@ -57,7 +57,7 @@ export function AgentEngineStatus() {
       <span className="agent-engine-status__content">
         <small>Moteur IA</small>
         <strong>
-          {isLoading ? "Detection..." : status.label || "Non configure"}
+          {isLoading ? "Détection..." : status.label || "Non configuré"}
         </strong>
         {hasError && <span className="agent-engine-status__error">{status.error}</span>}
       </span>

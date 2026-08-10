@@ -49,7 +49,7 @@ export async function getAgentStatus(): Promise<AgentStatus> {
   const data = await response.json() as AgentStatus;
 
   if (!response.ok) {
-    throw new Error(data.error || "Impossible de detecter le moteur IA.");
+    throw new Error(data.error || "Impossible de détecter le moteur IA.");
   }
 
   return data;
@@ -107,7 +107,7 @@ export async function runAgent(
   const data = await response.json() as AgentRunResult & ApiErrorResponse;
 
   if (!response.ok) {
-    throw new Error(data.error || "Impossible d'executer l'agent.");
+    throw new Error(data.error || "Impossible d'exécuter l'agent.");
   }
 
   return {
@@ -127,6 +127,6 @@ export async function resetAgentProjectWorkflow(
   const data = await response.json() as ApiErrorResponse;
 
   if (!response.ok) {
-    throw new Error(data.error || "Impossible de reinitialiser le workflow.");
+    throw new Error(data.error || "Impossible de réinitialiser le workflow.");
   }
 }

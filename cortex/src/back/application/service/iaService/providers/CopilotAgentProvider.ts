@@ -59,7 +59,7 @@ export class CopilotAgentProvider implements AgentProvider {
       const answer = result?.data.content;
 
       if (!answer) {
-        throw new Error("Copilot n'a renvoye aucune reponse.");
+        throw new Error("Copilot n'a renvoyé aucune réponse.");
       }
 
       return {
@@ -76,7 +76,7 @@ export class CopilotAgentProvider implements AgentProvider {
     return Promise.race([
       promise,
       new Promise<never>((_resolve, reject) => {
-        setTimeout(() => reject(new Error("Le moteur Copilot n'a pas repondu a temps.")), timeout);
+        setTimeout(() => reject(new Error("Le moteur Copilot n'a pas répondu à temps.")), timeout);
       })
     ]);
   }

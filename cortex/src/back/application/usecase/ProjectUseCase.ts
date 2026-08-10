@@ -59,7 +59,7 @@ export class ProjectUseCase {
 
     if (!normalizedInput) {
       throw new ValidationError(
-        "Le chemin du repertoire est obligatoire."
+        "Le chemin du répertoire est obligatoire."
       );
     }
 

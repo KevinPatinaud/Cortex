@@ -8,8 +8,8 @@ import type { ErrorMappingOptions } from "./HttpErrorMapper.ts";
 export const agentErrorMappings = {
   status: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible de detecter le moteur IA.",
-    logMessage: "Impossible de detecter le moteur IA :",
+    fallbackMessage: "Impossible de détecter le moteur IA.",
+    logMessage: "Impossible de détecter le moteur IA :",
     toFallbackBody: (message: string) => ({
       engine: null,
       label: null,
@@ -23,14 +23,14 @@ export const agentErrorMappings = {
   },
   runAgent: {
     fallbackStatus: 503,
-    fallbackMessage: "Impossible d'executer l'agent.",
-    logMessage: "Impossible d'executer l'agent :",
+    fallbackMessage: "Impossible d'exécuter l'agent.",
+    logMessage: "Impossible d'exécuter l'agent :",
     exposeUnexpectedError: true
   },
   resetWorkflow: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible de reinitialiser le workflow.",
-    logMessage: "Impossible de reinitialiser le workflow :"
+    fallbackMessage: "Impossible de réinitialiser le workflow.",
+    logMessage: "Impossible de réinitialiser le workflow :"
   }
 } satisfies Record<string, ErrorMappingOptions>;
 

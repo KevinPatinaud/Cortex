@@ -5,24 +5,174 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 const WINDOWS_DIRECTORY_PICKER_SCRIPT = `
-Add-Type -AssemblyName System.Windows.Forms
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-$dialog = New-Object System.Windows.Forms.FolderBrowserDialog
-$dialog.Description = "Selectionnez le repertoire du projet"
-$dialog.ShowNewFolderButton = $true
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
 
-if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-  [Console]::Write($dialog.SelectedPath)
+namespace Cortex.Windows
+{
+    [Flags]
+    internal enum FileOpenOptions : uint
+    {
+        PickFolders = 0x00000020,
+        ForceFileSystem = 0x00000040,
+        PathMustExist = 0x00000800,
+        DontAddToRecent = 0x02000000
+    }
+
+    internal enum ShellItemDisplayName : uint
+    {
+        FileSystemPath = 0x80058000
+    }
+
+    internal enum FileDialogAddPlace
+    {
+        Bottom = 0,
+        Top = 1
+    }
+
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    internal struct FilterSpec
+    {
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string Name;
+
+        [MarshalAs(UnmanagedType.LPWStr)]
+        public string Spec;
+    }
+
+    [ComImport]
+    [Guid("DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7")]
+    internal class FileOpenDialog
+    {
+    }
+
+    [ComImport]
+    [Guid("42F85136-DB7E-439C-85F1-E4075D135FC8")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IFileDialog
+    {
+        [PreserveSig]
+        int Show(IntPtr owner);
+
+        void SetFileTypes(
+            uint fileTypeCount,
+            [MarshalAs(UnmanagedType.LPArray)] FilterSpec[] filterSpecs
+        );
+        void SetFileTypeIndex(uint fileTypeIndex);
+        void GetFileTypeIndex(out uint fileTypeIndex);
+        void Advise(IntPtr events, out uint cookie);
+        void Unadvise(uint cookie);
+        void SetOptions(FileOpenOptions options);
+        void GetOptions(out FileOpenOptions options);
+        void SetDefaultFolder(IShellItem shellItem);
+        void SetFolder(IShellItem shellItem);
+        void GetFolder(out IShellItem shellItem);
+        void GetCurrentSelection(out IShellItem shellItem);
+        void SetFileName([MarshalAs(UnmanagedType.LPWStr)] string name);
+        void GetFileName([MarshalAs(UnmanagedType.LPWStr)] out string name);
+        void SetTitle([MarshalAs(UnmanagedType.LPWStr)] string title);
+        void SetOkButtonLabel([MarshalAs(UnmanagedType.LPWStr)] string text);
+        void SetFileNameLabel([MarshalAs(UnmanagedType.LPWStr)] string label);
+        void GetResult(out IShellItem shellItem);
+        void AddPlace(IShellItem shellItem, FileDialogAddPlace alignment);
+        void SetDefaultExtension([MarshalAs(UnmanagedType.LPWStr)] string extension);
+        void Close(int result);
+        void SetClientGuid(ref Guid clientGuid);
+        void ClearClientData();
+        void SetFilter(IntPtr filter);
+    }
+
+    [ComImport]
+    [Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    internal interface IShellItem
+    {
+        void BindToHandler(
+            IntPtr bindContext,
+            ref Guid handlerId,
+            ref Guid interfaceId,
+            out IntPtr interfacePointer
+        );
+        void GetParent(out IShellItem parent);
+        void GetDisplayName(ShellItemDisplayName displayName, out IntPtr name);
+        void GetAttributes(uint mask, out uint attributes);
+        void Compare(IShellItem shellItem, uint hint, out int order);
+    }
+
+    public static class DirectoryPicker
+    {
+        private const int Cancelled = unchecked((int)0x800704C7);
+
+        public static string SelectDirectory()
+        {
+            IFileDialog dialog = (IFileDialog)new FileOpenDialog();
+            IShellItem selectedItem = null;
+            IntPtr selectedPathPointer = IntPtr.Zero;
+
+            try
+            {
+                FileOpenOptions options;
+                dialog.GetOptions(out options);
+                dialog.SetOptions(
+                    options |
+                    FileOpenOptions.PickFolders |
+                    FileOpenOptions.ForceFileSystem |
+                    FileOpenOptions.PathMustExist |
+                    FileOpenOptions.DontAddToRecent
+                );
+                dialog.SetTitle("Sélectionnez le répertoire du projet");
+                dialog.SetOkButtonLabel("Sélectionner ce dossier");
+                dialog.SetFileNameLabel("Dossier :");
+
+                int result = dialog.Show(IntPtr.Zero);
+
+                if (result == Cancelled)
+                {
+                    return null;
+                }
+
+                Marshal.ThrowExceptionForHR(result);
+                dialog.GetResult(out selectedItem);
+                selectedItem.GetDisplayName(
+                    ShellItemDisplayName.FileSystemPath,
+                    out selectedPathPointer
+                );
+
+                return Marshal.PtrToStringUni(selectedPathPointer);
+            }
+            finally
+            {
+                if (selectedPathPointer != IntPtr.Zero)
+                {
+                    Marshal.FreeCoTaskMem(selectedPathPointer);
+                }
+
+                if (selectedItem != null)
+                {
+                    Marshal.FinalReleaseComObject(selectedItem);
+                }
+
+                Marshal.FinalReleaseComObject(dialog);
+            }
+        }
+    }
 }
+'@
 
-$dialog.Dispose()
+$selectedDirectory = [Cortex.Windows.DirectoryPicker]::SelectDirectory()
+
+if ($null -ne $selectedDirectory) {
+  [Console]::Write($selectedDirectory)
+}
 `;
 
 export class DirectoryPickerService {
   async selectDirectory(): Promise<string | null> {
     if (process.platform !== "win32") {
-      throw new Error("Le selecteur natif est disponible uniquement sous Windows.");
+      throw new Error("Le sélecteur natif est disponible uniquement sous Windows.");
     }
 
     const { stdout } = await execFileAsync(

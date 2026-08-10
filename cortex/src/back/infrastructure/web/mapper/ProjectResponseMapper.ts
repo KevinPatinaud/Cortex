@@ -4,13 +4,13 @@ import type { ErrorMappingOptions } from "./HttpErrorMapper.ts";
 export const projectErrorMappings = {
   save: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible d'enregistrer le repertoire.",
-    logMessage: "Impossible d'enregistrer le repertoire :"
+    fallbackMessage: "Impossible d'enregistrer le répertoire.",
+    logMessage: "Impossible d'enregistrer le répertoire :"
   },
   list: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible de lire les repertoires enregistres.",
-    logMessage: "Impossible de lire les repertoires enregistres :"
+    fallbackMessage: "Impossible de lire les répertoires enregistrés.",
+    logMessage: "Impossible de lire les répertoires enregistrés :"
   },
   delete: {
     fallbackStatus: 500,
@@ -19,8 +19,8 @@ export const projectErrorMappings = {
   },
   selectDirectory: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible d'ouvrir le selecteur de repertoire.",
-    logMessage: "Impossible d'ouvrir le selecteur de repertoire :"
+    fallbackMessage: "Impossible d'ouvrir le sélecteur de répertoire.",
+    logMessage: "Impossible d'ouvrir le sélecteur de répertoire :"
   }
 } satisfies Record<string, ErrorMappingOptions>;
 
@@ -44,7 +44,7 @@ export function toProjectSavedResponse(
   projects: ProjectOutput[]
 ): ProjectMutationResponse {
   return {
-    message: "Repertoire enregistre.",
+    message: "Répertoire enregistré.",
     projects
   };
 }
@@ -53,7 +53,7 @@ export function toProjectDeletedResponse(
   projects: ProjectOutput[]
 ): ProjectMutationResponse {
   return {
-    message: "Projet supprime.",
+    message: "Projet supprimé.",
     projects
   };
 }

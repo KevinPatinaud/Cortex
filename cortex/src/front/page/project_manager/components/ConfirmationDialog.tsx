@@ -90,7 +90,7 @@ export function ConfirmationDialog({
         <div className="confirmation-dialog__body">
           <p id={descriptionId}>{description}</p>
           <div className="confirmation-dialog__project">
-            <span>Projet concerne</span>
+            <span>Projet concerné</span>
             <strong>{projectName}</strong>
           </div>
           {error && (

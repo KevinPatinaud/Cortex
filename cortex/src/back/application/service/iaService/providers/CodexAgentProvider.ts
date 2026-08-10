@@ -98,11 +98,11 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     const result = parseCodexJsonOutput(output, options.sessionId);
 
     if (!result.answer) {
-      throw new Error("Codex n'a renvoye aucune reponse.");
+      throw new Error("Codex n'a renvoyé aucune réponse.");
     }
 
     if (!result.sessionId) {
-      throw new Error("Codex n'a renvoye aucun identifiant de session.");
+      throw new Error("Codex n'a renvoyé aucun identifiant de session.");
     }
 
     return result;
@@ -143,7 +143,7 @@ function parseCodexJsonOutput(
         }
       }
     } catch {
-      // Ignore les eventuelles lignes non JSON de la sortie CLI.
+      // Ignore les éventuelles lignes non JSON de la sortie CLI.
     }
   }
 

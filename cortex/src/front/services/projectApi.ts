@@ -49,7 +49,7 @@ export async function saveProjectDirectory(
   const data = await response.json() as SaveProjectResponse & ApiErrorResponse;
 
   if (!response.ok) {
-    throw new Error(data.error || "Impossible d'enregistrer le repertoire.");
+    throw new Error(data.error || "Impossible d'enregistrer le répertoire.");
   }
 
   return data;
@@ -81,7 +81,7 @@ export async function selectProjectDirectory(): Promise<string | null> {
   const data = await response.json() as DirectorySelectionResponse & ApiErrorResponse;
 
   if (!response.ok) {
-    throw new Error(data.error || "Impossible d'ouvrir le selecteur de repertoire.");
+    throw new Error(data.error || "Impossible d'ouvrir le sélecteur de répertoire.");
   }
 
   return data.directoryPath;

@@ -73,7 +73,7 @@ export class ProjectService {
 
   async saveProject(directoryPath: string): Promise<Project[]> {
     if (!directoryPath.trim()) {
-      throw new TypeError("Le chemin du repertoire est obligatoire.");
+      throw new TypeError("Le chemin du répertoire est obligatoire.");
     }
 
     const normalizedPath = path.normalize(directoryPath.trim());
@@ -136,7 +136,7 @@ export class ProjectService {
 
   async deleteProject(directoryPath: string): Promise<DeleteProjectResult> {
     if (!directoryPath.trim()) {
-      throw new TypeError("Le chemin du repertoire est obligatoire.");
+      throw new TypeError("Le chemin du répertoire est obligatoire.");
     }
 
     const normalizedPath = path.normalize(directoryPath.trim());

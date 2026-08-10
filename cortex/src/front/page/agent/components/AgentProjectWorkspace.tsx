@@ -93,7 +93,7 @@ function AgentCard({ agent, index, projectId }: AgentCardProps) {
         </div>
         {agent.model && (
           <dl className="agent-card__model">
-            <dt>Modele</dt>
+            <dt>Modèle</dt>
             <dd>{agent.model}</dd>
           </dl>
         )}
@@ -146,14 +146,14 @@ function AgentCard({ agent, index, projectId }: AgentCardProps) {
         </section>
       )}
       <div className="agent-card__additional-instructions">
-        <label htmlFor={additionalInstructionsId}>Precisions</label>
+        <label htmlFor={additionalInstructionsId}>Précisions</label>
         <textarea
           id={additionalInstructionsId}
           value={additionalInstructions}
           onChange={(event) => setAdditionalInstructions(event.target.value)}
           placeholder={hasSession
-            ? "Ajoutez une precision pour la prochaine relance..."
-            : "Ajoutez une precision avant de lancer l'agent..."
+            ? "Ajoutez une précision pour la prochaine relance..."
+            : "Ajoutez une précision avant de lancer l'agent..."
           }
           rows={4}
           disabled={isRunning}
@@ -177,7 +177,7 @@ function AgentCard({ agent, index, projectId }: AgentCardProps) {
             strokeWidth={1.8}
           />
           {isRunning
-            ? "Execution..."
+            ? "Exécution..."
             : hasSession ? "Relancer" : "Lancer"
           }
         </button>
@@ -205,7 +205,7 @@ export function AgentProjectWorkspace({
         <p className="eyebrow">Cortex workspace</p>
         <h1>Cortex.</h1>
         <p className="intro">
-          Selectionnez un projet dans le bandeau lateral pour afficher ses agents.
+          Sélectionnez un projet dans le bandeau latéral pour afficher ses agents.
         </p>
       </section>
     );

@@ -25,7 +25,7 @@ export class AgentService {
       return {
         engine: null,
         label: null,
-        error: "Aucun moteur IA configure. Installez et connectez Codex, Claude ou Copilot."
+        error: "Aucun moteur IA configuré. Installez et connectez Codex, Claude ou Copilot."
       };
     }
 

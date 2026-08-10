@@ -135,7 +135,7 @@ export function ProjectDirectoryManager({
     try {
       const result = await saveProjectDirectory(directoryPath);
       setProjects(result.projects);
-      setSaveMessage("Le repertoire du projet a ete enregistre.");
+      setSaveMessage("Le répertoire du projet a été enregistré.");
       setIsModalOpen(false);
     } catch (requestError) {
       setError(getErrorMessage(requestError));
@@ -152,7 +152,7 @@ export function ProjectDirectoryManager({
     try {
       const result = await deleteProjectDirectory(project.directoryPath);
       setProjects(result.projects);
-      setSaveMessage("Le projet a ete supprime.");
+      setSaveMessage("Le projet a été supprimé.");
 
       if (selectedProjectId === project.id) {
         setSelectedProjectId(null);
@@ -176,7 +176,7 @@ export function ProjectDirectoryManager({
     try {
       await resetAgentProjectWorkflow(project.id);
       onProjectWorkflowReset(project.id);
-      setSaveMessage("Le workflow a ete reinitialise.");
+      setSaveMessage("Le workflow a été réinitialisé.");
       return true;
     } catch (requestError) {
       setError(getErrorMessage(requestError));
@@ -284,9 +284,9 @@ export function ProjectDirectoryManager({
           onClose={closeModal}
         >
           <form onSubmit={handleSubmit}>
-            <h2 id="directory-dialog-title">Repertoire du projet</h2>
-            <p>Verifiez le repertoire selectionne avant de l'enregistrer.</p>
-            <label htmlFor="directory-path">Chemin du repertoire</label>
+            <h2 id="directory-dialog-title">Répertoire du projet</h2>
+            <p>Vérifiez le répertoire sélectionné avant de l'enregistrer.</p>
+            <label htmlFor="directory-path">Chemin du répertoire</label>
             <input
               id="directory-path"
               type="text"
@@ -315,7 +315,7 @@ export function ProjectDirectoryManager({
         <ConfirmationDialog
           variant="reset"
           title="Réinitialiser le workflow ?"
-          description="Vous vous appretez à réintialiser le workflow suivant :"
+          description="Vous vous apprêtez à réinitialiser le workflow suivant :"
           projectName={getProjectName(confirmation.project)}
           confirmLabel="Réinitialiser"
           pendingLabel="Réinitialisation..."

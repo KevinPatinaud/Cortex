@@ -119,7 +119,7 @@ export class AgentUseCase {
 
     if (!normalizedProjectId || !agentId) {
       throw new ValidationError(
-        "Le projet et l'agent a executer sont obligatoires."
+        "Le projet et l'agent à exécuter sont obligatoires."
       );
     }
 
@@ -128,7 +128,7 @@ export class AgentUseCase {
       !this.actualLoadedProjectDirectoryPath
     ) {
       throw new ValidationError(
-        "Le projet doit etre charge avant d'executer un agent."
+        "Le projet doit être chargé avant d'exécuter un agent."
       );
     }
 
@@ -138,13 +138,13 @@ export class AgentUseCase {
 
     if (!agent) {
       throw new ValidationError(
-        "L'agent a executer n'existe pas dans le projet actuel."
+        "L'agent à exécuter n'existe pas dans le projet actuel."
       );
     }
 
     if (!agent.prompt.trim()) {
       throw new ValidationError(
-        "L'agent ne contient aucune instruction a executer."
+        "L'agent ne contient aucune instruction à exécuter."
       );
     }
 
@@ -170,7 +170,7 @@ export class AgentUseCase {
 
     if (!effectiveSessionId) {
       throw new Error(
-        "Le moteur IA n'a renvoye aucun identifiant de session."
+        "Le moteur IA n'a renvoyé aucun identifiant de session."
       );
     }
 
@@ -200,7 +200,7 @@ export class AgentUseCase {
     const normalizedProjectId = projectId.trim();
 
     if (!normalizedProjectId) {
-      throw new ValidationError("Le projet a reinitialiser est obligatoire.");
+      throw new ValidationError("Le projet à réinitialiser est obligatoire.");
     }
 
     this.agentWorkflows.delete(normalizedProjectId);
@@ -237,7 +237,7 @@ export class AgentUseCase {
 
       throw new ValidationError(
         `Le projet contient plusieurs configurations d'agents (${engines}). ` +
-        "Une seule configuration est autorisee par projet."
+        "Une seule configuration est autorisée par projet."
       );
     }
 
@@ -346,6 +346,6 @@ export class AgentUseCase {
       return prompt;
     }
 
-    return `${prompt}\n\nPrecisions de l'utilisateur :\n${additionalInstructions}`;
+    return `${prompt}\n\nPrécisions de l'utilisateur :\n${additionalInstructions}`;
   }
 }

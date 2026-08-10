@@ -36,7 +36,7 @@ export function ProjectList({
   if (projects.length === 0) {
     return (
       <p className="project-list__state">
-        Aucun projet enregistre pour le moment.
+        Aucun projet enregistré pour le moment.
       </p>
     );
   }
@@ -72,8 +72,8 @@ export function ProjectList({
             <button
               className="project-list__reset-button"
               type="button"
-              aria-label={`Reinitialiser le workflow de ${projectName}`}
-              title={`Reinitialiser le workflow de ${projectName}`}
+              aria-label={`Réinitialiser le workflow de ${projectName}`}
+              title={`Réinitialiser le workflow de ${projectName}`}
               onClick={() => onResetWorkflow(project)}
               disabled={resettingProjectId === project.id}
             >
