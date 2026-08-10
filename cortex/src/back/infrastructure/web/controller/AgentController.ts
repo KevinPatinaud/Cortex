@@ -6,12 +6,21 @@ import type {
 import {
   agentErrorMappings,
   toAgentAnswerResponse,
+  toAgentProjectResponse,
   toAgentStatusResponse
 } from "../mapper/AgentResponseMapper.ts";
 import { asyncRoute } from "../middleware/HttpErrorMiddleware.ts";
 
 export function createAgentController(agentUseCase: AgentUseCase): Router {
   const router = Router();
+
+  router.get(
+    "/projects/:projectId",
+    asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+      const project = await agentUseCase.loadProject(request.params.projectId);
+      response.json(toAgentProjectResponse(project));
+    }, agentErrorMappings.loadProject)
+  );
 
   router.get(
     "/status",

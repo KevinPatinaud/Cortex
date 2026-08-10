@@ -10,8 +10,8 @@ import {
   type ErrorMappingOptions
 } from "../mapper/HttpErrorMapper.ts";
 
-type AsyncRouteHandler<RequestBody> = (
-  request: Request<Record<string, never>, unknown, RequestBody>,
+type AsyncRouteHandler<RequestBody, RouteParams> = (
+  request: Request<RouteParams, unknown, RequestBody>,
   response: Response
 ) => Promise<void>;
 
@@ -28,10 +28,13 @@ const defaultErrorMapping: ErrorMappingOptions = {
   logMessage: "Erreur HTTP non geree :"
 };
 
-export function asyncRoute<RequestBody = unknown>(
-  handler: AsyncRouteHandler<RequestBody>,
+export function asyncRoute<
+  RequestBody = unknown,
+  RouteParams = Record<string, never>
+>(
+  handler: AsyncRouteHandler<RequestBody, RouteParams>,
   errorMapping: ErrorMappingOptions
-): RequestHandler<Record<string, never>, unknown, RequestBody> {
+): RequestHandler<RouteParams, unknown, RequestBody> {
   return (request, response, next: NextFunction) => {
     void handler(request, response).catch((error: unknown) => {
       next(new HttpRouteError(error, errorMapping));

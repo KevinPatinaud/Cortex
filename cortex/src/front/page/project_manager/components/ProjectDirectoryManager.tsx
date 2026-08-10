@@ -2,6 +2,10 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { FolderPlus } from "lucide-react";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
 import {
+  loadAgentProject,
+  type AgentProject
+} from "../../../services/agentApi.ts";
+import {
   deleteProjectDirectory,
   getSavedProjects,
   type Project,
@@ -10,11 +14,19 @@ import {
 } from "../../../services/projectApi.ts";
 import { ProjectList } from "./ProjectList.tsx";
 
+interface ProjectDirectoryManagerProps {
+  onProjectLoaded: (project: Project, content: AgentProject) => void;
+  onProjectCleared: (projectId: string) => void;
+}
+
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Une erreur inattendue est survenue.";
 }
 
-export function ProjectDirectoryManager() {
+export function ProjectDirectoryManager({
+  onProjectLoaded,
+  onProjectCleared
+}: ProjectDirectoryManagerProps) {
   const directoryDialog = useRef<HTMLDialogElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [directoryPath, setDirectoryPath] = useState("");
@@ -23,6 +35,8 @@ export function ProjectDirectoryManager() {
   const [error, setError] = useState("");
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
+  const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -116,10 +130,31 @@ export function ProjectDirectoryManager() {
       const result = await deleteProjectDirectory(project.directoryPath);
       setProjects(result.projects);
       setSaveMessage("Le projet a ete supprime.");
+
+      if (selectedProjectId === project.id) {
+        setSelectedProjectId(null);
+        onProjectCleared(project.id);
+      }
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
       setDeletingProjectId(null);
+    }
+  }
+
+  async function handleProjectSelection(project: Project): Promise<void> {
+    setLoadingProjectId(project.id);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const content = await loadAgentProject(project.id);
+      setSelectedProjectId(project.id);
+      onProjectLoaded(project, content);
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
+    } finally {
+      setLoadingProjectId(null);
     }
   }
 
@@ -146,6 +181,9 @@ export function ProjectDirectoryManager() {
             projects={projects}
             isLoading={isLoadingProjects}
             deletingProjectId={deletingProjectId}
+            loadingProjectId={loadingProjectId}
+            selectedProjectId={selectedProjectId}
+            onSelect={(project) => void handleProjectSelection(project)}
             onDelete={(project) => void handleDeleteProject(project)}
           />
         </div>

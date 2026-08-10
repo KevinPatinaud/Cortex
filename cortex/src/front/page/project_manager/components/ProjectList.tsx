@@ -5,6 +5,9 @@ interface ProjectListProps {
   projects: Project[];
   isLoading: boolean;
   deletingProjectId: string | null;
+  loadingProjectId: string | null;
+  selectedProjectId: string | null;
+  onSelect: (project: Project) => void;
   onDelete: (project: Project) => void;
 }
 
@@ -17,6 +20,9 @@ export function ProjectList({
   projects,
   isLoading,
   deletingProjectId,
+  loadingProjectId,
+  selectedProjectId,
+  onSelect,
   onDelete
 }: ProjectListProps) {
   if (isLoading) {
@@ -35,18 +41,30 @@ export function ProjectList({
     <ul className="project-list">
       {projects.map((project) => {
         const projectName = getProjectName(project.directoryPath);
+        const isSelected = selectedProjectId === project.id;
+        const isProjectLoading = loadingProjectId === project.id;
 
         return (
           <li
-            className="project-list__item"
+            className={`project-list__item${isSelected ? " project-list__item--selected" : ""}`}
             key={project.id}
             title={project.directoryPath}
           >
-            <Folder aria-hidden="true" size={18} strokeWidth={1.8} />
-            <span className="project-list__details">
-              <strong>{projectName}</strong>
-              <small>{project.directoryPath}</small>
-            </span>
+            <button
+              className="project-list__select-button"
+              type="button"
+              aria-pressed={isSelected}
+              onClick={() => onSelect(project)}
+              disabled={loadingProjectId !== null}
+            >
+              <Folder aria-hidden="true" size={18} strokeWidth={1.8} />
+              <span className="project-list__details">
+                <strong>{projectName}</strong>
+                <small>
+                  {isProjectLoading ? "Chargement..." : project.directoryPath}
+                </small>
+              </span>
+            </button>
             <button
               className="project-list__delete-button"
               type="button"
