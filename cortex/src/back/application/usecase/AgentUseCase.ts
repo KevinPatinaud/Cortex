@@ -16,6 +16,7 @@ export type AgentStatusOutput = AgentStatus;
 
 export interface RunAgentInput {
   agentId?: unknown;
+  additionalInstructions?: unknown;
 }
 
 export interface AgentDefinition {
@@ -78,6 +79,9 @@ export class AgentUseCase {
     const agentId = typeof input.agentId === "string"
       ? input.agentId.trim()
       : "";
+    const additionalInstructions = typeof input.additionalInstructions === "string"
+      ? input.additionalInstructions.trim()
+      : "";
 
     if (!normalizedProjectId || !agentId) {
       throw new ValidationError(
@@ -112,9 +116,12 @@ export class AgentUseCase {
 
     const sessionKey = this.getAgentSessionKey(normalizedProjectId, agent.id);
     const sessionId = this.agentSessionIds.get(sessionKey);
+    const executionPrompt = sessionId
+      ? additionalInstructions || agent.prompt
+      : this.withAdditionalInstructions(agent.prompt, additionalInstructions);
     const result = await this.agentService.execute(
       this.actualLoadedProject.engine,
-      agent.prompt,
+      executionPrompt,
       {
         ...(agent.model ? { model: agent.model } : {}),
         ...(agent.reasoningEffort
@@ -222,5 +229,16 @@ export class AgentUseCase {
 
   private getAgentSessionKey(projectId: string, agentId: string): string {
     return JSON.stringify([projectId, agentId]);
+  }
+
+  private withAdditionalInstructions(
+    prompt: string,
+    additionalInstructions: string
+  ): string {
+    if (!additionalInstructions) {
+      return prompt;
+    }
+
+    return `${prompt}\n\nPrecisions de l'utilisateur :\n${additionalInstructions}`;
   }
 }

@@ -73,7 +73,8 @@ export async function getActualLoadedAgentProject(): Promise<AgentProject | null
 
 export async function runAgent(
   projectId: string,
-  agentId: string
+  agentId: string,
+  additionalInstructions: string
 ): Promise<AgentRunResult> {
   const response = await fetch(
     `/api/agents/projects/${encodeURIComponent(projectId)}/agents/run`,
@@ -82,7 +83,12 @@ export async function runAgent(
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({ agentId })
+      body: JSON.stringify({
+        agentId,
+        ...(additionalInstructions.trim()
+          ? { additionalInstructions: additionalInstructions.trim() }
+          : {})
+      })
     }
   );
   const data = await response.json() as AgentRunResult & ApiErrorResponse;

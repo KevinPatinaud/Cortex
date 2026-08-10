@@ -1,6 +1,0 @@
-name = "humorist" 
-description = "Make a joke every time you asking for" 
-model="gpt-5.6-luna"
-developer_instructions = """ 
-Please make me a joke.
-"""

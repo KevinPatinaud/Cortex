@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Bot, ChevronDown, RotateCcw } from "lucide-react";
 import {
   runAgent,
@@ -29,22 +29,60 @@ interface AgentCardProps {
   projectId: string;
 }
 
+interface AgentConversationMessage {
+  role: "user" | "agent";
+  content: string;
+}
+
 function AgentCard({ agent, index, projectId }: AgentCardProps) {
+  const additionalInstructionsId = useId();
+  const conversationRef = useRef<HTMLDivElement>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [hasSession, setHasSession] = useState(agent.hasSession);
-  const [answer, setAnswer] = useState("");
+  const [conversation, setConversation] = useState<AgentConversationMessage[]>(
+    []
+  );
   const [error, setError] = useState("");
+  const [additionalInstructions, setAdditionalInstructions] = useState("");
   const canRun = Boolean(agent.prompt.trim());
 
+  useEffect(() => {
+    const conversationElement = conversationRef.current;
+
+    if (!conversationElement) {
+      return;
+    }
+
+    conversationElement.scrollTo({
+      top: conversationElement.scrollHeight,
+      behavior: "smooth"
+    });
+  }, [conversation]);
+
   async function handleRun(): Promise<void> {
+    const submittedInstructions = additionalInstructions.trim();
     setIsRunning(true);
-    setAnswer("");
     setError("");
 
     try {
-      const result = await runAgent(projectId, agent.id);
-      setAnswer(result.answer);
+      const result = await runAgent(
+        projectId,
+        agent.id,
+        submittedInstructions
+      );
+      const newMessages: AgentConversationMessage[] = [
+        ...(submittedInstructions
+          ? [{ role: "user" as const, content: submittedInstructions }]
+          : []),
+        { role: "agent", content: result.answer }
+      ];
+
+      setConversation((currentConversation) => [
+        ...currentConversation,
+        ...newMessages
+      ]);
       setHasSession(result.hasSession);
+      setAdditionalInstructions("");
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
@@ -85,6 +123,50 @@ function AgentCard({ agent, index, projectId }: AgentCardProps) {
         </summary>
         <pre>{agent.prompt || "Aucune instruction."}</pre>
       </details>
+      <div className="agent-card__run-feedback" aria-live="polite">
+        {error && (
+          <p className="agent-card__run-error" role="alert">{error}</p>
+        )}
+      </div>
+      {conversation.length > 0 && (
+        <section
+          className="agent-card__conversation"
+          aria-label={`Conversation avec ${agent.name}`}
+        >
+          <span className="agent-card__conversation-title">Conversation</span>
+          <div
+            className="agent-card__conversation-messages"
+            ref={conversationRef}
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions"
+          >
+            {conversation.map((message, messageIndex) => (
+              <article
+                className={`agent-card__conversation-message agent-card__conversation-message--${message.role}`}
+                key={messageIndex}
+              >
+                <span>{message.role === "user" ? "Vous" : "Agent"}</span>
+                <pre>{message.content}</pre>
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
+      <div className="agent-card__additional-instructions">
+        <label htmlFor={additionalInstructionsId}>Precisions</label>
+        <textarea
+          id={additionalInstructionsId}
+          value={additionalInstructions}
+          onChange={(event) => setAdditionalInstructions(event.target.value)}
+          placeholder={hasSession
+            ? "Ajoutez une precision pour la prochaine relance..."
+            : "Ajoutez une precision avant de lancer l'agent..."
+          }
+          rows={4}
+          disabled={isRunning}
+        />
+      </div>
       <div className="agent-card__actions">
         <button
           className="agent-card__run-button"
@@ -107,17 +189,6 @@ function AgentCard({ agent, index, projectId }: AgentCardProps) {
             : hasSession ? "Relancer" : "Lancer"
           }
         </button>
-      </div>
-      <div className="agent-card__run-feedback" aria-live="polite">
-        {error && (
-          <p className="agent-card__run-error" role="alert">{error}</p>
-        )}
-        {answer && (
-          <section className="agent-card__run-result">
-            <span>Resultat</span>
-            <pre>{answer}</pre>
-          </section>
-        )}
       </div>
     </article>
   );

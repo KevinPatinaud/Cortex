@@ -22,7 +22,8 @@ body {
 }
 
 button,
-input {
+input,
+textarea {
   font: inherit;
 }
 
@@ -207,8 +208,8 @@ main {
 }
 
 .agent-card__prompt {
-  padding-top: 1rem;
-  border-top: 1px solid rgb(39 75 56 / 13%);
+  padding-bottom: 1rem;
+  border-bottom: 1px solid rgb(39 75 56 / 13%);
 }
 
 .agent-card__prompt summary {
@@ -292,15 +293,16 @@ main {
   line-height: 1.45;
 }
 
-.agent-card__run-result {
+.agent-card__conversation {
   margin-top: 1rem;
-  padding: 0.8rem;
+  overflow: hidden;
   border: 1px solid rgb(39 75 56 / 13%);
   border-radius: 5px;
   background: rgb(231 239 231 / 55%);
 }
 
-.agent-card__run-result > span {
+.agent-card__conversation-title,
+.agent-card__conversation-message > span {
   color: #657b6f;
   font-family: "Courier New", monospace;
   font-size: 0.6rem;
@@ -308,10 +310,42 @@ main {
   text-transform: uppercase;
 }
 
-.agent-card__run-result pre {
-  max-height: 15rem;
+.agent-card__conversation-title {
+  display: block;
+  padding: 0.8rem 0.8rem 0;
+}
+
+.agent-card__conversation-messages {
+  display: flex;
+  max-height: 18rem;
+  padding: 0.8rem;
+  overflow-y: auto;
+  flex-direction: column;
+  gap: 0.75rem;
+  scroll-behavior: smooth;
+  scrollbar-color: #91a399 transparent;
+  scrollbar-width: thin;
+}
+
+.agent-card__conversation-message {
+  padding: 0.7rem 0.75rem;
+  border: 1px solid rgb(39 75 56 / 12%);
+  border-radius: 5px;
+  animation: agent-card-message-in 220ms ease-out;
+}
+
+.agent-card__conversation-message--user {
+  margin-left: clamp(2rem, 15%, 6rem);
+  background: rgb(255 253 245 / 80%);
+}
+
+.agent-card__conversation-message--agent {
+  margin-right: clamp(1rem, 8%, 3rem);
+  background: rgb(231 239 231 / 60%);
+}
+
+.agent-card__conversation-message pre {
   margin: 0.55rem 0 0;
-  overflow: auto;
   color: #263c31;
   font-family: "Courier New", monospace;
   font-size: 0.76rem;
@@ -320,9 +354,75 @@ main {
   overflow-wrap: anywhere;
 }
 
+.agent-card__additional-instructions {
+  display: grid;
+  margin-top: 1rem;
+  gap: 0.45rem;
+}
+
+.agent-card__additional-instructions label {
+  color: #657b6f;
+  font-family: "Courier New", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.agent-card__additional-instructions textarea {
+  width: 100%;
+  min-height: 6rem;
+  padding: 0.7rem 0.75rem;
+  resize: vertical;
+  border: 1px solid rgb(39 75 56 / 25%);
+  border-radius: 5px;
+  outline: none;
+  background: rgb(255 253 245 / 72%);
+  color: #263c31;
+  font-family: "Courier New", monospace;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.agent-card__additional-instructions textarea:focus {
+  border-color: #638171;
+  box-shadow: 0 0 0 3px rgb(99 129 113 / 12%);
+}
+
+.agent-card__additional-instructions textarea::placeholder {
+  color: #819188;
+}
+
+.agent-card__additional-instructions textarea:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+@keyframes agent-card-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes agent-card-run-spin {
   to {
     transform: rotate(-360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-card__conversation-messages {
+    scroll-behavior: auto;
+  }
+
+  .agent-card__conversation-message {
+    animation: none;
   }
 }
 
