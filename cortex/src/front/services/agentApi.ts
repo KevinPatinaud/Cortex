@@ -7,8 +7,10 @@ export interface AgentStatus {
 }
 
 export interface AgentDefinition {
+  id: string;
   name: string;
   description: string;
+  hasSession: boolean;
   model?: string;
   reasoningEffort?: string;
   prompt: string;
@@ -22,6 +24,11 @@ export interface AgentProject {
 
 interface ApiErrorResponse {
   error?: string;
+}
+
+export interface AgentRunResult {
+  answer: string;
+  hasSession: boolean;
 }
 
 export async function getAgentStatus(): Promise<AgentStatus> {
@@ -62,4 +69,30 @@ export async function getActualLoadedAgentProject(): Promise<AgentProject | null
   }
 
   return data;
+}
+
+export async function runAgent(
+  projectId: string,
+  agentId: string
+): Promise<AgentRunResult> {
+  const response = await fetch(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/agents/run`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ agentId })
+    }
+  );
+  const data = await response.json() as AgentRunResult & ApiErrorResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || "Impossible d'executer l'agent.");
+  }
+
+  return {
+    answer: data.answer,
+    hasSession: data.hasSession
+  };
 }

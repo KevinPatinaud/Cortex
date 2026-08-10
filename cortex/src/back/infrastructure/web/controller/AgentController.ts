@@ -1,12 +1,12 @@
 import { Router } from "express";
 import type {
   AgentUseCase,
-  AskAgentInput
+  RunAgentInput
 } from "../../../application/usecase/AgentUseCase.ts";
 import {
   agentErrorMappings,
-  toAgentAnswerResponse,
   toAgentProjectResponse,
+  toAgentRunResponse,
   toAgentStatusResponse
 } from "../mapper/AgentResponseMapper.ts";
 import { asyncRoute } from "../middleware/HttpErrorMiddleware.ts";
@@ -27,19 +27,25 @@ export function createAgentController(agentUseCase: AgentUseCase): Router {
     }, agentErrorMappings.loadProject)
   );
 
+  router.post(
+    "/projects/:projectId/agents/run",
+    asyncRoute<RunAgentInput, { projectId: string }>(async (
+      request,
+      response
+    ) => {
+      const result = await agentUseCase.runAgent(
+        request.params.projectId,
+        request.body
+      );
+      response.json(toAgentRunResponse(result));
+    }, agentErrorMappings.runAgent)
+  );
+
   router.get(
     "/status",
     asyncRoute(async (_request, response) => {
       response.json(toAgentStatusResponse(await agentUseCase.getStatus()));
     }, agentErrorMappings.status)
-  );
-
-  router.post(
-    "/ask",
-    asyncRoute<AskAgentInput>(async (request, response) => {
-      const answer = await agentUseCase.ask(request.body);
-      response.json(toAgentAnswerResponse(answer));
-    }, agentErrorMappings.ask)
   );
 
   return router;

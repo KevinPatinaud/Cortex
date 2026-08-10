@@ -33,9 +33,11 @@ function toClaudeAgentDefinition(file: ProjectFile): AgentDefinition {
   );
 
   return {
+    id: file.relativePath,
     name: markdown.attributes.name?.trim() ||
       file.name.replace(/\.md$/i, ""),
     description: markdown.attributes.description?.trim() || "",
+    hasSession: false,
     ...(model ? { model } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
     prompt: markdown.body.trim()

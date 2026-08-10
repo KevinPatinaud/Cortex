@@ -1,5 +1,6 @@
 import type {
   AgentProject,
+  AgentRunOutput,
   AgentStatusOutput
 } from "../../../application/usecase/AgentUseCase.ts";
 import type { ErrorMappingOptions } from "./HttpErrorMapper.ts";
@@ -15,22 +16,18 @@ export const agentErrorMappings = {
       error: message
     })
   },
-  ask: {
-    fallbackStatus: 503,
-    fallbackMessage: "Le moteur IA est indisponible.",
-    logMessage: "Impossible d'obtenir une reponse du moteur IA :",
-    exposeUnexpectedError: true
-  },
   loadProject: {
     fallbackStatus: 500,
     fallbackMessage: "Impossible de charger le projet.",
     logMessage: "Impossible de charger le projet :"
+  },
+  runAgent: {
+    fallbackStatus: 503,
+    fallbackMessage: "Impossible d'executer l'agent.",
+    logMessage: "Impossible d'executer l'agent :",
+    exposeUnexpectedError: true
   }
 } satisfies Record<string, ErrorMappingOptions>;
-
-export interface AgentAnswerResponse {
-  answer: string;
-}
 
 export interface AgentStatusResponse {
   engine: AgentStatusOutput["engine"];
@@ -44,8 +41,9 @@ export interface AgentProjectResponse {
   agents: AgentProject["agents"];
 }
 
-export function toAgentAnswerResponse(answer: string): AgentAnswerResponse {
-  return { answer };
+export interface AgentRunResponse {
+  answer: string;
+  hasSession: boolean;
 }
 
 export function toAgentStatusResponse(
@@ -65,5 +63,12 @@ export function toAgentProjectResponse(
     projectId: project.projectId,
     engine: project.engine,
     agents: project.agents
+  };
+}
+
+export function toAgentRunResponse(result: AgentRunOutput): AgentRunResponse {
+  return {
+    answer: result.answer,
+    hasSession: result.hasSession
   };
 }

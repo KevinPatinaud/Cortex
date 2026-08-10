@@ -1,5 +1,10 @@
-import { Bot, ChevronDown } from "lucide-react";
-import type { AgentProject } from "../../../services/agentApi.ts";
+import { useState } from "react";
+import { Bot, ChevronDown, RotateCcw } from "lucide-react";
+import {
+  runAgent,
+  type AgentDefinition,
+  type AgentProject
+} from "../../../services/agentApi.ts";
 import type { Project } from "../../../services/projectApi.ts";
 
 interface AgentProjectWorkspaceProps {
@@ -10,6 +15,112 @@ interface AgentProjectWorkspaceProps {
 function getProjectName(directoryPath: string): string {
   const pathParts = directoryPath.split(/[\\/]/).filter(Boolean);
   return pathParts.at(-1) || directoryPath;
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "Une erreur inattendue est survenue.";
+}
+
+interface AgentCardProps {
+  agent: AgentDefinition;
+  index: number;
+  projectId: string;
+}
+
+function AgentCard({ agent, index, projectId }: AgentCardProps) {
+  const [isRunning, setIsRunning] = useState(false);
+  const [hasSession, setHasSession] = useState(agent.hasSession);
+  const [answer, setAnswer] = useState("");
+  const [error, setError] = useState("");
+  const canRun = Boolean(agent.prompt.trim());
+
+  async function handleRun(): Promise<void> {
+    setIsRunning(true);
+    setAnswer("");
+    setError("");
+
+    try {
+      const result = await runAgent(projectId, agent.id);
+      setAnswer(result.answer);
+      setHasSession(result.hasSession);
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
+    } finally {
+      setIsRunning(false);
+    }
+  }
+
+  return (
+    <article className="agent-card">
+      <header className="agent-card__header">
+        <Bot aria-hidden="true" size={22} strokeWidth={1.7} />
+        <div>
+          <span>Agent {index + 1}</span>
+          <h2>{agent.name}</h2>
+        </div>
+        {agent.model && (
+          <dl className="agent-card__model">
+            <dt>Modele</dt>
+            <dd>{agent.model}</dd>
+          </dl>
+        )}
+      </header>
+      <p className="agent-card__description">
+        {agent.description || "Aucune description."}
+      </p>
+      {agent.reasoningEffort && (
+        <dl className="agent-card__configuration">
+          <div>
+            <dt>Effort de raisonnement</dt>
+            <dd>{agent.reasoningEffort}</dd>
+          </div>
+        </dl>
+      )}
+      <details className="agent-card__prompt">
+        <summary>
+          <span>Instructions</span>
+          <ChevronDown aria-hidden="true" size={15} strokeWidth={1.7} />
+        </summary>
+        <pre>{agent.prompt || "Aucune instruction."}</pre>
+      </details>
+      <div className="agent-card__actions">
+        <button
+          className="agent-card__run-button"
+          type="button"
+          onClick={() => void handleRun()}
+          disabled={isRunning || !canRun}
+          title={canRun
+            ? `${hasSession ? "Relancer" : "Lancer"} ${agent.name}`
+            : "Cet agent ne contient aucune instruction."
+          }
+        >
+          <RotateCcw
+            aria-hidden="true"
+            className={isRunning ? "agent-card__run-icon--running" : undefined}
+            size={15}
+            strokeWidth={1.8}
+          />
+          {isRunning
+            ? "Execution..."
+            : hasSession ? "Relancer" : "Lancer"
+          }
+        </button>
+      </div>
+      <div className="agent-card__run-feedback" aria-live="polite">
+        {error && (
+          <p className="agent-card__run-error" role="alert">{error}</p>
+        )}
+        {answer && (
+          <section className="agent-card__run-result">
+            <span>Resultat</span>
+            <pre>{answer}</pre>
+          </section>
+        )}
+      </div>
+    </article>
+  );
 }
 
 export function AgentProjectWorkspace({
@@ -48,39 +159,12 @@ export function AgentProjectWorkspace({
       ) : (
         <div className="agent-project__grid">
           {content.agents.map((agent, index) => (
-            <article className="agent-card" key={`${agent.name}-${index}`}>
-              <header className="agent-card__header">
-                <Bot aria-hidden="true" size={22} strokeWidth={1.7} />
-                <div>
-                  <span>Agent {index + 1}</span>
-                  <h2>{agent.name}</h2>
-                </div>
-                {agent.model && (
-                  <dl className="agent-card__model">
-                    <dt>Modele</dt>
-                    <dd>{agent.model}</dd>
-                  </dl>
-                )}
-              </header>
-              <p className="agent-card__description">
-                {agent.description || "Aucune description."}
-              </p>
-              {agent.reasoningEffort && (
-                <dl className="agent-card__configuration">
-                  <div>
-                    <dt>Effort de raisonnement</dt>
-                    <dd>{agent.reasoningEffort}</dd>
-                  </div>
-                </dl>
-              )}
-              <details className="agent-card__prompt">
-                <summary>
-                  <span>Instructions</span>
-                  <ChevronDown aria-hidden="true" size={15} strokeWidth={1.7} />
-                </summary>
-                <pre>{agent.prompt || "Aucune instruction."}</pre>
-              </details>
-            </article>
+            <AgentCard
+              agent={agent}
+              index={index}
+              key={`${content.projectId}:${agent.id}`}
+              projectId={content.projectId}
+            />
           ))}
         </div>
       )}

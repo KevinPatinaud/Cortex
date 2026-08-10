@@ -37,12 +37,14 @@ export function toCodexAgentDefinitions(
       );
 
       return {
+        id: file.relativePath,
         name: readString(contentTomlFile.name) ||
           registeredAgent?.name ||
           file.name.replace(/\.toml$/i, ""),
         description: readString(contentTomlFile.description) ||
           registeredAgent?.description ||
           "",
+        hasSession: false,
         ...(model ? { model } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),
         prompt: readString(contentTomlFile.developer_instructions) || ""

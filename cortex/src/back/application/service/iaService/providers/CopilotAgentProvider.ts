@@ -1,6 +1,13 @@
 
-import { CopilotClient } from "@github/copilot-sdk";
-import type { AgentProvider } from "../AgentProvider.ts";
+import {
+  CopilotClient,
+  type SessionConfig
+} from "@github/copilot-sdk";
+import type {
+  AgentExecutionOptions,
+  AgentExecutionResult,
+  AgentProvider
+} from "../AgentProvider.ts";
 
 type CopilotSession = Awaited<ReturnType<CopilotClient["createSession"]>>;
 
@@ -22,29 +29,43 @@ export class CopilotAgentProvider implements AgentProvider {
     }
   }
 
-  async ask(prompt: string, model?: string): Promise<string> {
+  async ask(
+    prompt: string,
+    options: AgentExecutionOptions = {}
+  ): Promise<AgentExecutionResult> {
     const client = new CopilotClient();
     let session: CopilotSession | undefined;
 
     try {
       await this.withinTimeout(client.start(), 30_000);
-      session = await client.createSession({});
+      const sessionConfiguration: SessionConfig = {};
 
-      if (model) {
-        await session.setModel(model, {
-          reasoningEffort: "low",
-          reasoningSummary: "none"
-        });
+      if (options.workingDirectory) {
+        sessionConfiguration.workingDirectory = options.workingDirectory;
       }
 
-      const result = await session.sendAndWait({ prompt }, 30_000);
+      if (options.model) {
+        sessionConfiguration.model = options.model;
+      }
+
+      if (isCopilotReasoningEffort(options.reasoningEffort)) {
+        sessionConfiguration.reasoningEffort = options.reasoningEffort;
+      }
+
+      session = options.sessionId
+        ? await client.resumeSession(options.sessionId, sessionConfiguration)
+        : await client.createSession(sessionConfiguration);
+      const result = await session.sendAndWait({ prompt }, 120_000);
       const answer = result?.data.content;
 
       if (!answer) {
         throw new Error("Copilot n'a renvoye aucune reponse.");
       }
 
-      return answer;
+      return {
+        answer,
+        sessionId: session.sessionId
+      };
     } finally {
       await session?.disconnect();
       await client.stop();
@@ -59,4 +80,14 @@ export class CopilotAgentProvider implements AgentProvider {
       })
     ]);
   }
+}
+
+function isCopilotReasoningEffort(
+  value: string | undefined
+): value is "low" | "medium" | "high" | "xhigh" | "max" {
+  return value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh" ||
+    value === "max";
 }

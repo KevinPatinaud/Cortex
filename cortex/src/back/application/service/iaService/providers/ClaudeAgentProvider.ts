@@ -1,5 +1,10 @@
 
-import type { AgentProvider } from "../AgentProvider.ts";
+import { randomUUID } from "node:crypto";
+import type {
+  AgentExecutionOptions,
+  AgentExecutionResult,
+  AgentProvider
+} from "../AgentProvider.ts";
 import { CliAgentProvider } from "../CliAgentProvider.ts";
 
 export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvider {
@@ -10,26 +15,51 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
     return this.commandSucceeds("claude", ["--version"]);
   }
 
-  async ask(prompt: string, model?: string): Promise<string> {
+  async ask(
+    prompt: string,
+    options: AgentExecutionOptions = {}
+  ): Promise<AgentExecutionResult> {
+    const sessionId = options.sessionId ||
+      (options.persistSession ? randomUUID() : undefined);
     const args = [
       "--print",
-      prompt,
       "--output-format",
       "text",
       "--permission-mode",
       "plan"
     ];
 
-    if (model) {
-      args.push("--model", model);
+    if (sessionId) {
+      args.push(
+        options.sessionId ? "--resume" : "--session-id",
+        sessionId
+      );
     }
 
-    const answer = await this.runCommand("claude", args);
+    if (options.model) {
+      args.push("--model", options.model);
+    }
+
+    if (options.reasoningEffort) {
+      args.push("--effort", options.reasoningEffort);
+    }
+
+    args.push(prompt);
+
+    const answer = await this.runCommand(
+      "claude",
+      args,
+      120_000,
+      options.workingDirectory
+    );
 
     if (!answer) {
       throw new Error("Claude n'a renvoye aucune reponse.");
     }
 
-    return answer;
+    return {
+      answer,
+      ...(sessionId ? { sessionId } : {})
+    };
   }
 }

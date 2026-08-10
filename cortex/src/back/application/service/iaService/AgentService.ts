@@ -1,5 +1,10 @@
 
-import type { AgentEngine, AgentProvider } from "./AgentProvider.ts";
+import type {
+  AgentEngine,
+  AgentExecutionOptions,
+  AgentExecutionResult,
+  AgentProvider
+} from "./AgentProvider.ts";
 
 export interface AgentStatus {
   engine: AgentEngine | null;
@@ -31,14 +36,22 @@ export class AgentService {
     };
   }
 
-  async ask(prompt: string, model?: string): Promise<string> {
-    const provider = await this.getActiveProvider();
+  async execute(
+    engine: AgentEngine,
+    prompt: string,
+    options: AgentExecutionOptions
+  ): Promise<AgentExecutionResult> {
+    const provider = this.providers.find(
+      (candidate) => candidate.engine === engine
+    );
 
-    if (!provider) {
-      throw new Error("Aucun moteur IA n'est configure sur cette machine.");
+    if (!provider || !(await provider.isAvailable())) {
+      throw new Error(
+        `Le moteur ${engine} requis par cet agent n'est pas disponible.`
+      );
     }
 
-    return provider.ask(prompt, model);
+    return provider.ask(prompt, options);
   }
 
   private async getActiveProvider(): Promise<AgentProvider | null> {

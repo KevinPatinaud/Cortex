@@ -1,7 +1,11 @@
 
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { AgentProvider } from "../AgentProvider.ts";
+import type {
+  AgentExecutionOptions,
+  AgentExecutionResult,
+  AgentProvider
+} from "../AgentProvider.ts";
 import { CliAgentProvider } from "../CliAgentProvider.ts";
 
 export class CodexAgentProvider extends CliAgentProvider implements AgentProvider {
@@ -42,30 +46,121 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     ]);
   }
 
-  async ask(prompt: string, model?: string): Promise<string> {
-    const args = [
-      "exec",
-      "--ephemeral",
-      "--sandbox",
-      "read-only",
-      "--color",
-      "never"
-    ];
+  async ask(
+    prompt: string,
+    options: AgentExecutionOptions = {}
+  ): Promise<AgentExecutionResult> {
+    const args = options.sessionId
+      ? [
+          "exec",
+          "resume",
+          "--json",
+          "--config",
+          "sandbox_mode=\"read-only\""
+        ]
+      : [
+          "exec",
+          "--json",
+          "--sandbox",
+          "read-only",
+          "--color",
+          "never"
+        ];
 
-    if (model) {
-      args.push("--model", model);
+    if (!options.sessionId && !options.persistSession) {
+      args.push("--ephemeral");
+    }
+
+    if (!options.sessionId && options.workingDirectory) {
+      args.push("--cd", options.workingDirectory);
+    }
+
+    if (options.model) {
+      args.push("--model", options.model);
+    }
+
+    if (options.reasoningEffort) {
+      args.push(
+        "--config",
+        `model_reasoning_effort=${JSON.stringify(options.reasoningEffort)}`
+      );
+    }
+
+    if (options.sessionId) {
+      args.push(options.sessionId);
     }
 
     args.push(prompt);
-    const answer = await this.runCommand(this.command, [
+    const output = await this.runCommand(this.command, [
       ...this.argumentPrefix,
       ...args
-    ]);
+    ], 120_000, options.workingDirectory);
+    const result = parseCodexJsonOutput(output, options.sessionId);
 
-    if (!answer) {
+    if (!result.answer) {
       throw new Error("Codex n'a renvoye aucune reponse.");
     }
 
-    return answer;
+    if (!result.sessionId) {
+      throw new Error("Codex n'a renvoye aucun identifiant de session.");
+    }
+
+    return result;
   }
+}
+
+function parseCodexJsonOutput(
+  output: string,
+  existingSessionId?: string
+): AgentExecutionResult {
+  let sessionId = existingSessionId;
+  const messages: string[] = [];
+
+  for (const line of output.split(/\r?\n/)) {
+    if (!line.trim()) {
+      continue;
+    }
+
+    try {
+      const event = JSON.parse(line) as Record<string, unknown>;
+      const eventSessionId = readString(event.thread_id) ||
+        readString(event.session_id);
+
+      if (eventSessionId) {
+        sessionId = eventSessionId;
+      }
+
+      const item = readRecord(event.item);
+
+      if (
+        event.type === "item.completed" &&
+        item.type === "agent_message"
+      ) {
+        const message = readString(item.text) || readString(item.content);
+
+        if (message) {
+          messages.push(message);
+        }
+      }
+    } catch {
+      // Ignore les eventuelles lignes non JSON de la sortie CLI.
+    }
+  }
+
+  return {
+    answer: messages.at(-1) || "",
+    ...(sessionId ? { sessionId } : {})
+  };
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : null;
 }

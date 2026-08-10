@@ -14,14 +14,15 @@ import type {
 
 export type AgentStatusOutput = AgentStatus;
 
-export interface AskAgentInput {
-  prompt?: unknown;
-  model?: unknown;
+export interface RunAgentInput {
+  agentId?: unknown;
 }
 
 export interface AgentDefinition {
+  id: string;
   name: string;
   description: string;
+  hasSession: boolean;
   model?: string;
   reasoningEffort?: string;
   prompt: string;
@@ -31,6 +32,11 @@ export interface AgentProject {
   projectId: string;
   engine: AgentEngine;
   agents: AgentDefinition[];
+}
+
+export interface AgentRunOutput {
+  answer: string;
+  hasSession: boolean;
 }
 
 type ProjectDirectory = ProjectContentOutput["root"];
@@ -48,6 +54,8 @@ const agentProjectConfigurations: AgentProjectConfiguration[] = [
 
 export class AgentUseCase {
   private actualLoadedProject: AgentProject | null = null;
+  private actualLoadedProjectDirectoryPath: string | null = null;
+  private readonly agentSessionIds = new Map<string, string>();
 
   constructor(
     private readonly agentService: AgentService,
@@ -62,19 +70,76 @@ export class AgentUseCase {
     return this.actualLoadedProject;
   }
 
-  ask(input: AskAgentInput): Promise<string> {
-    const prompt = typeof input.prompt === "string"
-      ? input.prompt.trim()
+  async runAgent(
+    projectId: string,
+    input: RunAgentInput
+  ): Promise<AgentRunOutput> {
+    const normalizedProjectId = projectId.trim();
+    const agentId = typeof input.agentId === "string"
+      ? input.agentId.trim()
       : "";
-    const model = typeof input.model === "string" && input.model.trim()
-      ? input.model.trim()
-      : undefined;
 
-    if (!prompt) {
-      throw new ValidationError("Le prompt est obligatoire.");
+    if (!normalizedProjectId || !agentId) {
+      throw new ValidationError(
+        "Le projet et l'agent a executer sont obligatoires."
+      );
     }
 
-    return this.agentService.ask(prompt, model);
+    if (
+      this.actualLoadedProject?.projectId !== normalizedProjectId ||
+      !this.actualLoadedProjectDirectoryPath
+    ) {
+      throw new ValidationError(
+        "Le projet doit etre charge avant d'executer un agent."
+      );
+    }
+
+    const agent = this.actualLoadedProject.agents.find(
+      (candidate) => candidate.id === agentId
+    );
+
+    if (!agent) {
+      throw new ValidationError(
+        "L'agent a executer n'existe pas dans le projet actuel."
+      );
+    }
+
+    if (!agent.prompt.trim()) {
+      throw new ValidationError(
+        "L'agent ne contient aucune instruction a executer."
+      );
+    }
+
+    const sessionKey = this.getAgentSessionKey(normalizedProjectId, agent.id);
+    const sessionId = this.agentSessionIds.get(sessionKey);
+    const result = await this.agentService.execute(
+      this.actualLoadedProject.engine,
+      agent.prompt,
+      {
+        ...(agent.model ? { model: agent.model } : {}),
+        ...(agent.reasoningEffort
+          ? { reasoningEffort: agent.reasoningEffort }
+          : {}),
+        persistSession: true,
+        ...(sessionId ? { sessionId } : {}),
+        workingDirectory: this.actualLoadedProjectDirectoryPath
+      }
+    );
+    const effectiveSessionId = result.sessionId || sessionId;
+
+    if (!effectiveSessionId) {
+      throw new Error(
+        "Le moteur IA n'a renvoye aucun identifiant de session."
+      );
+    }
+
+    this.agentSessionIds.set(sessionKey, effectiveSessionId);
+    agent.hasSession = true;
+
+    return {
+      answer: result.answer,
+      hasSession: true
+    };
   }
 
   async loadProject(projectId: string): Promise<AgentProject> {
@@ -114,11 +179,18 @@ export class AgentUseCase {
       ? this.loadAgents(configurationDirectory, configuration.engine)
       : [];
 
+    for (const agent of agents) {
+      agent.hasSession = this.agentSessionIds.has(
+        this.getAgentSessionKey(projectContent.id, agent.id)
+      );
+    }
+
     this.actualLoadedProject = {
       projectId: projectContent.id,
       engine: configuration.engine,
       agents
     };
+    this.actualLoadedProjectDirectoryPath = projectContent.directoryPath;
 
     return this.actualLoadedProject;
   }
@@ -146,5 +218,9 @@ export class AgentUseCase {
     );
 
     return matchingEntry?.type === "directory" ? matchingEntry : null;
+  }
+
+  private getAgentSessionKey(projectId: string, agentId: string): string {
+    return JSON.stringify([projectId, agentId]);
   }
 }

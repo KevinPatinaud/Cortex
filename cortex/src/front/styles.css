@@ -246,6 +246,86 @@ main {
   overflow-wrap: anywhere;
 }
 
+.agent-card__actions {
+  display: flex;
+  margin-top: 1rem;
+  justify-content: flex-start;
+}
+
+.agent-card__run-button {
+  display: inline-flex;
+  min-height: 2.25rem;
+  padding: 0.45rem 0.7rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: 1px solid #638171;
+  border-radius: 5px;
+  background: transparent;
+  color: #355747;
+  font-family: "Courier New", monospace;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.agent-card__run-button:hover:not(:disabled) {
+  background: #274b38;
+  color: #fff;
+}
+
+.agent-card__run-icon--running {
+  animation: agent-card-run-spin 900ms linear infinite;
+}
+
+.agent-card__run-feedback:empty {
+  display: none;
+}
+
+.agent-card__run-error {
+  margin: 0.9rem 0 0;
+  color: #a34d46;
+  font-family: "Courier New", monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.agent-card__run-result {
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border: 1px solid rgb(39 75 56 / 13%);
+  border-radius: 5px;
+  background: rgb(231 239 231 / 55%);
+}
+
+.agent-card__run-result > span {
+  color: #657b6f;
+  font-family: "Courier New", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.agent-card__run-result pre {
+  max-height: 15rem;
+  margin: 0.55rem 0 0;
+  overflow: auto;
+  color: #263c31;
+  font-family: "Courier New", monospace;
+  font-size: 0.76rem;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@keyframes agent-card-run-spin {
+  to {
+    transform: rotate(-360deg);
+  }
+}
+
 .project-sidebar {
   position: fixed;
   z-index: 10;
