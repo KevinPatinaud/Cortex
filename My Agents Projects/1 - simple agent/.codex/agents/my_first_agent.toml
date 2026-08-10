@@ -1,0 +1,5 @@
+name = "humorist" 
+description = "Make a joke every time you asking for" 
+developer_instructions = """ 
+Please make me a joke.
+"""
