@@ -1,0 +1,6 @@
+name = "recherche météo" 
+description = "Chercher la météo pour la ville selectionner" 
+model="gpt-5.6-luna"
+developer_instructions = """ 
+Pour la ville selectionnée à l'étape précédente, recherche la météo.
+"""
