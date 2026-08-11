@@ -499,6 +499,14 @@ main {
   line-height: 1.45;
 }
 
+.agent-card__run-prerequisite {
+  margin: 0.9rem 0 0;
+  color: #607a9e;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
 .agent-card__conversation {
   margin-top: 1rem;
   overflow: hidden;
@@ -722,6 +730,11 @@ main {
   background: rgb(230 240 255 / 98%);
   box-shadow: 0 5px 14px rgb(37 99 235 / 10%);
   transform: translateY(-1px);
+}
+
+.agent-card__conversation-response-button:disabled {
+  cursor: default;
+  opacity: 1;
 }
 
 .agent-card__conversation-response-button:focus-visible {

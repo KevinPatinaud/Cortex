@@ -1,6 +1,6 @@
 ---
-name: instruction globales
-description: Donner des instructions globales à tout les projet
+name: Instructions globales
+description: Donner des instructions globales à tous les projets
 ---
 
-Tu dois terminer chaqcune de tes réponses par "Vive les roses !"
+Tu dois terminer chacune de tes réponses par "Vive les roses !"

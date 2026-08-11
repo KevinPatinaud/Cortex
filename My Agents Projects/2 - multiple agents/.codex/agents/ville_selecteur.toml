@@ -1,6 +1,6 @@
-name = "selectionneur de ville" 
+name = "sélectionneur de ville" 
 description = "Proposer des villes aléatoirement" 
 model="gpt-5.6-luna"
 developer_instructions = """ 
-Propose moi cinq villes alétoirement.
+Propose-moi cinq villes aléatoirement.
 """

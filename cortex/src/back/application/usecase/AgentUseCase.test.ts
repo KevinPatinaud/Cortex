@@ -104,6 +104,62 @@ function createUseCase(
   };
 }
 
+function createSequentialUseCase(
+  results: AgentExecutionResult[]
+): { useCase: AgentUseCase; calls: ExecutionCall[] } {
+  const calls: ExecutionCall[] = [];
+  let resultIndex = 0;
+  const agentService = {
+    async execute(
+      engine: string,
+      prompt: string,
+      options: AgentExecutionOptions
+    ): Promise<AgentExecutionResult> {
+      calls.push({ engine, prompt, options });
+      const result = results[resultIndex];
+      resultIndex += 1;
+
+      if (!result) {
+        throw new Error("Aucun résultat de moteur préparé pour ce test.");
+      }
+
+      return result;
+    }
+  } as unknown as AgentService;
+  const projectUseCase = {
+    async getProjectContent(): Promise<ProjectContentOutput> {
+      return createProjectContent();
+    }
+  } as unknown as ProjectUseCase;
+
+  return {
+    useCase: new AgentUseCase(agentService, projectUseCase),
+    calls
+  };
+}
+
+function createOrderingAnswer(): string {
+  return JSON.stringify({
+    agents: [
+      { id: ".claude/agents/implementation.md", order: 1 },
+      { id: ".claude/agents/analysis.md", order: 2 }
+    ]
+  });
+}
+
+function createAgentAnswer(
+  items: string[],
+  isMultiSelectionAllowed: boolean | null,
+  notes = "NE_PAS_TRANSMETTRE"
+): string {
+  return JSON.stringify({
+    status: "success",
+    items: items.map((content) => ({ content })),
+    isMultiSelectionAllowed,
+    notes
+  });
+}
+
 test("classe les agents selon la réponse du moteur local", async () => {
   const { useCase, calls } = createUseCase(JSON.stringify({
     agents: [
@@ -154,4 +210,65 @@ test("attribue directement l'ordre 1 à un agent unique", async () => {
 
   assert.equal(project.agents[0].order, 1);
   assert.equal(calls.length, 0);
+});
+
+test("transmet automatiquement l'unique item sans les notes", async () => {
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: createOrderingAnswer() },
+    {
+      answer: createAgentAnswer(["Marseille"], null),
+      sessionId: "first-session"
+    },
+    {
+      answer: createAgentAnswer(["Temps ensoleillé"], null),
+      sessionId: "second-session"
+    }
+  ]);
+  const project = await useCase.loadProject("project-id");
+  const [firstAgent, secondAgent] = project.agents;
+
+  await useCase.runAgent("project-id", { agentId: firstAgent.id });
+  await useCase.runAgent("project-id", {
+    agentId: secondAgent.id,
+    previousAgentResult: {
+      agentId: firstAgent.id,
+      selectedItemIndexes: []
+    }
+  });
+
+  assert.match(calls[2].prompt, /Marseille/);
+  assert.doesNotMatch(calls[2].prompt, /NE_PAS_TRANSMETTRE/);
+});
+
+test("transmet uniquement les items sélectionnés sans les notes", async () => {
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: createOrderingAnswer() },
+    {
+      answer: createAgentAnswer(
+        ["CHOIX_ALPHA", "CHOIX_BETA", "CHOIX_GAMMA"],
+        true
+      ),
+      sessionId: "first-session"
+    },
+    {
+      answer: createAgentAnswer(["Résultat final"], null),
+      sessionId: "second-session"
+    }
+  ]);
+  const project = await useCase.loadProject("project-id");
+  const [firstAgent, secondAgent] = project.agents;
+
+  await useCase.runAgent("project-id", { agentId: firstAgent.id });
+  await useCase.runAgent("project-id", {
+    agentId: secondAgent.id,
+    previousAgentResult: {
+      agentId: firstAgent.id,
+      selectedItemIndexes: [0, 2]
+    }
+  });
+
+  assert.match(calls[2].prompt, /CHOIX_ALPHA/);
+  assert.match(calls[2].prompt, /CHOIX_GAMMA/);
+  assert.doesNotMatch(calls[2].prompt, /CHOIX_BETA/);
+  assert.doesNotMatch(calls[2].prompt, /NE_PAS_TRANSMETTRE/);
 });

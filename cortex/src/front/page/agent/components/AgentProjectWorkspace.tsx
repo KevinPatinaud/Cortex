@@ -6,9 +6,14 @@ import {
   runAgent,
   type AgentConversationMessage,
   type AgentDefinition,
-  type AgentProject
+  type AgentProject,
+  type PreviousAgentResult
 } from "../../../services/agentApi.ts";
 import type { Project } from "../../../services/projectApi.ts";
+import {
+  parseAgentResponse,
+  type AgentResponsePayload
+} from "../../../../shared/AgentResponse.ts";
 
 interface AgentProjectWorkspaceProps {
   project: Project | null;
@@ -26,60 +31,6 @@ function getErrorMessage(error: unknown): string {
     : "Une erreur inattendue est survenue.";
 }
 
-type AgentResponseStatus = "success" | "partial" | "blocked" | "error";
-
-interface AgentResponsePayload {
-  status: AgentResponseStatus;
-  items: Array<{ content: string }>;
-  isMultiSelectionAllowed: boolean | null;
-  notes: string | null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isAgentResponseStatus(value: unknown): value is AgentResponseStatus {
-  return value === "success" ||
-    value === "partial" ||
-    value === "blocked" ||
-    value === "error";
-}
-
-function parseAgentResponse(content: string): AgentResponsePayload | null {
-  try {
-    const parsedContent: unknown = JSON.parse(content);
-
-    if (
-      !isRecord(parsedContent) ||
-      !isAgentResponseStatus(parsedContent.status) ||
-      !Array.isArray(parsedContent.items) ||
-      !parsedContent.items.every(
-        (item) => isRecord(item) && typeof item.content === "string"
-      ) ||
-      !(
-        typeof parsedContent.isMultiSelectionAllowed === "boolean" ||
-        parsedContent.isMultiSelectionAllowed === null
-      ) ||
-      !(
-        typeof parsedContent.notes === "string" ||
-        parsedContent.notes === null
-      )
-    ) {
-      return null;
-    }
-
-    return {
-      status: parsedContent.status,
-      items: parsedContent.items as Array<{ content: string }>,
-      isMultiSelectionAllowed: parsedContent.isMultiSelectionAllowed,
-      notes: parsedContent.notes
-    };
-  } catch {
-    return null;
-  }
-}
-
 function MarkdownContent({ content }: { content: string }) {
   return (
     <div className="agent-card__markdown">
@@ -89,16 +40,14 @@ function MarkdownContent({ content }: { content: string }) {
 }
 
 function ConversationMessageContent({
-  message
+  message,
+  selectedItemIndexes = [],
+  onSelectedItemIndexesChange
 }: {
   message: AgentConversationMessage;
+  selectedItemIndexes?: number[];
+  onSelectedItemIndexesChange?: (indexes: number[]) => void;
 }) {
-  const [selectedItemIndexes, setSelectedItemIndexes] = useState<number[]>([]);
-
-  useEffect(() => {
-    setSelectedItemIndexes([]);
-  }, [message.content]);
-
   if (message.role === "user") {
     return <pre>{message.content}</pre>;
   }
@@ -112,17 +61,18 @@ function ConversationMessageContent({
   const allowsMultipleSelection = response.isMultiSelectionAllowed === true;
 
   function handleItemSelection(itemIndex: number): void {
-    setSelectedItemIndexes((currentIndexes) => {
-      const isAlreadySelected = currentIndexes.includes(itemIndex);
+    if (!onSelectedItemIndexesChange) {
+      return;
+    }
 
-      if (allowsMultipleSelection) {
-        return isAlreadySelected
-          ? currentIndexes.filter((index) => index !== itemIndex)
-          : [...currentIndexes, itemIndex];
-      }
+    const isAlreadySelected = selectedItemIndexes.includes(itemIndex);
+    const nextIndexes = allowsMultipleSelection
+      ? isAlreadySelected
+        ? selectedItemIndexes.filter((index) => index !== itemIndex)
+        : [...selectedItemIndexes, itemIndex]
+      : isAlreadySelected ? [] : [itemIndex];
 
-      return isAlreadySelected ? [] : [itemIndex];
-    });
+    onSelectedItemIndexesChange(nextIndexes);
   }
 
   return (
@@ -149,6 +99,7 @@ function ConversationMessageContent({
                   }`}
                   type="button"
                   aria-pressed={isSelected}
+                  disabled={!onSelectedItemIndexesChange}
                   onClick={() => handleItemSelection(itemIndex)}
                 >
                   <MarkdownContent content={item.content} />
@@ -171,12 +122,84 @@ function ConversationMessageContent({
   );
 }
 
-interface AgentCardProps {
-  agent: AgentDefinition;
-  projectId: string;
+interface AgentResultState {
+  response: AgentResponsePayload | null;
+  selectedItemIndexes: number[];
+  isInvalidated: boolean;
 }
 
-function AgentCard({ agent, projectId }: AgentCardProps) {
+type AgentResultStates = Record<string, AgentResultState>;
+
+function findLastAgentResponse(
+  conversation: AgentConversationMessage[]
+): AgentResponsePayload | null {
+  for (let index = conversation.length - 1; index >= 0; index -= 1) {
+    if (conversation[index].role === "agent") {
+      return parseAgentResponse(conversation[index].content);
+    }
+  }
+
+  return null;
+}
+
+function getPrerequisiteMessage(
+  state: AgentResultState | undefined
+): string | null {
+  if (!state?.response) {
+    return "Exécutez d'abord l'agent précédent.";
+  }
+
+  if (state.response.items.length === 0) {
+    return "L'agent précédent n'a produit aucun résultat transmissible.";
+  }
+
+  if (state.response.items.length === 1) {
+    return null;
+  }
+
+  if (state.selectedItemIndexes.length === 0) {
+    return state.response.isMultiSelectionAllowed === true
+      ? "Sélectionnez un ou plusieurs résultats de l'agent précédent."
+      : "Sélectionnez un résultat de l'agent précédent.";
+  }
+
+  if (
+    state.response.isMultiSelectionAllowed !== true &&
+    state.selectedItemIndexes.length !== 1
+  ) {
+    return "Sélectionnez un seul résultat de l'agent précédent.";
+  }
+
+  return null;
+}
+
+interface AgentCardProps {
+  agent: AgentDefinition;
+  previousAgentResult?: PreviousAgentResult;
+  isInvalidated: boolean;
+  prerequisiteMessage: string | null;
+  projectId: string;
+  selectedItemIndexes: number[];
+  onResponseChange: (
+    agentId: string,
+    response: AgentResponsePayload | null
+  ) => void;
+  onSelectedItemIndexesChange: (
+    agentId: string,
+    selectedItemIndexes: number[]
+  ) => void;
+}
+
+function AgentCard({
+  agent,
+  previousAgentResult,
+  isInvalidated,
+  prerequisiteMessage,
+  projectId,
+  selectedItemIndexes,
+  onResponseChange,
+  onSelectedItemIndexesChange
+}: AgentCardProps) {
   const additionalInstructionsId = useId();
   const conversationRef = useRef<HTMLDivElement>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -186,7 +209,7 @@ function AgentCard({ agent, projectId }: AgentCardProps) {
   );
   const [error, setError] = useState("");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
-  const canRun = Boolean(agent.prompt.trim());
+  const canRun = Boolean(agent.prompt.trim()) && !prerequisiteMessage;
 
   useEffect(() => {
     setHasSession(agent.hasSession);
@@ -194,6 +217,15 @@ function AgentCard({ agent, projectId }: AgentCardProps) {
     setAdditionalInstructions("");
     setError("");
   }, [agent]);
+
+  useEffect(() => {
+    if (isInvalidated) {
+      setHasSession(false);
+      setConversation([]);
+      setAdditionalInstructions("");
+      setError("");
+    }
+  }, [isInvalidated]);
 
   useEffect(() => {
     const conversationElement = conversationRef.current;
@@ -217,15 +249,26 @@ function AgentCard({ agent, projectId }: AgentCardProps) {
       const result = await runAgent(
         projectId,
         agent.id,
-        submittedInstructions
+        submittedInstructions,
+        previousAgentResult
       );
       setConversation(result.conversation);
       setHasSession(result.hasSession);
       setAdditionalInstructions("");
+      onResponseChange(agent.id, parseAgentResponse(result.answer));
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
       setIsRunning(false);
+    }
+  }
+
+  let lastAgentMessageIndex = -1;
+
+  for (let index = conversation.length - 1; index >= 0; index -= 1) {
+    if (conversation[index].role === "agent") {
+      lastAgentMessageIndex = index;
+      break;
     }
   }
 
@@ -262,6 +305,11 @@ function AgentCard({ agent, projectId }: AgentCardProps) {
         </dl>
       )}
       <div className="agent-card__run-feedback" aria-live="polite">
+        {prerequisiteMessage && (
+          <p className="agent-card__run-prerequisite">
+            {prerequisiteMessage}
+          </p>
+        )}
         {error && (
           <p className="agent-card__run-error" role="alert">{error}</p>
         )}
@@ -285,7 +333,21 @@ function AgentCard({ agent, projectId }: AgentCardProps) {
                 key={messageIndex}
               >
                 <span>{message.role === "user" ? "Vous" : "Agent"}</span>
-                <ConversationMessageContent message={message} />
+                <ConversationMessageContent
+                  message={message}
+                  selectedItemIndexes={messageIndex === lastAgentMessageIndex
+                    ? selectedItemIndexes
+                    : []
+                  }
+                  onSelectedItemIndexesChange={
+                    messageIndex === lastAgentMessageIndex
+                      ? (indexes) => onSelectedItemIndexesChange(
+                          agent.id,
+                          indexes
+                        )
+                      : undefined
+                  }
+                />
               </article>
             ))}
           </div>
@@ -311,10 +373,10 @@ function AgentCard({ agent, projectId }: AgentCardProps) {
           type="button"
           onClick={() => void handleRun()}
           disabled={isRunning || !canRun}
-          title={canRun
+          title={prerequisiteMessage || (canRun
             ? `${hasSession ? "Relancer" : "Lancer"} ${agent.name}`
             : "Cet agent ne contient aucune instruction."
-          }
+          )}
         >
           <RotateCcw
             aria-hidden="true"
@@ -340,10 +402,32 @@ export function AgentProjectWorkspace({
   const [activeTab, setActiveTab] = useState<"instructions" | "agents">(
     "agents"
   );
+  const [agentResultStates, setAgentResultStates] = useState<AgentResultStates>(
+    {}
+  );
 
   useEffect(() => {
     setActiveTab("agents");
   }, [content?.projectId]);
+
+  useEffect(() => {
+    if (!content) {
+      setAgentResultStates({});
+      return;
+    }
+
+    const restoredStates: AgentResultStates = {};
+
+    for (const agent of content.agents) {
+      restoredStates[agent.id] = {
+        response: findLastAgentResponse(agent.conversation),
+        selectedItemIndexes: [],
+        isInvalidated: false
+      };
+    }
+
+    setAgentResultStates(restoredStates);
+  }, [content]);
 
   if (!project || !content) {
     return (
@@ -368,6 +452,67 @@ export function AgentProjectWorkspace({
   const orderedAgents = [...content.agents].sort(
     (firstAgent, secondAgent) => firstAgent.order - secondAgent.order
   );
+
+  function clearFollowingAgentResults(
+    states: AgentResultStates,
+    sourceAgentId: string
+  ): AgentResultStates {
+    const sourceAgent = orderedAgents.find(
+      (agent) => agent.id === sourceAgentId
+    );
+    const nextStates = { ...states };
+
+    if (!sourceAgent) {
+      return nextStates;
+    }
+
+    for (const agent of orderedAgents) {
+      if (agent.order > sourceAgent.order) {
+        nextStates[agent.id] = {
+          response: null,
+          selectedItemIndexes: [],
+          isInvalidated: true
+        };
+      }
+    }
+
+    return nextStates;
+  }
+
+  function handleResponseChange(
+    agentId: string,
+    response: AgentResponsePayload | null
+  ): void {
+    setAgentResultStates((currentStates) => ({
+      ...clearFollowingAgentResults(currentStates, agentId),
+      [agentId]: {
+        response,
+        selectedItemIndexes: [],
+        isInvalidated: false
+      }
+    }));
+  }
+
+  function handleSelectedItemIndexesChange(
+    agentId: string,
+    selectedItemIndexes: number[]
+  ): void {
+    setAgentResultStates((currentStates) => {
+      const currentState = currentStates[agentId];
+
+      if (!currentState) {
+        return currentStates;
+      }
+
+      return {
+        ...clearFollowingAgentResults(currentStates, agentId),
+        [agentId]: {
+          ...currentState,
+          selectedItemIndexes
+        }
+      };
+    });
+  }
 
   return (
     <section className="workspace-content workspace-content--project">
@@ -439,25 +584,55 @@ export function AgentProjectWorkspace({
             </p>
           ) : (
             <ol className="agent-project__workflow">
-              {orderedAgents.map((agent, index) => (
-                <li
-                  className="agent-project__workflow-step"
-                  key={`${content.projectId}:${agent.id}`}
-                >
-                  <AgentCard
-                    agent={agent}
-                    projectId={content.projectId}
-                  />
-                  {index < orderedAgents.length - 1 && (
-                    <div
-                      className="agent-project__workflow-connector"
-                      aria-hidden="true"
-                    >
-                      <ArrowDown size={18} strokeWidth={1.5} />
-                    </div>
-                  )}
-                </li>
-              ))}
+              {orderedAgents.map((agent, index) => {
+                const previousAgent = orderedAgents[index - 1];
+                const previousAgentState = previousAgent
+                  ? agentResultStates[previousAgent.id]
+                  : undefined;
+                const prerequisiteMessage = previousAgent
+                  ? getPrerequisiteMessage(previousAgentState)
+                  : null;
+                const previousAgentResult = previousAgent &&
+                    !prerequisiteMessage
+                  ? {
+                      agentId: previousAgent.id,
+                      selectedItemIndexes:
+                        previousAgentState?.selectedItemIndexes ?? []
+                    }
+                  : undefined;
+
+                return (
+                  <li
+                    className="agent-project__workflow-step"
+                    key={`${content.projectId}:${agent.id}`}
+                  >
+                    <AgentCard
+                      agent={agent}
+                      previousAgentResult={previousAgentResult}
+                      isInvalidated={
+                        agentResultStates[agent.id]?.isInvalidated ?? false
+                      }
+                      prerequisiteMessage={prerequisiteMessage}
+                      projectId={content.projectId}
+                      selectedItemIndexes={
+                        agentResultStates[agent.id]?.selectedItemIndexes ?? []
+                      }
+                      onResponseChange={handleResponseChange}
+                      onSelectedItemIndexesChange={
+                        handleSelectedItemIndexesChange
+                      }
+                    />
+                    {index < orderedAgents.length - 1 && (
+                      <div
+                        className="agent-project__workflow-connector"
+                        aria-hidden="true"
+                      >
+                        <ArrowDown size={18} strokeWidth={1.5} />
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ol>
           )}
         </section>

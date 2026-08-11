@@ -11,12 +11,19 @@ import type {
   ProjectContentOutput,
   ProjectUseCase
 } from "./ProjectUseCase.ts";
+import { parseAgentResponse } from "../../../shared/AgentResponse.ts";
 
 export type AgentStatusOutput = AgentStatus;
 
 export interface RunAgentInput {
   agentId?: unknown;
   additionalInstructions?: unknown;
+  previousAgentResult?: unknown;
+}
+
+interface PreviousAgentResultInput {
+  agentId?: unknown;
+  selectedItemIndexes?: unknown;
 }
 
 export interface AgentDefinition {
@@ -57,6 +64,7 @@ export interface AgentRunOutput {
 interface AgentWorkflowState {
   sessionId: string;
   conversation: AgentConversationMessage[];
+  upstreamItems: string[];
 }
 
 type ProjectDirectory = ProjectContentOutput["root"];
@@ -223,11 +231,28 @@ export class AgentUseCase {
       );
     }
 
-    const workflow = this.getAgentWorkflow(normalizedProjectId, agent.id);
+    const upstreamItems = this.resolveUpstreamItems(
+      normalizedProjectId,
+      agent,
+      input.previousAgentResult
+    );
+    const storedWorkflow = this.getAgentWorkflow(
+      normalizedProjectId,
+      agent.id
+    );
+    const workflow = storedWorkflow && this.stringArraysAreEqual(
+        storedWorkflow.upstreamItems,
+        upstreamItems
+      )
+      ? storedWorkflow
+      : undefined;
     const sessionId = workflow?.sessionId;
-    const taskPrompt = sessionId
+    const baseTaskPrompt = sessionId
       ? additionalInstructions || agent.prompt
       : this.withAdditionalInstructions(agent.prompt, additionalInstructions);
+    const taskPrompt = sessionId
+      ? baseTaskPrompt
+      : this.withUpstreamItems(baseTaskPrompt, upstreamItems);
     const executionPrompt = this.withAgentResponseFormat(taskPrompt);
     const result = await this.agentService.execute(
       this.actualLoadedProject.engine,
@@ -260,7 +285,8 @@ export class AgentUseCase {
 
     this.setAgentWorkflow(normalizedProjectId, agent.id, {
       sessionId: effectiveSessionId,
-      conversation
+      conversation,
+      upstreamItems: [...upstreamItems]
     });
     agent.hasSession = true;
     agent.conversation = [...conversation];
@@ -503,6 +529,155 @@ ${JSON.stringify(context, null, 2)}`;
 
     return keys.length === expectedKeys.length &&
       expectedKeys.every((key) => Object.hasOwn(value, key));
+  }
+
+  private resolveUpstreamItems(
+    projectId: string,
+    agent: AgentDefinition,
+    rawPreviousAgentResult: unknown
+  ): string[] {
+    const previousAgent = this.actualLoadedProject?.agents.find(
+      (candidate) => candidate.order === agent.order - 1
+    );
+
+    if (!previousAgent) {
+      return [];
+    }
+
+    if (!this.isRecord(rawPreviousAgentResult)) {
+      throw new ValidationError(
+        "Le résultat de l'agent précédent est requis avant de poursuivre."
+      );
+    }
+
+    const input = rawPreviousAgentResult as PreviousAgentResultInput;
+    const previousAgentId = typeof input.agentId === "string"
+      ? input.agentId.trim()
+      : "";
+
+    if (previousAgentId !== previousAgent.id) {
+      throw new ValidationError(
+        "Le résultat transmis ne provient pas de l'agent précédent."
+      );
+    }
+
+    if (!Array.isArray(input.selectedItemIndexes)) {
+      throw new ValidationError(
+        "La sélection du résultat précédent est invalide."
+      );
+    }
+
+    const previousWorkflow = this.getAgentWorkflow(projectId, previousAgent.id);
+    const previousAnswer = previousWorkflow
+      ? this.findLastAgentAnswer(previousWorkflow.conversation)
+      : null;
+    const previousResponse = previousAnswer
+      ? parseAgentResponse(previousAnswer)
+      : null;
+
+    if (!previousResponse || previousResponse.items.length === 0) {
+      throw new ValidationError(
+        "L'agent précédent n'a produit aucun résultat transmissible."
+      );
+    }
+
+    if (previousResponse.items.length === 1) {
+      return [previousResponse.items[0].content];
+    }
+
+    const selectedItemIndexes = this.validateSelectedItemIndexes(
+      input.selectedItemIndexes,
+      previousResponse.items.length
+    );
+
+    if (
+      previousResponse.isMultiSelectionAllowed !== true &&
+      selectedItemIndexes.length !== 1
+    ) {
+      throw new ValidationError(
+        "Un seul résultat de l'agent précédent peut être sélectionné."
+      );
+    }
+
+    return selectedItemIndexes.map(
+      (itemIndex) => previousResponse.items[itemIndex].content
+    );
+  }
+
+  private validateSelectedItemIndexes(
+    rawIndexes: unknown[],
+    itemCount: number
+  ): number[] {
+    const indexes = new Set<number>();
+
+    for (const rawIndex of rawIndexes) {
+      if (
+        typeof rawIndex !== "number" ||
+        !Number.isInteger(rawIndex) ||
+        rawIndex < 0 ||
+        rawIndex >= itemCount ||
+        indexes.has(rawIndex)
+      ) {
+        throw new ValidationError(
+          "La sélection du résultat précédent est invalide."
+        );
+      }
+
+      indexes.add(rawIndex);
+    }
+
+    if (indexes.size === 0) {
+      throw new ValidationError(
+        "Sélectionnez au moins un résultat de l'agent précédent."
+      );
+    }
+
+    return [...indexes];
+  }
+
+  private findLastAgentAnswer(
+    conversation: AgentConversationMessage[]
+  ): string | null {
+    for (let index = conversation.length - 1; index >= 0; index -= 1) {
+      if (conversation[index].role === "agent") {
+        return conversation[index].content;
+      }
+    }
+
+    return null;
+  }
+
+  private stringArraysAreEqual(
+    firstItems: string[],
+    secondItems: string[]
+  ): boolean {
+    return firstItems.length === secondItems.length &&
+      firstItems.every((item, index) => item === secondItems[index]);
+  }
+
+  private withUpstreamItems(prompt: string, upstreamItems: string[]): string {
+    if (upstreamItems.length === 0) {
+      return prompt;
+    }
+
+    const formattedItems = upstreamItems.length === 1
+      ? upstreamItems[0]
+      : upstreamItems
+        .map((item, index) => `${index + 1}. ${item}`)
+        .join("\n\n");
+    const resultLabel = upstreamItems.length === 1
+      ? "Résultat transmis par l'agent précédent"
+      : "Résultats transmis par l'agent précédent";
+    const usageInstruction = upstreamItems.length === 1
+      ? "Utilise uniquement ce résultat comme donnée d'entrée."
+      : "Utilise uniquement ces résultats comme données d'entrée.";
+
+    return `${prompt.trimEnd()}
+
+${resultLabel} :
+${formattedItems}
+
+${usageInstruction}`;
   }
 
   private findChildDirectory(

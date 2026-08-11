@@ -45,6 +45,11 @@ export interface AgentRunResult {
   conversation: AgentConversationMessage[];
 }
 
+export interface PreviousAgentResult {
+  agentId: string;
+  selectedItemIndexes: number[];
+}
+
 export async function getAgentStatus(): Promise<AgentStatus> {
   const response = await fetch("/api/agents/status");
   const data = await response.json() as AgentStatus;
@@ -88,7 +93,8 @@ export async function getActualLoadedAgentProject(): Promise<AgentProject | null
 export async function runAgent(
   projectId: string,
   agentId: string,
-  additionalInstructions: string
+  additionalInstructions: string,
+  previousAgentResult?: PreviousAgentResult
 ): Promise<AgentRunResult> {
   const response = await fetch(
     `/api/agents/projects/${encodeURIComponent(projectId)}/agents/run`,
@@ -101,7 +107,8 @@ export async function runAgent(
         agentId,
         ...(additionalInstructions.trim()
           ? { additionalInstructions: additionalInstructions.trim() }
-          : {})
+          : {}),
+        ...(previousAgentResult ? { previousAgentResult } : {})
       })
     }
   );

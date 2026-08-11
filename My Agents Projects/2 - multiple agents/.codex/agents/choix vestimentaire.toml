@@ -2,5 +2,5 @@ name = "choix vestimentaire"
 description = "Proposer une tenue en fonction de la météo" 
 model="gpt-5.6-luna"
 developer_instructions = """ 
-En fonction de la météo identifiée, propose moi la tenu la plus appropriée
+En fonction de la météo identifiée, propose-moi la tenue la plus appropriée.
 """
