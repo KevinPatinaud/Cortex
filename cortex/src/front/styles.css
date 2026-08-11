@@ -196,7 +196,7 @@ main {
   display: flex;
   width: 2.4rem;
   height: 2.5rem;
-  margin-left: 1.35rem;
+  margin: 0 auto;
   align-items: center;
   justify-content: center;
   color: rgb(69 111 171 / 58%);
@@ -1477,10 +1477,6 @@ dialog input {
 
   .agent-card {
     padding: 1.1rem;
-  }
-
-  .agent-project__workflow-connector {
-    margin-left: 1.1rem;
   }
 
   .agent-card__header {
