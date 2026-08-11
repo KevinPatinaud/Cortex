@@ -1,5 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Bot, ChevronDown, RotateCcw } from "lucide-react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   runAgent,
   type AgentConversationMessage,
@@ -78,6 +80,14 @@ function parseAgentResponse(content: string): AgentResponsePayload | null {
   }
 }
 
+function MarkdownContent({ content }: { content: string }) {
+  return (
+    <div className="agent-card__markdown">
+      <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
+    </div>
+  );
+}
+
 function ConversationMessageContent({
   message
 }: {
@@ -96,7 +106,7 @@ function ConversationMessageContent({
   const response = parseAgentResponse(message.content);
 
   if (!response) {
-    return <pre>{message.content}</pre>;
+    return <MarkdownContent content={message.content} />;
   }
 
   const allowsMultipleSelection = response.isMultiSelectionAllowed === true;
@@ -118,9 +128,9 @@ function ConversationMessageContent({
   return (
     <div className="agent-card__conversation-response-content">
       {response.items.length === 1 ? (
-        <p className="agent-card__conversation-response">
-          {response.items[0].content}
-        </p>
+        <div className="agent-card__conversation-response">
+          <MarkdownContent content={response.items[0].content} />
+        </div>
       ) : response.items.length > 1 ? (
         <ul
           className="agent-card__conversation-response-list"
@@ -141,7 +151,7 @@ function ConversationMessageContent({
                   aria-pressed={isSelected}
                   onClick={() => handleItemSelection(itemIndex)}
                 >
-                  {item.content}
+                  <MarkdownContent content={item.content} />
                 </button>
               </li>
             );
@@ -153,9 +163,9 @@ function ConversationMessageContent({
         </p>
       )}
       {response.notes && (
-        <p className="agent-card__conversation-response-notes">
-          {response.notes}
-        </p>
+        <div className="agent-card__conversation-response-notes">
+          <MarkdownContent content={response.notes} />
+        </div>
       )}
     </div>
   );
