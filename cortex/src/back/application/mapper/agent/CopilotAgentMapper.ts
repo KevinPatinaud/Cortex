@@ -19,10 +19,13 @@ export function toCopilotAgentDefinitions(
     .filter((entry): entry is ProjectFile =>
       entry.type === "file" && /\.agent\.md$/i.test(entry.name)
     )
-    .map(toCopilotAgentDefinition);
+    .map((file, index) => toCopilotAgentDefinition(file, index + 1));
 }
 
-function toCopilotAgentDefinition(file: ProjectFile): AgentDefinition {
+function toCopilotAgentDefinition(
+  file: ProjectFile,
+  order: number
+): AgentDefinition {
   const markdown = parseMarkdownFrontmatter(decodeFile(file));
   const model = readAttribute(markdown.attributes, "model");
   const reasoningEffort = readAttribute(
@@ -39,6 +42,7 @@ function toCopilotAgentDefinition(file: ProjectFile): AgentDefinition {
     name: markdown.attributes.name?.trim() ||
       file.name.replace(/\.agent\.md$/i, ""),
     description: markdown.attributes.description?.trim() || "",
+    order,
     hasSession: false,
     conversation: [],
     ...(model ? { model } : {}),

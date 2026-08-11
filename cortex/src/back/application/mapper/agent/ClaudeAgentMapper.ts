@@ -19,10 +19,13 @@ export function toClaudeAgentDefinitions(
     .filter((entry): entry is ProjectFile =>
       entry.type === "file" && /\.md$/i.test(entry.name)
     )
-    .map(toClaudeAgentDefinition);
+    .map((file, index) => toClaudeAgentDefinition(file, index + 1));
 }
 
-function toClaudeAgentDefinition(file: ProjectFile): AgentDefinition {
+function toClaudeAgentDefinition(
+  file: ProjectFile,
+  order: number
+): AgentDefinition {
   const markdown = parseMarkdownFrontmatter(decodeFile(file));
   const model = readAttribute(markdown.attributes, "model");
   const reasoningEffort = readAttribute(
@@ -37,6 +40,7 @@ function toClaudeAgentDefinition(file: ProjectFile): AgentDefinition {
     name: markdown.attributes.name?.trim() ||
       file.name.replace(/\.md$/i, ""),
     description: markdown.attributes.description?.trim() || "",
+    order,
     hasSession: false,
     conversation: [],
     ...(model ? { model } : {}),

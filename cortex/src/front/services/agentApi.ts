@@ -10,6 +10,7 @@ export interface AgentDefinition {
   id: string;
   name: string;
   description: string;
+  order: number;
   hasSession: boolean;
   conversation: AgentConversationMessage[];
   model?: string;

@@ -28,7 +28,7 @@ export function toCodexAgentDefinitions(
     .filter((entry): entry is ProjectFile =>
       entry.type === "file" && /\.toml$/i.test(entry.name)
     )
-    .map((file) => {
+    .map((file, index) => {
       const contentTomlFile = parseTomlFile(file);
       const registeredAgent = registeredAgents.get(file.relativePath);
       const model = readString(contentTomlFile.model);
@@ -44,6 +44,7 @@ export function toCodexAgentDefinitions(
         description: readString(contentTomlFile.description) ||
           registeredAgent?.description ||
           "",
+        order: index + 1,
         hasSession: false,
         conversation: [],
         ...(model ? { model } : {}),

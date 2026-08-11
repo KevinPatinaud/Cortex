@@ -179,10 +179,31 @@ main {
   outline: none;
 }
 
-.agent-project__grid {
+.agent-project__workflow {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
-  gap: 1.15rem;
+  width: 100%;
+  max-width: 50rem;
+  margin: 0 auto;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-project__workflow-step {
+  min-width: 0;
+}
+
+.agent-project__workflow-connector {
+  display: flex;
+  width: 2.4rem;
+  height: 2.5rem;
+  margin-left: 1.35rem;
+  align-items: center;
+  justify-content: center;
+  color: rgb(69 111 171 / 58%);
+}
+
+.agent-project__workflow-connector svg {
+  filter: drop-shadow(0 2px 5px rgb(37 99 235 / 10%));
 }
 
 .agent-project__empty {
@@ -1456,6 +1477,10 @@ dialog input {
 
   .agent-card {
     padding: 1.1rem;
+  }
+
+  .agent-project__workflow-connector {
+    margin-left: 1.1rem;
   }
 
   .agent-card__header {

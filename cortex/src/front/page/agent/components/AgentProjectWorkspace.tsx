@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Bot, ChevronDown, RotateCcw } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, RotateCcw } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -173,11 +173,10 @@ function ConversationMessageContent({
 
 interface AgentCardProps {
   agent: AgentDefinition;
-  index: number;
   projectId: string;
 }
 
-function AgentCard({ agent, index, projectId }: AgentCardProps) {
+function AgentCard({ agent, projectId }: AgentCardProps) {
   const additionalInstructionsId = useId();
   const conversationRef = useRef<HTMLDivElement>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -235,7 +234,7 @@ function AgentCard({ agent, index, projectId }: AgentCardProps) {
       <header className="agent-card__header">
         <Bot aria-hidden="true" size={22} strokeWidth={1.7} />
         <div>
-          <span>Agent {index + 1}</span>
+          <span>Agent {agent.order}</span>
           <h2>{agent.name}</h2>
         </div>
         {agent.model && (
@@ -366,6 +365,9 @@ export function AgentProjectWorkspace({
   const instructionsPanelId = `${tabsId}-instructions-panel`;
   const agentsTabId = `${tabsId}-agents-tab`;
   const agentsPanelId = `${tabsId}-agents-panel`;
+  const orderedAgents = [...content.agents].sort(
+    (firstAgent, secondAgent) => firstAgent.order - secondAgent.order
+  );
 
   return (
     <section className="workspace-content workspace-content--project">
@@ -436,16 +438,27 @@ export function AgentProjectWorkspace({
               Aucun agent n'est configuré dans ce projet.
             </p>
           ) : (
-            <div className="agent-project__grid">
-              {content.agents.map((agent, index) => (
-                <AgentCard
-                  agent={agent}
-                  index={index}
+            <ol className="agent-project__workflow">
+              {orderedAgents.map((agent, index) => (
+                <li
+                  className="agent-project__workflow-step"
                   key={`${content.projectId}:${agent.id}`}
-                  projectId={content.projectId}
-                />
+                >
+                  <AgentCard
+                    agent={agent}
+                    projectId={content.projectId}
+                  />
+                  {index < orderedAgents.length - 1 && (
+                    <div
+                      className="agent-project__workflow-connector"
+                      aria-hidden="true"
+                    >
+                      <ArrowDown size={18} strokeWidth={1.5} />
+                    </div>
+                  )}
+                </li>
               ))}
-            </div>
+            </ol>
           )}
         </section>
       )}
