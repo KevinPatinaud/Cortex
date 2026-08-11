@@ -528,18 +528,89 @@ main {
 }
 
 .agent-card__conversation-message--agent {
-  margin-right: clamp(1rem, 8%, 3rem);
+  margin-right: clamp(0.35rem, 2%, 1rem);
   background: rgb(255 255 255 / 88%);
 }
 
-.agent-card__conversation-message pre {
+.agent-card__conversation-message pre,
+.agent-card__conversation-response,
+.agent-card__conversation-response-list,
+.agent-card__conversation-response-notes {
   margin: 0.52rem 0 0;
   color: #29486f;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.74rem;
   line-height: 1.6;
+}
+
+.agent-card__conversation-message pre,
+.agent-card__conversation-response,
+.agent-card__conversation-response-list li,
+.agent-card__conversation-response-notes {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.agent-card__conversation-response-list {
+  display: grid;
+  width: 100%;
+  padding: 0;
+  gap: 0.5rem;
+  list-style: none;
+}
+
+.agent-card__conversation-response-button {
+  display: block;
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.72rem 0.85rem;
+  border: 1px solid rgb(37 99 235 / 22%);
+  border-radius: 8px;
+  background: rgb(241 247 255 / 92%);
+  color: #29486f;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1.5;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
+}
+
+.agent-card__conversation-response-button:hover {
+  border-color: rgb(37 99 235 / 48%);
+  background: rgb(230 240 255 / 98%);
+  box-shadow: 0 5px 14px rgb(37 99 235 / 10%);
+  transform: translateY(-1px);
+}
+
+.agent-card__conversation-response-button:focus-visible {
+  outline: 3px solid rgb(37 99 235 / 22%);
+  outline-offset: 2px;
+}
+
+.agent-card__conversation-response-button--selected {
+  border-color: #2563eb;
+  background: #2563eb;
+  box-shadow: 0 7px 18px rgb(37 99 235 / 22%);
+  color: #fff;
+}
+
+.agent-card__conversation-response-button--selected:hover {
+  border-color: #1d4ed8;
+  background: #1d4ed8;
+}
+
+.agent-card__conversation-response-notes {
+  padding-top: 0.5rem;
+  border-top: 1px solid rgb(46 105 196 / 10%);
+  color: #607a9e;
+  font-size: 0.68rem;
 }
 
 .agent-card__additional-instructions {

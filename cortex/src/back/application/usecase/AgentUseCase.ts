@@ -87,7 +87,7 @@ const agentProjectConfigurations: AgentProjectConfiguration[] = [
 const AGENT_RESPONSE_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["status", "items", "notes"],
+  required: ["status", "items", "isMultiSelectionAllowed", "notes"],
   properties: {
     status: {
       type: "string",
@@ -106,6 +106,11 @@ const AGENT_RESPONSE_SCHEMA = {
         }
       }
     },
+    isMultiSelectionAllowed: {
+      type: ["boolean", "null"],
+      description:
+        "Whether the user may select multiple items. Use null when the selection cardinality cannot be determined with confidence or does not apply."
+    },
     notes: {
       type: ["string", "null"]
     }
@@ -123,6 +128,10 @@ Requirements:
 - Do not add undeclared properties.
 - Use "blocked" when required information or authorization is missing.
 - Use "error" when execution fails.
+- Set "isMultiSelectionAllowed" to true only when you are certain that the user may select multiple items.
+- Set "isMultiSelectionAllowed" to false only when you are certain that the user may select only one item.
+- Otherwise, set "isMultiSelectionAllowed" to null, including when the selection cardinality is uncertain or does not apply.
+- A null "isMultiSelectionAllowed" value does not imply a blocked or failed response and places no restriction on "status" or "items".
 - Set "notes" to null when there is nothing additional to report.
 
 JSON Schema:

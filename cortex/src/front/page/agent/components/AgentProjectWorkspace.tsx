@@ -24,6 +24,143 @@ function getErrorMessage(error: unknown): string {
     : "Une erreur inattendue est survenue.";
 }
 
+type AgentResponseStatus = "success" | "partial" | "blocked" | "error";
+
+interface AgentResponsePayload {
+  status: AgentResponseStatus;
+  items: Array<{ content: string }>;
+  isMultiSelectionAllowed: boolean | null;
+  notes: string | null;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAgentResponseStatus(value: unknown): value is AgentResponseStatus {
+  return value === "success" ||
+    value === "partial" ||
+    value === "blocked" ||
+    value === "error";
+}
+
+function parseAgentResponse(content: string): AgentResponsePayload | null {
+  try {
+    const parsedContent: unknown = JSON.parse(content);
+
+    if (
+      !isRecord(parsedContent) ||
+      !isAgentResponseStatus(parsedContent.status) ||
+      !Array.isArray(parsedContent.items) ||
+      !parsedContent.items.every(
+        (item) => isRecord(item) && typeof item.content === "string"
+      ) ||
+      !(
+        typeof parsedContent.isMultiSelectionAllowed === "boolean" ||
+        parsedContent.isMultiSelectionAllowed === null
+      ) ||
+      !(
+        typeof parsedContent.notes === "string" ||
+        parsedContent.notes === null
+      )
+    ) {
+      return null;
+    }
+
+    return {
+      status: parsedContent.status,
+      items: parsedContent.items as Array<{ content: string }>,
+      isMultiSelectionAllowed: parsedContent.isMultiSelectionAllowed,
+      notes: parsedContent.notes
+    };
+  } catch {
+    return null;
+  }
+}
+
+function ConversationMessageContent({
+  message
+}: {
+  message: AgentConversationMessage;
+}) {
+  const [selectedItemIndexes, setSelectedItemIndexes] = useState<number[]>([]);
+
+  useEffect(() => {
+    setSelectedItemIndexes([]);
+  }, [message.content]);
+
+  if (message.role === "user") {
+    return <pre>{message.content}</pre>;
+  }
+
+  const response = parseAgentResponse(message.content);
+
+  if (!response) {
+    return <pre>{message.content}</pre>;
+  }
+
+  const allowsMultipleSelection = response.isMultiSelectionAllowed === true;
+
+  function handleItemSelection(itemIndex: number): void {
+    setSelectedItemIndexes((currentIndexes) => {
+      const isAlreadySelected = currentIndexes.includes(itemIndex);
+
+      if (allowsMultipleSelection) {
+        return isAlreadySelected
+          ? currentIndexes.filter((index) => index !== itemIndex)
+          : [...currentIndexes, itemIndex];
+      }
+
+      return isAlreadySelected ? [] : [itemIndex];
+    });
+  }
+
+  return (
+    <div className="agent-card__conversation-response-content">
+      {response.items.length === 1 ? (
+        <p className="agent-card__conversation-response">
+          {response.items[0].content}
+        </p>
+      ) : response.items.length > 1 ? (
+        <ul
+          className="agent-card__conversation-response-list"
+          aria-label="Réponses proposées"
+        >
+          {response.items.map((item, itemIndex) => {
+            const isSelected = selectedItemIndexes.includes(itemIndex);
+
+            return (
+              <li key={itemIndex}>
+                <button
+                  className={`agent-card__conversation-response-button${
+                    isSelected
+                      ? " agent-card__conversation-response-button--selected"
+                      : ""
+                  }`}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => handleItemSelection(itemIndex)}
+                >
+                  {item.content}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      ) : (
+        <p className="agent-card__conversation-response">
+          Aucune réponse proposée.
+        </p>
+      )}
+      {response.notes && (
+        <p className="agent-card__conversation-response-notes">
+          {response.notes}
+        </p>
+      )}
+    </div>
+  );
+}
+
 interface AgentCardProps {
   agent: AgentDefinition;
   index: number;
@@ -139,7 +276,7 @@ function AgentCard({ agent, index, projectId }: AgentCardProps) {
                 key={messageIndex}
               >
                 <span>{message.role === "user" ? "Vous" : "Agent"}</span>
-                <pre>{message.content}</pre>
+                <ConversationMessageContent message={message} />
               </article>
             ))}
           </div>
