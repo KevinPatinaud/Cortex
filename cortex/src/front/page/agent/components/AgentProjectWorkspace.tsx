@@ -168,46 +168,69 @@ function getPrerequisiteMessage(
   upstreamAgents: AgentDefinition[],
   states: AgentResultStates
 ): string | null {
-  const agentsWithoutResponse = upstreamAgents.filter(
-    (agent) => !states[agent.id]?.response
-  );
-
-  if (agentsWithoutResponse.length > 0) {
-    return `Exécutez d'abord ${agentsWithoutResponse
-      .map((agent) => `« ${agent.name} »`)
-      .join(", ")}.`;
+  if (
+    upstreamAgents.length === 0 ||
+    upstreamAgents.some((agent) => getUpstreamAgentResult(agent, states))
+  ) {
+    return null;
   }
 
-  const agentWithoutItems = upstreamAgents.find(
+  const agentAwaitingSelection = upstreamAgents.find((agent) => {
+    const state = states[agent.id];
+    return Boolean(state?.response && state.response.items.length > 1);
+  });
+
+  if (agentAwaitingSelection) {
+    const response = states[agentAwaitingSelection.id].response!;
+    return response.isMultiSelectionAllowed === true
+      ? `Sélectionnez un ou plusieurs résultats de « ${agentAwaitingSelection.name} ».`
+      : `Sélectionnez un résultat de « ${agentAwaitingSelection.name} ».`;
+  }
+
+  if (upstreamAgents.some(
     (agent) => states[agent.id]?.response?.items.length === 0
-  );
-
-  if (agentWithoutItems) {
-    return `« ${agentWithoutItems.name} » n'a produit aucun résultat transmissible.`;
+  )) {
+    return "Aucun agent précédent exécuté n'a produit de résultat transmissible.";
   }
 
-  for (const upstreamAgent of upstreamAgents) {
-    const state = states[upstreamAgent.id];
+  if (upstreamAgents.length === 1) {
+    return `Exécutez d'abord « ${upstreamAgents[0].name} ».`;
+  }
 
-    if (!state?.response || state.response.items.length <= 1) {
-      continue;
-    }
+  return `Exécutez au moins l'un des agents précédents : ${upstreamAgents
+    .map((agent) => `« ${agent.name} »`)
+    .join(" ou ")}.`;
+}
 
-    if (state.selectedItemIndexes.length === 0) {
-      return state.response.isMultiSelectionAllowed === true
-        ? `Sélectionnez un ou plusieurs résultats de « ${upstreamAgent.name} ».`
-        : `Sélectionnez un résultat de « ${upstreamAgent.name} ».`;
-    }
+function getUpstreamAgentResult(
+  agent: AgentDefinition,
+  states: AgentResultStates
+): UpstreamAgentResult | null {
+  const state = states[agent.id];
+  const response = state?.response;
 
-    if (
-      state.response.isMultiSelectionAllowed !== true &&
+  if (!response || response.items.length === 0) {
+    return null;
+  }
+
+  if (response.items.length === 1) {
+    return { agentId: agent.id, selectedItemIndexes: [] };
+  }
+
+  if (
+    state.selectedItemIndexes.length === 0 ||
+    (
+      response.isMultiSelectionAllowed !== true &&
       state.selectedItemIndexes.length !== 1
-    ) {
-      return `Sélectionnez un seul résultat de « ${upstreamAgent.name} ».`;
-    }
+    )
+  ) {
+    return null;
   }
 
-  return null;
+  return {
+    agentId: agent.id,
+    selectedItemIndexes: [...state.selectedItemIndexes]
+  };
 }
 
 function getWorkflowLevels(agents: AgentDefinition[]): AgentDefinition[][] {
@@ -823,12 +846,14 @@ export function AgentProjectWorkspace({
                       );
                       const upstreamAgentResults = prerequisiteMessage
                         ? undefined
-                        : upstreamAgents.map((upstreamAgent) => ({
-                          agentId: upstreamAgent.id,
-                          selectedItemIndexes: agentResultStates[
-                            upstreamAgent.id
-                          ]?.selectedItemIndexes ?? []
-                        }));
+                        : upstreamAgents
+                          .map((upstreamAgent) => getUpstreamAgentResult(
+                            upstreamAgent,
+                            agentResultStates
+                          ))
+                          .filter((result): result is UpstreamAgentResult =>
+                            result !== null
+                          );
 
                       return (
                         <li
@@ -841,8 +866,10 @@ export function AgentProjectWorkspace({
                             isInvalidated={
                               agentResultStates[agent.id]?.isInvalidated ?? false
                             }
-                            isFrozen={agent.nextAgentIds.some(
-                              (nextAgentId) => launchedAgentIds.has(nextAgentId)
+                            isFrozen={[
+                              ...getDescendantAgentIds(agent.id)
+                            ].some((descendantId) =>
+                              launchedAgentIds.has(descendantId)
                             )}
                             prerequisiteMessage={prerequisiteMessage}
                             projectId={content.projectId}

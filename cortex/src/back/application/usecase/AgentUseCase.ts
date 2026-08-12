@@ -768,9 +768,12 @@ ${JSON.stringify(context, null, 2)}`;
       return [];
     }
 
-    if (!Array.isArray(rawUpstreamAgentResults)) {
+    if (
+      !Array.isArray(rawUpstreamAgentResults) ||
+      rawUpstreamAgentResults.length === 0
+    ) {
       throw new ValidationError(
-        "Les résultats des agents prérequis sont nécessaires avant de poursuivre."
+        "Le résultat d'au moins un agent prérequis est nécessaire avant de poursuivre."
       );
     }
 
@@ -794,10 +797,6 @@ ${JSON.stringify(context, null, 2)}`;
     }
 
     if (
-      inputsByAgentId.size !== upstreamAgents.length ||
-      upstreamAgents.some((upstreamAgent) =>
-        !inputsByAgentId.has(upstreamAgent.id)
-      ) ||
       [...inputsByAgentId.keys()].some((upstreamAgentId) =>
         !upstreamAgents.some((upstreamAgent) =>
           upstreamAgent.id === upstreamAgentId
@@ -812,7 +811,11 @@ ${JSON.stringify(context, null, 2)}`;
     const upstreamItems: AgentUpstreamItem[] = [];
 
     for (const upstreamAgent of upstreamAgents) {
-      const input = inputsByAgentId.get(upstreamAgent.id)!;
+      const input = inputsByAgentId.get(upstreamAgent.id);
+
+      if (!input) {
+        continue;
+      }
 
       if (!Array.isArray(input.selectedItemIndexes)) {
         throw new ValidationError(

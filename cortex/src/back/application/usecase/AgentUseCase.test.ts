@@ -408,7 +408,7 @@ test("transmet uniquement les items sélectionnés sans les notes", async () => 
   assert.doesNotMatch(calls[2].prompt, /NE_PAS_TRANSMETTRE/);
 });
 
-test("exécute librement les branches puis combine leurs résultats", async () => {
+test("poursuit après l'exécution d'au moins une branche", async () => {
   const workflowAnswer = JSON.stringify({
     agents: [
       {
@@ -440,10 +440,6 @@ test("exécute librement les branches puis combine leurs résultats", async () =
       sessionId: "implementation-session"
     },
     {
-      answer: createAgentAnswer(["Revue"], null),
-      sessionId: "review-session"
-    },
-    {
       answer: createAgentAnswer(["Synthèse"], null),
       sessionId: "synthesis-session"
     }
@@ -461,6 +457,14 @@ test("exécute librement les branches puis combine leurs résultats", async () =
     reviewAgent.id
   ]);
 
+  await assert.rejects(
+    useCase.runAgent("project-id", {
+      agentId: synthesisAgent.id,
+      upstreamAgentResults: []
+    }),
+    /au moins un agent prérequis/
+  );
+
   await useCase.runAgent("project-id", { agentId: analysisAgent.id });
   const upstreamAgentResults = [{
     agentId: analysisAgent.id,
@@ -472,31 +476,16 @@ test("exécute librement les branches puis combine leurs résultats", async () =
     upstreamAgentResults
   });
   await useCase.runAgent("project-id", {
-    agentId: reviewAgent.id,
-    upstreamAgentResults
-  });
-  await assert.rejects(
-    useCase.runAgent("project-id", {
-      agentId: synthesisAgent.id,
-      upstreamAgentResults: [{
-        agentId: implementationAgent.id,
-        selectedItemIndexes: []
-      }]
-    }),
-    /agents prérequis/
-  );
-  await useCase.runAgent("project-id", {
     agentId: synthesisAgent.id,
-    upstreamAgentResults: [
-      { agentId: implementationAgent.id, selectedItemIndexes: [] },
-      { agentId: reviewAgent.id, selectedItemIndexes: [] }
-    ]
+    upstreamAgentResults: [{
+      agentId: implementationAgent.id,
+      selectedItemIndexes: []
+    }]
   });
 
   assert.match(calls[2].prompt, /PLAN_PARTAGÉ/);
-  assert.match(calls[3].prompt, /PLAN_PARTAGÉ/);
-  assert.match(calls[4].prompt, /Implémentation/);
-  assert.match(calls[4].prompt, /Revue/);
+  assert.match(calls[3].prompt, /Implémentation/);
+  assert.doesNotMatch(calls[3].prompt, /Revue/);
 });
 
 test("conserve des exécutions indépendantes lors de la navigation entre projets", async () => {
