@@ -42,11 +42,13 @@ function MarkdownContent({ content }: { content: string }) {
 function ConversationMessageContent({
   message,
   selectedItemIndexes = [],
-  onSelectedItemIndexesChange
+  onSelectedItemIndexesChange,
+  disabled = false
 }: {
   message: AgentConversationMessage;
   selectedItemIndexes?: number[];
   onSelectedItemIndexesChange?: (indexes: number[]) => void;
+  disabled?: boolean;
 }) {
   if (message.role === "user") {
     return <pre>{message.content}</pre>;
@@ -61,7 +63,7 @@ function ConversationMessageContent({
   const allowsMultipleSelection = response.isMultiSelectionAllowed === true;
 
   function handleItemSelection(itemIndex: number): void {
-    if (!onSelectedItemIndexesChange) {
+    if (disabled || !onSelectedItemIndexesChange) {
       return;
     }
 
@@ -99,7 +101,7 @@ function ConversationMessageContent({
                   }`}
                   type="button"
                   aria-pressed={isSelected}
-                  disabled={!onSelectedItemIndexesChange}
+                  disabled={disabled || !onSelectedItemIndexesChange}
                   onClick={() => handleItemSelection(itemIndex)}
                 >
                   <MarkdownContent content={item.content} />
@@ -177,6 +179,7 @@ interface AgentCardProps {
   agent: AgentDefinition;
   previousAgentResult?: PreviousAgentResult;
   isInvalidated: boolean;
+  isFrozen: boolean;
   prerequisiteMessage: string | null;
   projectId: string;
   selectedItemIndexes: number[];
@@ -188,17 +191,20 @@ interface AgentCardProps {
     agentId: string,
     selectedItemIndexes: number[]
   ) => void;
+  onRunStart: (agentId: string) => void;
 }
 
 function AgentCard({
   agent,
   previousAgentResult,
   isInvalidated,
+  isFrozen,
   prerequisiteMessage,
   projectId,
   selectedItemIndexes,
   onResponseChange,
-  onSelectedItemIndexesChange
+  onSelectedItemIndexesChange,
+  onRunStart
 }: AgentCardProps) {
   const additionalInstructionsId = useId();
   const conversationRef = useRef<HTMLDivElement>(null);
@@ -210,6 +216,8 @@ function AgentCard({
   const [error, setError] = useState("");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
   const canRun = Boolean(agent.prompt.trim()) && !prerequisiteMessage;
+  const isUnavailable = !canRun;
+  const isDisabled = isUnavailable || isFrozen;
 
   useEffect(() => {
     setHasSession(agent.hasSession);
@@ -241,8 +249,13 @@ function AgentCard({
   }, [conversation]);
 
   async function handleRun(): Promise<void> {
+    if (isRunning || !canRun || isFrozen) {
+      return;
+    }
+
     const submittedInstructions = additionalInstructions.trim();
     setIsRunning(true);
+    onRunStart(agent.id);
     setError("");
 
     try {
@@ -273,7 +286,11 @@ function AgentCard({
   }
 
   return (
-    <article className="agent-card">
+    <article
+      className={`agent-card${isDisabled ? " agent-card--disabled" : ""}`}
+      aria-disabled={isDisabled || undefined}
+      inert={isDisabled || undefined}
+    >
       <header className="agent-card__header">
         <Bot aria-hidden="true" size={22} strokeWidth={1.7} />
         <div>
@@ -335,6 +352,7 @@ function AgentCard({
                 <span>{message.role === "user" ? "Vous" : "Agent"}</span>
                 <ConversationMessageContent
                   message={message}
+                  disabled={isDisabled}
                   selectedItemIndexes={messageIndex === lastAgentMessageIndex
                     ? selectedItemIndexes
                     : []
@@ -364,7 +382,7 @@ function AgentCard({
             : "Ajoutez une précision avant de lancer l'agent..."
           }
           rows={4}
-          disabled={isRunning}
+          disabled={isRunning || isDisabled}
         />
       </div>
       <div className="agent-card__actions">
@@ -372,11 +390,14 @@ function AgentCard({
           className="agent-card__run-button"
           type="button"
           onClick={() => void handleRun()}
-          disabled={isRunning || !canRun}
-          title={prerequisiteMessage || (canRun
-            ? `${hasSession ? "Relancer" : "Lancer"} ${agent.name}`
-            : "Cet agent ne contient aucune instruction."
-          )}
+          disabled={isRunning || !canRun || isFrozen}
+          title={isFrozen
+            ? "Cet agent est figé pendant l'exécution de l'agent suivant."
+            : prerequisiteMessage || (canRun
+              ? `${hasSession ? "Relancer" : "Lancer"} ${agent.name}`
+              : "Cet agent ne contient aucune instruction."
+            )
+          }
         >
           <RotateCcw
             aria-hidden="true"
@@ -405,6 +426,9 @@ export function AgentProjectWorkspace({
   const [agentResultStates, setAgentResultStates] = useState<AgentResultStates>(
     {}
   );
+  const [launchedAgentIds, setLaunchedAgentIds] = useState<Set<string>>(
+    () => new Set()
+  );
 
   useEffect(() => {
     setActiveTab("agents");
@@ -413,6 +437,7 @@ export function AgentProjectWorkspace({
   useEffect(() => {
     if (!content) {
       setAgentResultStates({});
+      setLaunchedAgentIds(new Set());
       return;
     }
 
@@ -427,6 +452,7 @@ export function AgentProjectWorkspace({
     }
 
     setAgentResultStates(restoredStates);
+    setLaunchedAgentIds(new Set());
   }, [content]);
 
   if (!project || !content) {
@@ -511,6 +537,14 @@ export function AgentProjectWorkspace({
           selectedItemIndexes
         }
       };
+    });
+  }
+
+  function handleRunStart(agentId: string): void {
+    setLaunchedAgentIds((currentAgentIds) => {
+      const nextAgentIds = new Set(currentAgentIds);
+      nextAgentIds.add(agentId);
+      return nextAgentIds;
     });
   }
 
@@ -600,6 +634,7 @@ export function AgentProjectWorkspace({
                         previousAgentState?.selectedItemIndexes ?? []
                     }
                   : undefined;
+                const nextAgent = orderedAgents[index + 1];
 
                 return (
                   <li
@@ -612,6 +647,9 @@ export function AgentProjectWorkspace({
                       isInvalidated={
                         agentResultStates[agent.id]?.isInvalidated ?? false
                       }
+                      isFrozen={Boolean(
+                        nextAgent && launchedAgentIds.has(nextAgent.id)
+                      )}
                       prerequisiteMessage={prerequisiteMessage}
                       projectId={content.projectId}
                       selectedItemIndexes={
@@ -621,6 +659,7 @@ export function AgentProjectWorkspace({
                       onSelectedItemIndexesChange={
                         handleSelectedItemIndexesChange
                       }
+                      onRunStart={handleRunStart}
                     />
                     {index < orderedAgents.length - 1 && (
                       <div

@@ -293,6 +293,20 @@ main {
   transform: translateY(-2px);
 }
 
+.agent-card--disabled {
+  background: #f5f6f8;
+  border-color: #d7dbe1;
+  box-shadow: none;
+  filter: grayscale(1);
+  opacity: 0.58;
+}
+
+.agent-card--disabled:hover {
+  border-color: #d7dbe1;
+  box-shadow: none;
+  transform: none;
+}
+
 .agent-card__header {
   display: flex;
   align-items: flex-start;
