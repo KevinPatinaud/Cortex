@@ -5,7 +5,7 @@ import type {
   AgentExecutionResult
 } from "../service/iaService/AgentProvider.ts";
 import type { AgentService } from "../service/iaService/AgentService.ts";
-import type { AgentOrderConfiguration } from "../service/projectService/ProjectService.ts";
+import type { AgentWorkflowConfiguration } from "../service/projectService/ProjectService.ts";
 import type { ProjectContentOutput } from "./ProjectUseCase.ts";
 import type { ProjectUseCase } from "./ProjectUseCase.ts";
 import { AgentUseCase } from "./AgentUseCase.ts";
@@ -41,6 +41,30 @@ name: Analysis
 description: Prépare le travail.
 ---
 Analyse les dépendances avant l'implémentation.`
+    },
+    {
+      type: "file" as const,
+      name: "review.md",
+      relativePath: ".claude/agents/review.md",
+      size: 128,
+      encoding: "utf8" as const,
+      content: `---
+name: Review
+description: Vérifie la solution.
+---
+Vérifie la solution proposée.`
+    },
+    {
+      type: "file" as const,
+      name: "synthesis.md",
+      relativePath: ".claude/agents/synthesis.md",
+      size: 128,
+      encoding: "utf8" as const,
+      content: `---
+name: Synthesis
+description: Combine les résultats.
+---
+Combine les résultats des branches.`
     }
   ].slice(0, agentCount);
 
@@ -83,7 +107,7 @@ function createUseCase(
   agentCount = 2
 ): { useCase: AgentUseCase; calls: ExecutionCall[] } {
   const calls: ExecutionCall[] = [];
-  const storedAgentOrders = new Map<string, AgentOrderConfiguration>();
+  const storedAgentWorkflows = new Map<string, AgentWorkflowConfiguration>();
   const agentService = {
     async execute(
       engine: string,
@@ -98,16 +122,16 @@ function createUseCase(
     async getProjectContent(): Promise<ProjectContentOutput> {
       return createProjectContent(agentCount);
     },
-    async getAgentOrder(
+    async getAgentWorkflowConfiguration(
       projectId: string
-    ): Promise<AgentOrderConfiguration | null> {
-      return storedAgentOrders.get(projectId) ?? null;
+    ): Promise<AgentWorkflowConfiguration | null> {
+      return storedAgentWorkflows.get(projectId) ?? null;
     },
-    async saveAgentOrder(
+    async saveAgentWorkflowConfiguration(
       projectId: string,
-      agentOrder: AgentOrderConfiguration
+      workflow: AgentWorkflowConfiguration
     ): Promise<void> {
-      storedAgentOrders.set(projectId, agentOrder);
+      storedAgentWorkflows.set(projectId, workflow);
     }
   } as unknown as ProjectUseCase;
 
@@ -118,10 +142,11 @@ function createUseCase(
 }
 
 function createSequentialUseCase(
-  results: AgentExecutionResult[]
+  results: AgentExecutionResult[],
+  agentCount = 2
 ): { useCase: AgentUseCase; calls: ExecutionCall[] } {
   const calls: ExecutionCall[] = [];
-  const storedAgentOrders = new Map<string, AgentOrderConfiguration>();
+  const storedAgentWorkflows = new Map<string, AgentWorkflowConfiguration>();
   let resultIndex = 0;
   const agentService = {
     async execute(
@@ -142,18 +167,18 @@ function createSequentialUseCase(
   } as unknown as AgentService;
   const projectUseCase = {
     async getProjectContent(): Promise<ProjectContentOutput> {
-      return createProjectContent();
+      return createProjectContent(agentCount);
     },
-    async getAgentOrder(
+    async getAgentWorkflowConfiguration(
       projectId: string
-    ): Promise<AgentOrderConfiguration | null> {
-      return storedAgentOrders.get(projectId) ?? null;
+    ): Promise<AgentWorkflowConfiguration | null> {
+      return storedAgentWorkflows.get(projectId) ?? null;
     },
-    async saveAgentOrder(
+    async saveAgentWorkflowConfiguration(
       projectId: string,
-      agentOrder: AgentOrderConfiguration
+      workflow: AgentWorkflowConfiguration
     ): Promise<void> {
-      storedAgentOrders.set(projectId, agentOrder);
+      storedAgentWorkflows.set(projectId, workflow);
     }
   } as unknown as ProjectUseCase;
 
@@ -163,11 +188,14 @@ function createSequentialUseCase(
   };
 }
 
-function createOrderingAnswer(): string {
+function createWorkflowAnswer(): string {
   return JSON.stringify({
     agents: [
-      { id: ".claude/agents/implementation.md", order: 1 },
-      { id: ".claude/agents/analysis.md", order: 2 }
+      {
+        id: ".claude/agents/implementation.md",
+        nextAgentIds: [".claude/agents/analysis.md"]
+      },
+      { id: ".claude/agents/analysis.md", nextAgentIds: [] }
     ]
   });
 }
@@ -185,23 +213,27 @@ function createAgentAnswer(
   });
 }
 
-test("classe les agents selon la réponse du moteur local", async () => {
+test("configure le graphe des agents selon la réponse du moteur local", async () => {
   const { useCase, calls } = createUseCase(JSON.stringify({
     agents: [
-      { id: ".claude/agents/analysis.md", order: 1 },
-      { id: ".claude/agents/implementation.md", order: 2 }
+      {
+        id: ".claude/agents/analysis.md",
+        nextAgentIds: [".claude/agents/implementation.md"]
+      },
+      { id: ".claude/agents/implementation.md", nextAgentIds: [] }
     ]
   }));
 
   const project = await useCase.loadProject("project-id");
 
   assert.deepEqual(
-    project.agents.map((agent) => ({ id: agent.id, order: agent.order })),
+    project.agents.map((agent) => agent.id),
     [
-      { id: ".claude/agents/analysis.md", order: 1 },
-      { id: ".claude/agents/implementation.md", order: 2 }
+      ".claude/agents/analysis.md",
+      ".claude/agents/implementation.md"
     ]
   );
+  assert.deepEqual(project.agents[0].nextAgentIds, [project.agents[1].id]);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].engine, "claude");
   assert.deepEqual(calls[0].options, {
@@ -213,11 +245,14 @@ test("classe les agents selon la réponse du moteur local", async () => {
   assert.match(calls[0].prompt, /Analyse les dépendances/);
 });
 
-test("réutilise le classement enregistré lorsque le hash est identique", async () => {
+test("réutilise le workflow enregistré lorsque le hash est identique", async () => {
   const { useCase, calls } = createUseCase(JSON.stringify({
     agents: [
-      { id: ".claude/agents/analysis.md", order: 1 },
-      { id: ".claude/agents/implementation.md", order: 2 }
+      {
+        id: ".claude/agents/analysis.md",
+        nextAgentIds: [".claude/agents/implementation.md"]
+      },
+      { id: ".claude/agents/implementation.md", nextAgentIds: [] }
     ]
   }));
 
@@ -226,14 +261,14 @@ test("réutilise le classement enregistré lorsque le hash est identique", async
 
   assert.equal(calls.length, 1);
   assert.deepEqual(
-    secondProject.agents.map((agent) => ({ id: agent.id, order: agent.order })),
-    firstProject.agents.map((agent) => ({ id: agent.id, order: agent.order }))
+    secondProject.agents.map((agent) => agent.id),
+    firstProject.agents.map((agent) => agent.id)
   );
 });
 
-test("recalcule le classement lorsque le hash du projet change", async () => {
+test("recalcule le workflow lorsque le hash du projet change", async () => {
   const calls: ExecutionCall[] = [];
-  const storedAgentOrders = new Map<string, AgentOrderConfiguration>();
+  const storedAgentWorkflows = new Map<string, AgentWorkflowConfiguration>();
   let projectContent = createProjectContent();
   const agentService = {
     async execute(
@@ -242,23 +277,23 @@ test("recalcule le classement lorsque le hash du projet change", async () => {
       options: AgentExecutionOptions
     ): Promise<AgentExecutionResult> {
       calls.push({ engine, prompt, options });
-      return { answer: createOrderingAnswer() };
+      return { answer: createWorkflowAnswer() };
     }
   } as unknown as AgentService;
   const projectUseCase = {
     async getProjectContent(): Promise<ProjectContentOutput> {
       return projectContent;
     },
-    async getAgentOrder(
+    async getAgentWorkflowConfiguration(
       projectId: string
-    ): Promise<AgentOrderConfiguration | null> {
-      return storedAgentOrders.get(projectId) ?? null;
+    ): Promise<AgentWorkflowConfiguration | null> {
+      return storedAgentWorkflows.get(projectId) ?? null;
     },
-    async saveAgentOrder(
+    async saveAgentWorkflowConfiguration(
       projectId: string,
-      agentOrder: AgentOrderConfiguration
+      workflow: AgentWorkflowConfiguration
     ): Promise<void> {
-      storedAgentOrders.set(projectId, agentOrder);
+      storedAgentWorkflows.set(projectId, workflow);
     }
   } as unknown as ProjectUseCase;
   const useCase = new AgentUseCase(agentService, projectUseCase);
@@ -276,33 +311,45 @@ test("recalcule le classement lorsque le hash du projet change", async () => {
   assert.equal(calls.length, 2);
 });
 
-test("conserve l'ordre des fichiers si le classement est invalide", async (t) => {
+test("conserve un workflow linéaire si le graphe est invalide", async (t) => {
   t.mock.method(console, "warn", () => undefined);
-  const { useCase } = createUseCase("réponse invalide");
+  const { useCase } = createUseCase(JSON.stringify({
+    agents: [
+      {
+        id: ".claude/agents/implementation.md",
+        nextAgentIds: [".claude/agents/analysis.md"]
+      },
+      {
+        id: ".claude/agents/analysis.md",
+        nextAgentIds: [".claude/agents/implementation.md"]
+      }
+    ]
+  }));
 
   const project = await useCase.loadProject("project-id");
 
   assert.deepEqual(
-    project.agents.map((agent) => ({ id: agent.id, order: agent.order })),
+    project.agents.map((agent) => agent.id),
     [
-      { id: ".claude/agents/implementation.md", order: 1 },
-      { id: ".claude/agents/analysis.md", order: 2 }
+      ".claude/agents/implementation.md",
+      ".claude/agents/analysis.md"
     ]
   );
+  assert.deepEqual(project.agents[0].nextAgentIds, [project.agents[1].id]);
 });
 
-test("attribue directement l'ordre 1 à un agent unique", async () => {
+test("configure directement un agent unique comme fin de workflow", async () => {
   const { useCase, calls } = createUseCase("", 1);
 
   const project = await useCase.loadProject("project-id");
 
-  assert.equal(project.agents[0].order, 1);
+  assert.deepEqual(project.agents[0].nextAgentIds, []);
   assert.equal(calls.length, 0);
 });
 
 test("transmet automatiquement l'unique item sans les notes", async () => {
   const { useCase, calls } = createSequentialUseCase([
-    { answer: createOrderingAnswer() },
+    { answer: createWorkflowAnswer() },
     {
       answer: createAgentAnswer(["Marseille"], null),
       sessionId: "first-session"
@@ -318,10 +365,10 @@ test("transmet automatiquement l'unique item sans les notes", async () => {
   await useCase.runAgent("project-id", { agentId: firstAgent.id });
   await useCase.runAgent("project-id", {
     agentId: secondAgent.id,
-    previousAgentResult: {
+    upstreamAgentResults: [{
       agentId: firstAgent.id,
       selectedItemIndexes: []
-    }
+    }]
   });
 
   assert.match(calls[2].prompt, /Marseille/);
@@ -330,7 +377,7 @@ test("transmet automatiquement l'unique item sans les notes", async () => {
 
 test("transmet uniquement les items sélectionnés sans les notes", async () => {
   const { useCase, calls } = createSequentialUseCase([
-    { answer: createOrderingAnswer() },
+    { answer: createWorkflowAnswer() },
     {
       answer: createAgentAnswer(
         ["CHOIX_ALPHA", "CHOIX_BETA", "CHOIX_GAMMA"],
@@ -349,16 +396,107 @@ test("transmet uniquement les items sélectionnés sans les notes", async () => 
   await useCase.runAgent("project-id", { agentId: firstAgent.id });
   await useCase.runAgent("project-id", {
     agentId: secondAgent.id,
-    previousAgentResult: {
+    upstreamAgentResults: [{
       agentId: firstAgent.id,
       selectedItemIndexes: [0, 2]
-    }
+    }]
   });
 
   assert.match(calls[2].prompt, /CHOIX_ALPHA/);
   assert.match(calls[2].prompt, /CHOIX_GAMMA/);
   assert.doesNotMatch(calls[2].prompt, /CHOIX_BETA/);
   assert.doesNotMatch(calls[2].prompt, /NE_PAS_TRANSMETTRE/);
+});
+
+test("exécute librement les branches puis combine leurs résultats", async () => {
+  const workflowAnswer = JSON.stringify({
+    agents: [
+      {
+        id: ".claude/agents/analysis.md",
+        nextAgentIds: [
+          ".claude/agents/implementation.md",
+          ".claude/agents/review.md"
+        ]
+      },
+      {
+        id: ".claude/agents/implementation.md",
+        nextAgentIds: [".claude/agents/synthesis.md"]
+      },
+      {
+        id: ".claude/agents/review.md",
+        nextAgentIds: [".claude/agents/synthesis.md"]
+      },
+      { id: ".claude/agents/synthesis.md", nextAgentIds: [] }
+    ]
+  });
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: workflowAnswer },
+    {
+      answer: createAgentAnswer(["PLAN_PARTAGÉ"], null),
+      sessionId: "analysis-session"
+    },
+    {
+      answer: createAgentAnswer(["Implémentation"], null),
+      sessionId: "implementation-session"
+    },
+    {
+      answer: createAgentAnswer(["Revue"], null),
+      sessionId: "review-session"
+    },
+    {
+      answer: createAgentAnswer(["Synthèse"], null),
+      sessionId: "synthesis-session"
+    }
+  ], 4);
+  const project = await useCase.loadProject("project-id");
+  const [
+    analysisAgent,
+    implementationAgent,
+    reviewAgent,
+    synthesisAgent
+  ] = project.agents;
+
+  assert.deepEqual(analysisAgent.nextAgentIds, [
+    implementationAgent.id,
+    reviewAgent.id
+  ]);
+
+  await useCase.runAgent("project-id", { agentId: analysisAgent.id });
+  const upstreamAgentResults = [{
+    agentId: analysisAgent.id,
+    selectedItemIndexes: []
+  }];
+
+  await useCase.runAgent("project-id", {
+    agentId: implementationAgent.id,
+    upstreamAgentResults
+  });
+  await useCase.runAgent("project-id", {
+    agentId: reviewAgent.id,
+    upstreamAgentResults
+  });
+  await assert.rejects(
+    useCase.runAgent("project-id", {
+      agentId: synthesisAgent.id,
+      upstreamAgentResults: [{
+        agentId: implementationAgent.id,
+        selectedItemIndexes: []
+      }]
+    }),
+    /agents prérequis/
+  );
+  await useCase.runAgent("project-id", {
+    agentId: synthesisAgent.id,
+    upstreamAgentResults: [
+      { agentId: implementationAgent.id, selectedItemIndexes: [] },
+      { agentId: reviewAgent.id, selectedItemIndexes: [] }
+    ]
+  });
+
+  assert.match(calls[2].prompt, /PLAN_PARTAGÉ/);
+  assert.match(calls[3].prompt, /PLAN_PARTAGÉ/);
+  assert.match(calls[4].prompt, /Implémentation/);
+  assert.match(calls[4].prompt, /Revue/);
 });
 
 test("conserve des exécutions indépendantes lors de la navigation entre projets", async () => {
@@ -382,10 +520,10 @@ test("conserve des exécutions indépendantes lors de la navigation entre projet
       content.directoryPath = `C:\\projects\\${projectId}`;
       return content;
     },
-    async getAgentOrder(): Promise<null> {
+    async getAgentWorkflowConfiguration(): Promise<null> {
       return null;
     },
-    async saveAgentOrder(): Promise<void> {}
+    async saveAgentWorkflowConfiguration(): Promise<void> {}
   } as unknown as ProjectUseCase;
   const useCase = new AgentUseCase(agentService, projectUseCase);
   const projectA = await useCase.loadProject("project-a");
@@ -441,10 +579,10 @@ test("expose l'échec d'un agent après une erreur du moteur", async () => {
     async getProjectContent(): Promise<ProjectContentOutput> {
       return createProjectContent(1);
     },
-    async getAgentOrder(): Promise<null> {
+    async getAgentWorkflowConfiguration(): Promise<null> {
       return null;
     },
-    async saveAgentOrder(): Promise<void> {}
+    async saveAgentWorkflowConfiguration(): Promise<void> {}
   } as unknown as ProjectUseCase;
   const useCase = new AgentUseCase(agentService, projectUseCase);
   const project = await useCase.loadProject("project-id");
@@ -475,10 +613,10 @@ test("refuse de réinitialiser un workflow pendant son exécution", async () => 
     async getProjectContent(): Promise<ProjectContentOutput> {
       return createProjectContent(1);
     },
-    async getAgentOrder(): Promise<null> {
+    async getAgentWorkflowConfiguration(): Promise<null> {
       return null;
     },
-    async saveAgentOrder(): Promise<void> {}
+    async saveAgentWorkflowConfiguration(): Promise<void> {}
   } as unknown as ProjectUseCase;
   const useCase = new AgentUseCase(agentService, projectUseCase);
   const project = await useCase.loadProject("project-id");

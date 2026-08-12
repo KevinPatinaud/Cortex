@@ -7,7 +7,7 @@ import { NotFoundError } from "../../error/NotFoundError.ts";
 interface ProjectConfiguration {
   projects?: unknown;
   directoryPath?: unknown;
-  agentOrders?: unknown;
+  agentWorkflows?: unknown;
 }
 
 interface StoredProject {
@@ -15,11 +15,11 @@ interface StoredProject {
   directoryPath: string;
 }
 
-export interface AgentOrderConfiguration {
+export interface AgentWorkflowConfiguration {
   hash: string;
   agents: Array<{
     id: string;
-    order: number;
+    nextAgentIds: string[];
   }>;
 }
 
@@ -143,36 +143,36 @@ export class ProjectService {
     };
   }
 
-  async getAgentOrder(
+  async getAgentWorkflowConfiguration(
     projectId: string
-  ): Promise<AgentOrderConfiguration | null> {
+  ): Promise<AgentWorkflowConfiguration | null> {
     const configuration = await this.readConfiguration();
+    const storedWorkflows = this.isRecord(configuration.agentWorkflows)
+      ? configuration.agentWorkflows
+      : null;
+    const workflow = storedWorkflows?.[projectId];
 
-    if (!this.isRecord(configuration.agentOrders)) {
-      return null;
+    if (this.isAgentWorkflowConfiguration(workflow)) {
+      return this.cloneAgentWorkflowConfiguration(workflow);
     }
 
-    const agentOrder = configuration.agentOrders[projectId];
-
-    return this.isAgentOrderConfiguration(agentOrder)
-      ? this.cloneAgentOrder(agentOrder)
-      : null;
+    return null;
   }
 
-  async saveAgentOrder(
+  async saveAgentWorkflowConfiguration(
     projectId: string,
-    agentOrder: AgentOrderConfiguration
+    workflow: AgentWorkflowConfiguration
   ): Promise<void> {
     const configuration = await this.readConfiguration();
-    const storedAgentOrders = this.isRecord(configuration.agentOrders)
-      ? configuration.agentOrders
+    const storedWorkflows = this.isRecord(configuration.agentWorkflows)
+      ? configuration.agentWorkflows
       : {};
 
     await this.writeConfiguration({
       ...configuration,
-      agentOrders: {
-        ...storedAgentOrders,
-        [projectId]: this.cloneAgentOrder(agentOrder)
+      agentWorkflows: {
+        ...storedWorkflows,
+        [projectId]: this.cloneAgentWorkflowConfiguration(workflow)
       }
     });
   }
@@ -412,12 +412,15 @@ export class ProjectService {
     );
   }
 
-  private cloneAgentOrder(
-    agentOrder: AgentOrderConfiguration
-  ): AgentOrderConfiguration {
+  private cloneAgentWorkflowConfiguration(
+    workflow: AgentWorkflowConfiguration
+  ): AgentWorkflowConfiguration {
     return {
-      hash: agentOrder.hash,
-      agents: agentOrder.agents.map((agent) => ({ ...agent }))
+      hash: workflow.hash,
+      agents: workflow.agents.map((agent) => ({
+        ...agent,
+        nextAgentIds: [...agent.nextAgentIds]
+      }))
     };
   }
 
@@ -452,17 +455,17 @@ export class ProjectService {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
-  private isAgentOrderConfiguration(
+  private isAgentWorkflowConfiguration(
     value: unknown
-  ): value is AgentOrderConfiguration {
+  ): value is AgentWorkflowConfiguration {
     return this.isRecord(value) &&
       typeof value.hash === "string" &&
       Array.isArray(value.agents) &&
       value.agents.every((agent) =>
         this.isRecord(agent) &&
         typeof agent.id === "string" &&
-        typeof agent.order === "number" &&
-        Number.isInteger(agent.order)
+        Array.isArray(agent.nextAgentIds) &&
+        agent.nextAgentIds.every((agentId) => typeof agentId === "string")
       );
   }
 

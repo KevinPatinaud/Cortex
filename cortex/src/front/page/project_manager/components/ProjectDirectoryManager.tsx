@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { FolderPlus } from "lucide-react";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
 import {
@@ -45,9 +45,6 @@ export function ProjectDirectoryManager({
   onProjectLoaded,
   onProjectCleared
 }: ProjectDirectoryManagerProps) {
-  const directoryDialog = useRef<HTMLDialogElement>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [directoryPath, setDirectoryPath] = useState("");
   const [projects, setProjects] = useState<Project[]>([]);
   const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
@@ -57,7 +54,6 @@ export function ProjectDirectoryManager({
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [confirmation, setConfirmation] = useState<ProjectConfirmation | null>(
     null
   );
@@ -104,12 +100,6 @@ export function ProjectDirectoryManager({
     };
   }, []);
 
-  useEffect(() => {
-    if (isModalOpen && !directoryDialog.current?.open) {
-      directoryDialog.current?.showModal();
-    }
-  }, [isModalOpen]);
-
   async function handleDirectorySelection(): Promise<void> {
     setIsSelecting(true);
     setError("");
@@ -119,31 +109,14 @@ export function ProjectDirectoryManager({
       const selectedDirectoryPath = await selectProjectDirectory();
 
       if (selectedDirectoryPath) {
-        setDirectoryPath(selectedDirectoryPath);
-        setIsModalOpen(true);
+        const result = await saveProjectDirectory(selectedDirectoryPath);
+        setProjects(result.projects);
+        setSaveMessage("Le répertoire du projet a été enregistré.");
       }
     } catch (requestError) {
       setError(getErrorMessage(requestError));
     } finally {
       setIsSelecting(false);
-    }
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    setIsSaving(true);
-    setError("");
-    setSaveMessage("");
-
-    try {
-      const result = await saveProjectDirectory(directoryPath);
-      setProjects(result.projects);
-      setSaveMessage("Le répertoire du projet a été enregistré.");
-      setIsModalOpen(false);
-    } catch (requestError) {
-      setError(getErrorMessage(requestError));
-    } finally {
-      setIsSaving(false);
     }
   }
 
@@ -230,11 +203,6 @@ export function ProjectDirectoryManager({
     }
   }
 
-  function closeModal(): void {
-    setError("");
-    setIsModalOpen(false);
-  }
-
   return (
     <>
       <aside className="project-sidebar" aria-label="Gestion des projets">
@@ -266,7 +234,7 @@ export function ProjectDirectoryManager({
         <footer className="project-sidebar__footer">
           <div className="project-sidebar__feedback" aria-live="polite">
             {saveMessage && <p className="success-message">{saveMessage}</p>}
-            {error && !isModalOpen && !confirmation && (
+            {error && !confirmation && (
               <p className="error" role="alert">{error}</p>
             )}
           </div>
@@ -282,40 +250,6 @@ export function ProjectDirectoryManager({
           <AgentEngineStatus />
         </footer>
       </aside>
-
-      {isModalOpen && (
-        <dialog
-          ref={directoryDialog}
-          aria-labelledby="directory-dialog-title"
-          onClose={closeModal}
-        >
-          <form onSubmit={handleSubmit}>
-            <h2 id="directory-dialog-title">Répertoire du projet</h2>
-            <p>Vérifiez le répertoire sélectionné avant de l'enregistrer.</p>
-            <label htmlFor="directory-path">Chemin du répertoire</label>
-            <input
-              id="directory-path"
-              type="text"
-              value={directoryPath}
-              readOnly
-              required
-            />
-            {error && <p className="error" role="alert">{error}</p>}
-            <div className="dialog-actions">
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={closeModal}
-              >
-                Annuler
-              </button>
-              <button type="submit" disabled={isSaving}>
-                {isSaving ? "Enregistrement..." : "Enregistrer"}
-              </button>
-            </div>
-          </form>
-        </dialog>
-      )}
 
       {confirmation?.action === "reset" && (
         <ConfirmationDialog

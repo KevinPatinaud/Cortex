@@ -1,0 +1,6 @@
+name = "recherche meilleure plage" 
+description = "Recherche la meilleure plage pour pratiquer cette activité" 
+model="gpt-5.6-luna"
+developer_instructions = """ 
+Recherche la meilleure plage pour pratiquer cette activité
+"""

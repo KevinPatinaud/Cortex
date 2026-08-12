@@ -182,14 +182,30 @@ main {
 .agent-project__workflow {
   display: grid;
   width: 100%;
-  max-width: 50rem;
+  max-width: 92rem;
   margin: 0 auto;
   padding: 0;
+  gap: 1rem;
+}
+
+.agent-project__workflow-level {
+  display: grid;
+  min-width: 0;
+}
+
+.agent-project__workflow-cards {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  grid-template-columns: repeat(auto-fit, minmax(min(26rem, 100%), 1fr));
+  gap: 1rem;
   list-style: none;
 }
 
 .agent-project__workflow-step {
+  display: flex;
   min-width: 0;
+  justify-content: center;
 }
 
 .agent-project__workflow-connector {

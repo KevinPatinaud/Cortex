@@ -1,4 +1,5 @@
 import express, { type Request, type Response } from "express";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AgentService } from "../../../application/service/iaService/AgentService.ts";
@@ -20,6 +21,7 @@ const directoryName = path.dirname(fileURLToPath(import.meta.url));
 const workspaceDirectory = path.resolve(directoryName, "../../../../..");
 const clientDirectory = path.join(workspaceDirectory, "dist");
 const configurationFile = path.join(workspaceDirectory, "config.json");
+const shouldOpenBrowser = process.argv.includes("--open");
 const agentToolRegistry = createDefaultAgentToolRegistry();
 const agentService = new AgentService([
   new CodexAgentProvider(workspaceDirectory),
@@ -50,5 +52,27 @@ app.get(/.*/, (_request: Request, response: Response) => {
 app.use(httpErrorMiddleware);
 
 app.listen(port, () => {
-  console.log(`Serveur disponible sur http://localhost:${port}`);
+  const applicationUrl = `http://localhost:${port}`;
+  console.log(`Serveur disponible sur ${applicationUrl}`);
+
+  if (shouldOpenBrowser) {
+    openDefaultBrowser(applicationUrl);
+  }
 });
+
+function openDefaultBrowser(url: string): void {
+  const browserProcess = process.platform === "win32"
+    ? spawn("cmd.exe", ["/c", "start", "", url], {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: true
+    })
+    : process.platform === "darwin"
+      ? spawn("open", [url], { detached: true, stdio: "ignore" })
+      : spawn("xdg-open", [url], { detached: true, stdio: "ignore" });
+
+  browserProcess.once("error", (error) => {
+    console.warn("Impossible d'ouvrir automatiquement le navigateur.", error);
+  });
+  browserProcess.unref();
+}

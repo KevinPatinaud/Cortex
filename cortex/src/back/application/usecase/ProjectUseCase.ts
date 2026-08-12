@@ -1,6 +1,6 @@
 import type { DirectoryPickerService } from "../service/projectService/DirectoryPickerService.ts";
 import type {
-  AgentOrderConfiguration,
+  AgentWorkflowConfiguration,
   Project,
   ProjectContent,
   ProjectService
@@ -37,15 +37,20 @@ export class ProjectUseCase {
     return this.projectService.getProjectContent(projectId);
   }
 
-  getAgentOrder(projectId: string): Promise<AgentOrderConfiguration | null> {
-    return this.projectService.getAgentOrder(projectId);
+  getAgentWorkflowConfiguration(
+    projectId: string
+  ): Promise<AgentWorkflowConfiguration | null> {
+    return this.projectService.getAgentWorkflowConfiguration(projectId);
   }
 
-  saveAgentOrder(
+  saveAgentWorkflowConfiguration(
     projectId: string,
-    agentOrder: AgentOrderConfiguration
+    workflow: AgentWorkflowConfiguration
   ): Promise<void> {
-    return this.projectService.saveAgentOrder(projectId, agentOrder);
+    return this.projectService.saveAgentWorkflowConfiguration(
+      projectId,
+      workflow
+    );
   }
 
   async deleteProject(directoryPath: unknown): Promise<Project[]> {

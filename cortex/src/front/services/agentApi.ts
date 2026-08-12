@@ -10,7 +10,7 @@ export interface AgentDefinition {
   id: string;
   name: string;
   description: string;
-  order: number;
+  nextAgentIds: string[];
   hasSession: boolean;
   executionStatus: "idle" | "running" | "failed";
   executionError?: string;
@@ -47,7 +47,7 @@ export interface AgentRunResult {
   conversation: AgentConversationMessage[];
 }
 
-export interface PreviousAgentResult {
+export interface UpstreamAgentResult {
   agentId: string;
   selectedItemIndexes: number[];
 }
@@ -96,7 +96,7 @@ export async function runAgent(
   projectId: string,
   agentId: string,
   additionalInstructions: string,
-  previousAgentResult?: PreviousAgentResult
+  upstreamAgentResults?: UpstreamAgentResult[]
 ): Promise<AgentRunResult> {
   const response = await fetch(
     `/api/agents/projects/${encodeURIComponent(projectId)}/agents/run`,
@@ -110,7 +110,9 @@ export async function runAgent(
         ...(additionalInstructions.trim()
           ? { additionalInstructions: additionalInstructions.trim() }
           : {}),
-        ...(previousAgentResult ? { previousAgentResult } : {})
+        ...(upstreamAgentResults && upstreamAgentResults.length > 0
+          ? { upstreamAgentResults }
+          : {})
       })
     }
   );

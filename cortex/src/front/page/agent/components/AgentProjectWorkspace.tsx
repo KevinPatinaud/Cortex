@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowDown, Bot, ChevronDown, RotateCcw } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, GitBranch, RotateCcw } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -8,7 +8,7 @@ import {
   type AgentConversationMessage,
   type AgentDefinition,
   type AgentProject,
-  type PreviousAgentResult
+  type UpstreamAgentResult
 } from "../../../services/agentApi.ts";
 import type { Project } from "../../../services/projectApi.ts";
 import {
@@ -165,39 +165,87 @@ function findLastAgentResponse(
 }
 
 function getPrerequisiteMessage(
-  state: AgentResultState | undefined
+  upstreamAgents: AgentDefinition[],
+  states: AgentResultStates
 ): string | null {
-  if (!state?.response) {
-    return "Exécutez d'abord l'agent précédent.";
+  const agentsWithoutResponse = upstreamAgents.filter(
+    (agent) => !states[agent.id]?.response
+  );
+
+  if (agentsWithoutResponse.length > 0) {
+    return `Exécutez d'abord ${agentsWithoutResponse
+      .map((agent) => `« ${agent.name} »`)
+      .join(", ")}.`;
   }
 
-  if (state.response.items.length === 0) {
-    return "L'agent précédent n'a produit aucun résultat transmissible.";
+  const agentWithoutItems = upstreamAgents.find(
+    (agent) => states[agent.id]?.response?.items.length === 0
+  );
+
+  if (agentWithoutItems) {
+    return `« ${agentWithoutItems.name} » n'a produit aucun résultat transmissible.`;
   }
 
-  if (state.response.items.length === 1) {
-    return null;
-  }
+  for (const upstreamAgent of upstreamAgents) {
+    const state = states[upstreamAgent.id];
 
-  if (state.selectedItemIndexes.length === 0) {
-    return state.response.isMultiSelectionAllowed === true
-      ? "Sélectionnez un ou plusieurs résultats de l'agent précédent."
-      : "Sélectionnez un résultat de l'agent précédent.";
-  }
+    if (!state?.response || state.response.items.length <= 1) {
+      continue;
+    }
 
-  if (
-    state.response.isMultiSelectionAllowed !== true &&
-    state.selectedItemIndexes.length !== 1
-  ) {
-    return "Sélectionnez un seul résultat de l'agent précédent.";
+    if (state.selectedItemIndexes.length === 0) {
+      return state.response.isMultiSelectionAllowed === true
+        ? `Sélectionnez un ou plusieurs résultats de « ${upstreamAgent.name} ».`
+        : `Sélectionnez un résultat de « ${upstreamAgent.name} ».`;
+    }
+
+    if (
+      state.response.isMultiSelectionAllowed !== true &&
+      state.selectedItemIndexes.length !== 1
+    ) {
+      return `Sélectionnez un seul résultat de « ${upstreamAgent.name} ».`;
+    }
   }
 
   return null;
 }
 
+function getWorkflowLevels(agents: AgentDefinition[]): AgentDefinition[][] {
+  const workflowAgents = [...agents];
+  const agentsById = new Map(workflowAgents.map((agent) => [agent.id, agent]));
+  const levelsByAgentId = new Map(
+    workflowAgents.map((agent) => [agent.id, 0])
+  );
+
+  for (const agent of workflowAgents) {
+    const sourceLevel = levelsByAgentId.get(agent.id) ?? 0;
+
+    for (const nextAgentId of agent.nextAgentIds) {
+      if (!agentsById.has(nextAgentId)) {
+        continue;
+      }
+
+      levelsByAgentId.set(
+        nextAgentId,
+        Math.max(levelsByAgentId.get(nextAgentId) ?? 0, sourceLevel + 1)
+      );
+    }
+  }
+
+  const levels: AgentDefinition[][] = [];
+
+  for (const agent of workflowAgents) {
+    const level = levelsByAgentId.get(agent.id) ?? 0;
+    levels[level] ??= [];
+    levels[level].push(agent);
+  }
+
+  return levels;
+}
+
 interface AgentCardProps {
   agent: AgentDefinition;
-  previousAgentResult?: PreviousAgentResult;
+  upstreamAgentResults?: UpstreamAgentResult[];
   isInvalidated: boolean;
   isFrozen: boolean;
   prerequisiteMessage: string | null;
@@ -217,7 +265,7 @@ interface AgentCardProps {
 
 function AgentCard({
   agent,
-  previousAgentResult,
+  upstreamAgentResults,
   isInvalidated,
   isFrozen,
   prerequisiteMessage,
@@ -289,7 +337,7 @@ function AgentCard({
         projectId,
         agent.id,
         submittedInstructions,
-        previousAgentResult
+        upstreamAgentResults
       );
       setConversation(result.conversation);
       setHasSession(result.hasSession);
@@ -321,7 +369,6 @@ function AgentCard({
       <header className="agent-card__header">
         <Bot aria-hidden="true" size={22} strokeWidth={1.7} />
         <div>
-          <span>Agent {agent.order}</span>
           <h2>{agent.name}</h2>
         </div>
         {agent.model && (
@@ -419,7 +466,7 @@ function AgentCard({
           onClick={() => void handleRun()}
           disabled={isRunning || !canRun || isFrozen}
           title={isFrozen
-            ? "Cet agent est figé pendant l'exécution de l'agent suivant."
+            ? "Cet agent est figé car un agent en aval a déjà été lancé."
             : prerequisiteMessage || (canRun
               ? `${hasSession ? "Relancer" : "Lancer"} ${agent.name}`
               : "Cet agent ne contient aucune instruction."
@@ -458,6 +505,7 @@ export function AgentProjectWorkspace({
   const selectedItemIndexesByProject = useRef<
     Record<string, Record<string, number[]>>
   >({});
+  const runningAgentIdsByProject = useRef<Record<string, Set<string>>>({});
   const [launchedAgentIds, setLaunchedAgentIds] = useState<Set<string>>(
     () => new Set()
   );
@@ -491,6 +539,11 @@ export function AgentProjectWorkspace({
     }
 
     setAgentResultStates(restoredStates);
+    runningAgentIdsByProject.current[content.projectId] = new Set(
+      content.agents
+        .filter((agent) => agent.executionStatus === "running")
+        .map((agent) => agent.id)
+    );
     setLaunchedAgentIds(new Set(
       content.agents
         .filter((agent) =>
@@ -560,31 +613,42 @@ export function AgentProjectWorkspace({
   const instructionsPanelId = `${tabsId}-instructions-panel`;
   const agentsTabId = `${tabsId}-agents-tab`;
   const agentsPanelId = `${tabsId}-agents-panel`;
-  const orderedAgents = [...content.agents].sort(
-    (firstAgent, secondAgent) => firstAgent.order - secondAgent.order
-  );
+  const workflowAgents = [...content.agents];
+  const agentsById = new Map(workflowAgents.map((agent) => [agent.id, agent]));
+  const workflowLevels = getWorkflowLevels(workflowAgents);
 
-  function clearFollowingAgentResults(
+  function getDescendantAgentIds(sourceAgentId: string): Set<string> {
+    const descendantIds = new Set<string>();
+    const pendingIds = [
+      ...(agentsById.get(sourceAgentId)?.nextAgentIds ?? [])
+    ];
+
+    while (pendingIds.length > 0) {
+      const agentId = pendingIds.shift()!;
+
+      if (descendantIds.has(agentId)) {
+        continue;
+      }
+
+      descendantIds.add(agentId);
+      pendingIds.push(...(agentsById.get(agentId)?.nextAgentIds ?? []));
+    }
+
+    return descendantIds;
+  }
+
+  function clearDescendantAgentResults(
     states: AgentResultStates,
     sourceAgentId: string
   ): AgentResultStates {
-    const sourceAgent = orderedAgents.find(
-      (agent) => agent.id === sourceAgentId
-    );
     const nextStates = { ...states };
 
-    if (!sourceAgent) {
-      return nextStates;
-    }
-
-    for (const agent of orderedAgents) {
-      if (agent.order > sourceAgent.order) {
-        nextStates[agent.id] = {
-          response: null,
-          selectedItemIndexes: [],
-          isInvalidated: true
-        };
-      }
+    for (const descendantId of getDescendantAgentIds(sourceAgentId)) {
+      nextStates[descendantId] = {
+        response: null,
+        selectedItemIndexes: [],
+        isInvalidated: true
+      };
     }
 
     return nextStates;
@@ -594,24 +658,19 @@ export function AgentProjectWorkspace({
     agentId: string,
     response: AgentResponsePayload | null
   ): void {
-    const sourceAgent = orderedAgents.find((agent) => agent.id === agentId);
     const storedSelections = {
       ...(selectedItemIndexesByProject.current[projectId] ?? {})
     };
 
     storedSelections[agentId] = [];
 
-    if (sourceAgent) {
-      for (const agent of orderedAgents) {
-        if (agent.order > sourceAgent.order) {
-          storedSelections[agent.id] = [];
-        }
-      }
+    for (const descendantId of getDescendantAgentIds(agentId)) {
+      storedSelections[descendantId] = [];
     }
 
     selectedItemIndexesByProject.current[projectId] = storedSelections;
     setAgentResultStates((currentStates) => ({
-      ...clearFollowingAgentResults(currentStates, agentId),
+      ...clearDescendantAgentResults(currentStates, agentId),
       [agentId]: {
         response,
         selectedItemIndexes: [],
@@ -624,18 +683,13 @@ export function AgentProjectWorkspace({
     agentId: string,
     selectedItemIndexes: number[]
   ): void {
-    const sourceAgent = orderedAgents.find((agent) => agent.id === agentId);
     const storedSelections = {
       ...(selectedItemIndexesByProject.current[projectId] ?? {}),
       [agentId]: [...selectedItemIndexes]
     };
 
-    if (sourceAgent) {
-      for (const agent of orderedAgents) {
-        if (agent.order > sourceAgent.order) {
-          storedSelections[agent.id] = [];
-        }
-      }
+    for (const descendantId of getDescendantAgentIds(agentId)) {
+      storedSelections[descendantId] = [];
     }
 
     selectedItemIndexesByProject.current[projectId] = storedSelections;
@@ -647,7 +701,7 @@ export function AgentProjectWorkspace({
       }
 
       return {
-        ...clearFollowingAgentResults(currentStates, agentId),
+        ...clearDescendantAgentResults(currentStates, agentId),
         [agentId]: {
           ...currentState,
           selectedItemIndexes
@@ -657,12 +711,29 @@ export function AgentProjectWorkspace({
   }
 
   function handleRunStart(agentId: string): void {
+    const runningAgentIds = runningAgentIdsByProject.current[projectId] ??
+      new Set<string>();
+    runningAgentIds.add(agentId);
+    runningAgentIdsByProject.current[projectId] = runningAgentIds;
     setLaunchedAgentIds((currentAgentIds) => {
       const nextAgentIds = new Set(currentAgentIds);
       nextAgentIds.add(agentId);
       return nextAgentIds;
     });
     onRunStateChange(projectId, "running");
+  }
+
+  function handleRunEnd(agentId: string, succeeded: boolean): void {
+    const runningAgentIds = runningAgentIdsByProject.current[projectId] ??
+      new Set<string>();
+    runningAgentIds.delete(agentId);
+    runningAgentIdsByProject.current[projectId] = runningAgentIds;
+    onRunStateChange(
+      projectId,
+      runningAgentIds.size > 0
+        ? "running"
+        : succeeded ? "completed" : "idle"
+    );
   }
 
   return (
@@ -734,69 +805,78 @@ export function AgentProjectWorkspace({
               Aucun agent n'est configuré dans ce projet.
             </p>
           ) : (
-            <ol className="agent-project__workflow">
-              {orderedAgents.map((agent, index) => {
-                const previousAgent = orderedAgents[index - 1];
-                const previousAgentState = previousAgent
-                  ? agentResultStates[previousAgent.id]
-                  : undefined;
-                const hasAgentBeenLaunched = launchedAgentIds.has(agent.id) ||
-                  agent.hasSession || agent.executionStatus === "running";
-                const prerequisiteMessage = previousAgent &&
-                    !hasAgentBeenLaunched
-                  ? getPrerequisiteMessage(previousAgentState)
-                  : null;
-                const previousAgentResult = previousAgent &&
-                    !prerequisiteMessage
-                  ? {
-                      agentId: previousAgent.id,
-                      selectedItemIndexes:
-                        previousAgentState?.selectedItemIndexes ?? []
-                    }
-                  : undefined;
-                const nextAgent = orderedAgents[index + 1];
+            <div className="agent-project__workflow">
+              {workflowLevels.map((levelAgents, levelIndex) => (
+                <section
+                  className="agent-project__workflow-level"
+                  aria-label={`Étape ${levelIndex + 1}`}
+                  key={levelIndex}
+                >
+                  <ol className="agent-project__workflow-cards">
+                    {levelAgents.map((agent) => {
+                      const upstreamAgents = workflowAgents.filter(
+                        (candidate) => candidate.nextAgentIds.includes(agent.id)
+                      );
+                      const prerequisiteMessage = getPrerequisiteMessage(
+                        upstreamAgents,
+                        agentResultStates
+                      );
+                      const upstreamAgentResults = prerequisiteMessage
+                        ? undefined
+                        : upstreamAgents.map((upstreamAgent) => ({
+                          agentId: upstreamAgent.id,
+                          selectedItemIndexes: agentResultStates[
+                            upstreamAgent.id
+                          ]?.selectedItemIndexes ?? []
+                        }));
 
-                return (
-                  <li
-                    className="agent-project__workflow-step"
-                    key={`${content.projectId}:${agent.id}`}
-                  >
-                    <AgentCard
-                      agent={agent}
-                      previousAgentResult={previousAgentResult}
-                      isInvalidated={
-                        agentResultStates[agent.id]?.isInvalidated ?? false
+                      return (
+                        <li
+                          className="agent-project__workflow-step"
+                          key={`${content.projectId}:${agent.id}`}
+                        >
+                          <AgentCard
+                            agent={agent}
+                            upstreamAgentResults={upstreamAgentResults}
+                            isInvalidated={
+                              agentResultStates[agent.id]?.isInvalidated ?? false
+                            }
+                            isFrozen={agent.nextAgentIds.some(
+                              (nextAgentId) => launchedAgentIds.has(nextAgentId)
+                            )}
+                            prerequisiteMessage={prerequisiteMessage}
+                            projectId={content.projectId}
+                            selectedItemIndexes={
+                              agentResultStates[agent.id]?.selectedItemIndexes ?? []
+                            }
+                            onResponseChange={handleResponseChange}
+                            onSelectedItemIndexesChange={
+                              handleSelectedItemIndexesChange
+                            }
+                            onRunStart={handleRunStart}
+                            onRunEnd={(succeeded) => handleRunEnd(
+                              agent.id,
+                              succeeded
+                            )}
+                          />
+                        </li>
+                      );
+                    })}
+                  </ol>
+                  {levelIndex < workflowLevels.length - 1 && (
+                    <div
+                      className="agent-project__workflow-connector"
+                      aria-hidden="true"
+                    >
+                      {levelAgents.some((agent) => agent.nextAgentIds.length > 1)
+                        ? <GitBranch size={19} strokeWidth={1.5} />
+                        : <ArrowDown size={18} strokeWidth={1.5} />
                       }
-                      isFrozen={Boolean(
-                        nextAgent && launchedAgentIds.has(nextAgent.id)
-                      )}
-                      prerequisiteMessage={prerequisiteMessage}
-                      projectId={content.projectId}
-                      selectedItemIndexes={
-                        agentResultStates[agent.id]?.selectedItemIndexes ?? []
-                      }
-                      onResponseChange={handleResponseChange}
-                      onSelectedItemIndexesChange={
-                        handleSelectedItemIndexesChange
-                      }
-                      onRunStart={handleRunStart}
-                      onRunEnd={(succeeded) => onRunStateChange(
-                        content.projectId,
-                        succeeded ? "completed" : "idle"
-                      )}
-                    />
-                    {index < orderedAgents.length - 1 && (
-                      <div
-                        className="agent-project__workflow-connector"
-                        aria-hidden="true"
-                      >
-                        <ArrowDown size={18} strokeWidth={1.5} />
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
+                    </div>
+                  )}
+                </section>
+              ))}
+            </div>
           )}
         </section>
       )}
