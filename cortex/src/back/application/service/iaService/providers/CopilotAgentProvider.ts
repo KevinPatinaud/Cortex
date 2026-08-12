@@ -1,5 +1,6 @@
 
 import {
+  approveAll,
   CopilotClient,
   type SessionConfig
 } from "@github/copilot-sdk";
@@ -8,6 +9,10 @@ import type {
   AgentExecutionResult,
   AgentProvider
 } from "../AgentProvider.ts";
+import {
+  AgentToolRegistry,
+  GITHUB_PULL_REQUESTS_CAPABILITY
+} from "../iaTools/AgentToolRegistry.ts";
 
 type CopilotSession = Awaited<ReturnType<CopilotClient["createSession"]>>;
 
@@ -15,8 +20,10 @@ export class CopilotAgentProvider implements AgentProvider {
   readonly engine = "copilot" as const;
   readonly label = "GitHub Copilot";
 
+  constructor(private readonly toolRegistry: AgentToolRegistry) {}
+
   async isAvailable(): Promise<boolean> {
-    const client = new CopilotClient();
+    const client = new CopilotClient({ useLoggedInUser: true });
 
     try {
       await this.withinTimeout(client.start(), 10_000);
@@ -33,12 +40,15 @@ export class CopilotAgentProvider implements AgentProvider {
     prompt: string,
     options: AgentExecutionOptions = {}
   ): Promise<AgentExecutionResult> {
-    const client = new CopilotClient();
+    const client = new CopilotClient({ useLoggedInUser: true });
     let session: CopilotSession | undefined;
 
     try {
       await this.withinTimeout(client.start(), 30_000);
-      const sessionConfiguration: SessionConfig = {};
+      const sessionConfiguration: SessionConfig = {
+        onPermissionRequest: approveAll,
+        tools: this.toolRegistry.resolve([GITHUB_PULL_REQUESTS_CAPABILITY])
+      };
 
       if (options.workingDirectory) {
         sessionConfiguration.workingDirectory = options.workingDirectory;
@@ -55,7 +65,7 @@ export class CopilotAgentProvider implements AgentProvider {
       session = options.sessionId
         ? await client.resumeSession(options.sessionId, sessionConfiguration)
         : await client.createSession(sessionConfiguration);
-      const result = await session.sendAndWait({ prompt }, 120_000);
+      const result = await session.sendAndWait({ prompt }, 300_000);
       const answer = result?.data.content;
 
       if (!answer) {

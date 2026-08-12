@@ -44,6 +44,7 @@ function toCopilotAgentDefinition(
     description: markdown.attributes.description?.trim() || "",
     order,
     hasSession: false,
+        executionStatus: "idle",
     conversation: [],
     ...(model ? { model } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),

@@ -2,6 +2,7 @@ import express, { type Request, type Response } from "express";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AgentService } from "../../../application/service/iaService/AgentService.ts";
+import { createDefaultAgentToolRegistry } from "../../../application/service/iaService/iaTools/AgentToolRegistry.ts";
 import { ClaudeAgentProvider } from "../../../application/service/iaService/providers/ClaudeAgentProvider.ts";
 import { CodexAgentProvider } from "../../../application/service/iaService/providers/CodexAgentProvider.ts";
 import { CopilotAgentProvider } from "../../../application/service/iaService/providers/CopilotAgentProvider.ts";
@@ -19,10 +20,11 @@ const directoryName = path.dirname(fileURLToPath(import.meta.url));
 const workspaceDirectory = path.resolve(directoryName, "../../../../..");
 const clientDirectory = path.join(workspaceDirectory, "dist");
 const configurationFile = path.join(workspaceDirectory, "config.json");
+const agentToolRegistry = createDefaultAgentToolRegistry();
 const agentService = new AgentService([
   new CodexAgentProvider(workspaceDirectory),
   new ClaudeAgentProvider(workspaceDirectory),
-  new CopilotAgentProvider()
+  new CopilotAgentProvider(agentToolRegistry)
 ]);
 const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(configurationFile);

@@ -7,11 +7,20 @@ import { NotFoundError } from "../../error/NotFoundError.ts";
 interface ProjectConfiguration {
   projects?: unknown;
   directoryPath?: unknown;
+  agentOrders?: unknown;
 }
 
 interface StoredProject {
   id?: unknown;
   directoryPath: string;
+}
+
+export interface AgentOrderConfiguration {
+  hash: string;
+  agents: Array<{
+    id: string;
+    order: number;
+  }>;
 }
 
 export interface Project {
@@ -134,6 +143,40 @@ export class ProjectService {
     };
   }
 
+  async getAgentOrder(
+    projectId: string
+  ): Promise<AgentOrderConfiguration | null> {
+    const configuration = await this.readConfiguration();
+
+    if (!this.isRecord(configuration.agentOrders)) {
+      return null;
+    }
+
+    const agentOrder = configuration.agentOrders[projectId];
+
+    return this.isAgentOrderConfiguration(agentOrder)
+      ? this.cloneAgentOrder(agentOrder)
+      : null;
+  }
+
+  async saveAgentOrder(
+    projectId: string,
+    agentOrder: AgentOrderConfiguration
+  ): Promise<void> {
+    const configuration = await this.readConfiguration();
+    const storedAgentOrders = this.isRecord(configuration.agentOrders)
+      ? configuration.agentOrders
+      : {};
+
+    await this.writeConfiguration({
+      ...configuration,
+      agentOrders: {
+        ...storedAgentOrders,
+        [projectId]: this.cloneAgentOrder(agentOrder)
+      }
+    });
+  }
+
   async deleteProject(directoryPath: string): Promise<DeleteProjectResult> {
     if (!directoryPath.trim()) {
       throw new TypeError("Le chemin du répertoire est obligatoire.");
@@ -158,13 +201,7 @@ export class ProjectService {
 
   private async loadProjects(): Promise<Project[]> {
     try {
-      const configuration: unknown = JSON.parse(
-        await readFile(this.configurationFile, "utf8")
-      );
-
-      if (!this.isProjectConfiguration(configuration)) {
-        return [];
-      }
+      const configuration = await this.readConfiguration();
 
       const usedIds = new Set<string>();
       let migrationRequired = false;
@@ -343,12 +380,45 @@ export class ProjectService {
   }
 
   private async persistProjects(projects: Project[]): Promise<void> {
-    await writeFile(
+    const configuration = await this.readConfiguration();
+
+    await this.writeConfiguration({ ...configuration, projects });
+    this.projectsCache = this.cloneProjects(projects);
+  }
+
+  private async readConfiguration(): Promise<ProjectConfiguration> {
+    try {
+      const configuration: unknown = JSON.parse(
+        await readFile(this.configurationFile, "utf8")
+      );
+
+      return this.isProjectConfiguration(configuration) ? configuration : {};
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return {};
+      }
+
+      throw error;
+    }
+  }
+
+  private writeConfiguration(
+    configuration: ProjectConfiguration
+  ): Promise<void> {
+    return writeFile(
       this.configurationFile,
-      JSON.stringify({ projects }, null, 2),
+      JSON.stringify(configuration, null, 2),
       "utf8"
     );
-    this.projectsCache = this.cloneProjects(projects);
+  }
+
+  private cloneAgentOrder(
+    agentOrder: AgentOrderConfiguration
+  ): AgentOrderConfiguration {
+    return {
+      hash: agentOrder.hash,
+      agents: agentOrder.agents.map((agent) => ({ ...agent }))
+    };
   }
 
   private createUniqueId(usedIds: Set<string>): string {
@@ -376,6 +446,24 @@ export class ProjectService {
 
   private isProjectConfiguration(value: unknown): value is ProjectConfiguration {
     return typeof value === "object" && value !== null;
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
+  }
+
+  private isAgentOrderConfiguration(
+    value: unknown
+  ): value is AgentOrderConfiguration {
+    return this.isRecord(value) &&
+      typeof value.hash === "string" &&
+      Array.isArray(value.agents) &&
+      value.agents.every((agent) =>
+        this.isRecord(agent) &&
+        typeof agent.id === "string" &&
+        typeof agent.order === "number" &&
+        Number.isInteger(agent.order)
+      );
   }
 
   private isStoredProject(value: unknown): value is StoredProject {

@@ -3,6 +3,7 @@ import { ArrowDown, Bot, ChevronDown, RotateCcw } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
+  loadAgentProject,
   runAgent,
   type AgentConversationMessage,
   type AgentDefinition,
@@ -18,6 +19,11 @@ import {
 interface AgentProjectWorkspaceProps {
   project: Project | null;
   content: AgentProject | null;
+  onContentRefresh: (content: AgentProject) => void;
+  onRunStateChange: (
+    projectId: string,
+    status: "idle" | "running" | "completed"
+  ) => void;
 }
 
 function getProjectName(directoryPath: string): string {
@@ -34,7 +40,21 @@ function getErrorMessage(error: unknown): string {
 function MarkdownContent({ content }: { content: string }) {
   return (
     <div className="agent-card__markdown">
-      <Markdown remarkPlugins={[remarkGfm]}>{content}</Markdown>
+      <Markdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ node: _node, ...properties }) => (
+            <a
+              {...properties}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(event) => event.stopPropagation()}
+            />
+          )
+        }}
+      >
+        {content}
+      </Markdown>
     </div>
   );
 }
@@ -101,7 +121,7 @@ function ConversationMessageContent({
                   }`}
                   type="button"
                   aria-pressed={isSelected}
-                  disabled={disabled || !onSelectedItemIndexesChange}
+                  aria-disabled={disabled || !onSelectedItemIndexesChange}
                   onClick={() => handleItemSelection(itemIndex)}
                 >
                   <MarkdownContent content={item.content} />
@@ -192,6 +212,7 @@ interface AgentCardProps {
     selectedItemIndexes: number[]
   ) => void;
   onRunStart: (agentId: string) => void;
+  onRunEnd: (succeeded: boolean) => void;
 }
 
 function AgentCard({
@@ -204,17 +225,19 @@ function AgentCard({
   selectedItemIndexes,
   onResponseChange,
   onSelectedItemIndexesChange,
-  onRunStart
+  onRunStart,
+  onRunEnd
 }: AgentCardProps) {
   const additionalInstructionsId = useId();
   const conversationRef = useRef<HTMLDivElement>(null);
-  const [isRunning, setIsRunning] = useState(false);
+  const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
   const [hasSession, setHasSession] = useState(agent.hasSession);
   const [conversation, setConversation] = useState<AgentConversationMessage[]>(
     agent.conversation
   );
-  const [error, setError] = useState("");
+  const [error, setError] = useState(agent.executionError ?? "");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
+  const isRunning = isAwaitingResponse || agent.executionStatus === "running";
   const canRun = Boolean(agent.prompt.trim()) && !prerequisiteMessage;
   const isUnavailable = !canRun;
   const isDisabled = isUnavailable || isFrozen;
@@ -222,9 +245,12 @@ function AgentCard({
   useEffect(() => {
     setHasSession(agent.hasSession);
     setConversation(agent.conversation);
+    setError(agent.executionError ?? "");
+  }, [agent.conversation, agent.executionError, agent.hasSession]);
+
+  useEffect(() => {
     setAdditionalInstructions("");
-    setError("");
-  }, [agent]);
+  }, [agent.id]);
 
   useEffect(() => {
     if (isInvalidated) {
@@ -254,7 +280,7 @@ function AgentCard({
     }
 
     const submittedInstructions = additionalInstructions.trim();
-    setIsRunning(true);
+    setIsAwaitingResponse(true);
     onRunStart(agent.id);
     setError("");
 
@@ -269,10 +295,12 @@ function AgentCard({
       setHasSession(result.hasSession);
       setAdditionalInstructions("");
       onResponseChange(agent.id, parseAgentResponse(result.answer));
+      onRunEnd(true);
     } catch (requestError) {
       setError(getErrorMessage(requestError));
+      onRunEnd(false);
     } finally {
-      setIsRunning(false);
+      setIsAwaitingResponse(false);
     }
   }
 
@@ -289,7 +317,6 @@ function AgentCard({
     <article
       className={`agent-card${isDisabled ? " agent-card--disabled" : ""}`}
       aria-disabled={isDisabled || undefined}
-      inert={isDisabled || undefined}
     >
       <header className="agent-card__header">
         <Bot aria-hidden="true" size={22} strokeWidth={1.7} />
@@ -417,7 +444,9 @@ function AgentCard({
 
 export function AgentProjectWorkspace({
   project,
-  content
+  content,
+  onContentRefresh,
+  onRunStateChange
 }: AgentProjectWorkspaceProps) {
   const tabsId = useId();
   const [activeTab, setActiveTab] = useState<"instructions" | "agents">(
@@ -426,6 +455,9 @@ export function AgentProjectWorkspace({
   const [agentResultStates, setAgentResultStates] = useState<AgentResultStates>(
     {}
   );
+  const selectedItemIndexesByProject = useRef<
+    Record<string, Record<string, number[]>>
+  >({});
   const [launchedAgentIds, setLaunchedAgentIds] = useState<Set<string>>(
     () => new Set()
   );
@@ -442,18 +474,70 @@ export function AgentProjectWorkspace({
     }
 
     const restoredStates: AgentResultStates = {};
+    const storedSelections = selectedItemIndexesByProject.current[
+      content.projectId
+    ] ?? {};
 
     for (const agent of content.agents) {
+      const response = findLastAgentResponse(agent.conversation);
+
       restoredStates[agent.id] = {
-        response: findLastAgentResponse(agent.conversation),
-        selectedItemIndexes: [],
+        response,
+        selectedItemIndexes: response
+          ? [...(storedSelections[agent.id] ?? [])]
+          : [],
         isInvalidated: false
       };
     }
 
     setAgentResultStates(restoredStates);
-    setLaunchedAgentIds(new Set());
+    setLaunchedAgentIds(new Set(
+      content.agents
+        .filter((agent) =>
+          agent.hasSession || agent.executionStatus === "running"
+        )
+        .map((agent) => agent.id)
+    ));
   }, [content]);
+
+  useEffect(() => {
+    if (!content?.agents.some(
+      (agent) => agent.executionStatus === "running"
+    )) {
+      return;
+    }
+
+    let isActive = true;
+    let isRefreshing = false;
+
+    const refreshProject = async (): Promise<void> => {
+      if (isRefreshing) {
+        return;
+      }
+
+      isRefreshing = true;
+
+      try {
+        const refreshedContent = await loadAgentProject(content.projectId);
+
+        if (isActive) {
+          onContentRefresh(refreshedContent);
+        }
+      } catch {
+        // La requête de lancement affiche déjà les erreurs d'exécution.
+      } finally {
+        isRefreshing = false;
+      }
+    };
+    const refreshTimer = window.setInterval(() => {
+      void refreshProject();
+    }, 1_000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(refreshTimer);
+    };
+  }, [content, onContentRefresh]);
 
   if (!project || !content) {
     return (
@@ -467,6 +551,7 @@ export function AgentProjectWorkspace({
     );
   }
 
+  const projectId = content.projectId;
   const projectName = getProjectName(project.directoryPath);
   const agentsTabLabel = `Workflow (${content.agents.length} agent${
     content.agents.length > 1 ? "s" : ""
@@ -509,6 +594,22 @@ export function AgentProjectWorkspace({
     agentId: string,
     response: AgentResponsePayload | null
   ): void {
+    const sourceAgent = orderedAgents.find((agent) => agent.id === agentId);
+    const storedSelections = {
+      ...(selectedItemIndexesByProject.current[projectId] ?? {})
+    };
+
+    storedSelections[agentId] = [];
+
+    if (sourceAgent) {
+      for (const agent of orderedAgents) {
+        if (agent.order > sourceAgent.order) {
+          storedSelections[agent.id] = [];
+        }
+      }
+    }
+
+    selectedItemIndexesByProject.current[projectId] = storedSelections;
     setAgentResultStates((currentStates) => ({
       ...clearFollowingAgentResults(currentStates, agentId),
       [agentId]: {
@@ -523,6 +624,21 @@ export function AgentProjectWorkspace({
     agentId: string,
     selectedItemIndexes: number[]
   ): void {
+    const sourceAgent = orderedAgents.find((agent) => agent.id === agentId);
+    const storedSelections = {
+      ...(selectedItemIndexesByProject.current[projectId] ?? {}),
+      [agentId]: [...selectedItemIndexes]
+    };
+
+    if (sourceAgent) {
+      for (const agent of orderedAgents) {
+        if (agent.order > sourceAgent.order) {
+          storedSelections[agent.id] = [];
+        }
+      }
+    }
+
+    selectedItemIndexesByProject.current[projectId] = storedSelections;
     setAgentResultStates((currentStates) => {
       const currentState = currentStates[agentId];
 
@@ -546,6 +662,7 @@ export function AgentProjectWorkspace({
       nextAgentIds.add(agentId);
       return nextAgentIds;
     });
+    onRunStateChange(projectId, "running");
   }
 
   return (
@@ -623,7 +740,10 @@ export function AgentProjectWorkspace({
                 const previousAgentState = previousAgent
                   ? agentResultStates[previousAgent.id]
                   : undefined;
-                const prerequisiteMessage = previousAgent
+                const hasAgentBeenLaunched = launchedAgentIds.has(agent.id) ||
+                  agent.hasSession || agent.executionStatus === "running";
+                const prerequisiteMessage = previousAgent &&
+                    !hasAgentBeenLaunched
                   ? getPrerequisiteMessage(previousAgentState)
                   : null;
                 const previousAgentResult = previousAgent &&
@@ -660,6 +780,10 @@ export function AgentProjectWorkspace({
                         handleSelectedItemIndexesChange
                       }
                       onRunStart={handleRunStart}
+                      onRunEnd={(succeeded) => onRunStateChange(
+                        content.projectId,
+                        succeeded ? "completed" : "idle"
+                      )}
                     />
                     {index < orderedAgents.length - 1 && (
                       <div

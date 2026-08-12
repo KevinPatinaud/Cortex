@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { AgentEngine } from "../service/iaService/AgentProvider.ts";
 import type {
   AgentService,
@@ -32,6 +33,8 @@ export interface AgentDefinition {
   description: string;
   order: number;
   hasSession: boolean;
+  executionStatus: AgentExecutionStatus;
+  executionError?: string;
   conversation: AgentConversationMessage[];
   model?: string;
   reasoningEffort?: string;
@@ -65,6 +68,18 @@ interface AgentWorkflowState {
   sessionId: string;
   conversation: AgentConversationMessage[];
   upstreamItems: string[];
+}
+
+export type AgentExecutionStatus = "idle" | "running" | "failed";
+
+interface AgentExecutionState {
+  status: AgentExecutionStatus;
+  error?: string;
+}
+
+interface LoadedAgentProject {
+  project: AgentProject;
+  directoryPath: string;
 }
 
 type ProjectDirectory = ProjectContentOutput["root"];
@@ -169,7 +184,8 @@ const AGENT_ORDER_RESPONSE_SCHEMA = {
 
 export class AgentUseCase {
   private actualLoadedProject: AgentProject | null = null;
-  private actualLoadedProjectDirectoryPath: string | null = null;
+  private readonly loadedProjects = new Map<string, LoadedAgentProject>();
+  private readonly agentExecutions = new Map<string, AgentExecutionState>();
   private readonly agentWorkflows = new Map<
     string,
     Map<string, AgentWorkflowState>
@@ -206,16 +222,15 @@ export class AgentUseCase {
       );
     }
 
-    if (
-      this.actualLoadedProject?.projectId !== normalizedProjectId ||
-      !this.actualLoadedProjectDirectoryPath
-    ) {
+    const loadedProject = this.loadedProjects.get(normalizedProjectId);
+
+    if (!loadedProject) {
       throw new ValidationError(
         "Le projet doit être chargé avant d'exécuter un agent."
       );
     }
 
-    const agent = this.actualLoadedProject.agents.find(
+    const agent = loadedProject.project.agents.find(
       (candidate) => candidate.id === agentId
     );
 
@@ -231,8 +246,13 @@ export class AgentUseCase {
       );
     }
 
+    if (this.getAgentExecution(normalizedProjectId, agentId).status === "running") {
+      throw new ValidationError("Cet agent est déjà en cours d'exécution.");
+    }
+
     const upstreamItems = this.resolveUpstreamItems(
       normalizedProjectId,
+      loadedProject.project,
       agent,
       input.previousAgentResult
     );
@@ -254,19 +274,33 @@ export class AgentUseCase {
       ? baseTaskPrompt
       : this.withUpstreamItems(baseTaskPrompt, upstreamItems);
     const executionPrompt = this.withAgentResponseFormat(taskPrompt);
-    const result = await this.agentService.execute(
-      this.actualLoadedProject.engine,
-      executionPrompt,
-      {
-        ...(agent.model ? { model: agent.model } : {}),
-        ...(agent.reasoningEffort
-          ? { reasoningEffort: agent.reasoningEffort }
-          : {}),
-        persistSession: true,
-        ...(sessionId ? { sessionId } : {}),
-        workingDirectory: this.actualLoadedProjectDirectoryPath
-      }
-    );
+    this.setAgentExecution(normalizedProjectId, agentId, { status: "running" });
+
+    let result;
+
+    try {
+      result = await this.agentService.execute(
+        loadedProject.project.engine,
+        executionPrompt,
+        {
+          ...(agent.model ? { model: agent.model } : {}),
+          ...(agent.reasoningEffort
+            ? { reasoningEffort: agent.reasoningEffort }
+            : {}),
+          persistSession: true,
+          ...(sessionId ? { sessionId } : {}),
+          workingDirectory: loadedProject.directoryPath
+        }
+      );
+    } catch (error) {
+      this.setAgentExecution(normalizedProjectId, agentId, {
+        status: "failed",
+        error: error instanceof Error
+          ? error.message
+          : "L'exécution de l'agent a échoué."
+      });
+      throw error;
+    }
     const effectiveSessionId = result.sessionId || sessionId;
 
     if (!effectiveSessionId) {
@@ -290,6 +324,7 @@ export class AgentUseCase {
     });
     agent.hasSession = true;
     agent.conversation = [...conversation];
+    this.setAgentExecution(normalizedProjectId, agentId, { status: "idle" });
 
     return {
       answer: result.answer,
@@ -305,7 +340,19 @@ export class AgentUseCase {
       throw new ValidationError("Le projet à réinitialiser est obligatoire.");
     }
 
+    const hasRunningAgent = [...this.agentExecutions.entries()].some(
+      ([key, execution]) => key.startsWith(`${normalizedProjectId}:`) &&
+        execution.status === "running"
+    );
+
+    if (hasRunningAgent) {
+      throw new ValidationError(
+        "Le workflow ne peut pas être réinitialisé pendant une exécution."
+      );
+    }
+
     this.agentWorkflows.delete(normalizedProjectId);
+    this.deleteProjectExecutions(normalizedProjectId);
 
     if (this.actualLoadedProject?.projectId === normalizedProjectId) {
       for (const agent of this.actualLoadedProject.agents) {
@@ -358,27 +405,35 @@ export class AgentUseCase {
 
     for (const agent of agents) {
       const workflow = this.getAgentWorkflow(projectContent.id, agent.id);
+      const execution = this.getAgentExecution(projectContent.id, agent.id);
       agent.hasSession = Boolean(workflow);
+      agent.executionStatus = execution.status;
+      agent.executionError = execution.error;
       agent.conversation = [...(workflow?.conversation ?? [])];
     }
 
     await this.orderAgents(
+      projectContent.id,
       configuration.engine,
       instructions,
       agents,
       projectContent.directoryPath
     );
 
-    this.actualLoadedProject = {
+    const project: AgentProject = {
       projectId: projectContent.id,
       engine: configuration.engine,
       agents,
       instructions
     };
 
-    this.actualLoadedProjectDirectoryPath = projectContent.directoryPath;
+    this.loadedProjects.set(projectContent.id, {
+      project,
+      directoryPath: projectContent.directoryPath
+    });
+    this.actualLoadedProject = project;
 
-    return this.actualLoadedProject;
+    return project;
   }
 
   private loadAgents(
@@ -396,6 +451,7 @@ export class AgentUseCase {
   }
 
   private async orderAgents(
+    projectId: string,
     engine: AgentEngine,
     instructions: ProjectInstructions,
     agents: AgentDefinition[],
@@ -403,6 +459,28 @@ export class AgentUseCase {
   ): Promise<void> {
     if (agents.length < 2) {
       return;
+    }
+
+    const hash = this.createAgentOrderHash(instructions, agents);
+
+    try {
+      const cachedAgentOrder = await this.projectUseCase.getAgentOrder(projectId);
+
+      if (cachedAgentOrder?.hash === hash) {
+        const cachedOrders = this.parseAgentOrders(
+          JSON.stringify({ agents: cachedAgentOrder.agents }),
+          agents
+        );
+
+        this.applyAgentOrders(agents, cachedOrders);
+        return;
+      }
+    } catch (error) {
+      console.warn(
+        "Impossible de lire le classement des agents en cache. " +
+        "Le moteur local va être interrogé.",
+        error
+      );
     }
 
     try {
@@ -416,13 +494,23 @@ export class AgentUseCase {
       );
       const orders = this.parseAgentOrders(result.answer, agents);
 
-      for (const agent of agents) {
-        agent.order = orders.get(agent.id)!;
-      }
+      this.applyAgentOrders(agents, orders);
 
-      agents.sort((firstAgent, secondAgent) =>
-        firstAgent.order - secondAgent.order
-      );
+      try {
+        await this.projectUseCase.saveAgentOrder(projectId, {
+          hash,
+          agents: agents.map((agent) => ({
+            id: agent.id,
+            order: agent.order
+          }))
+        });
+      } catch (error) {
+        console.warn(
+          "Le classement des agents a été déterminé mais n'a pas pu être " +
+          "enregistré dans la configuration locale.",
+          error
+        );
+      }
     } catch (error) {
       console.warn(
         "Impossible de déterminer l'ordre des agents avec le moteur local. " +
@@ -432,22 +520,33 @@ export class AgentUseCase {
     }
   }
 
+  private createAgentOrderHash(
+    instructions: ProjectInstructions,
+    agents: AgentDefinition[]
+  ): string {
+    return createHash("sha256")
+      .update(JSON.stringify(this.createAgentOrderContext(instructions, agents)))
+      .digest("hex");
+  }
+
+  private applyAgentOrders(
+    agents: AgentDefinition[],
+    orders: Map<string, number>
+  ): void {
+    for (const agent of agents) {
+      agent.order = orders.get(agent.id)!;
+    }
+
+    agents.sort((firstAgent, secondAgent) =>
+      firstAgent.order - secondAgent.order
+    );
+  }
+
   private createAgentOrderPrompt(
     instructions: ProjectInstructions,
     agents: AgentDefinition[]
   ): string {
-    const context = {
-      projectInstructions: {
-        fileName: instructions.fileName,
-        content: instructions.content
-      },
-      agents: agents.map((agent) => ({
-        id: agent.id,
-        name: agent.name,
-        description: agent.description,
-        prompt: agent.prompt
-      }))
-    };
+    const context = this.createAgentOrderContext(instructions, agents);
 
     return `Tu dois déterminer l'ordre d'exécution d'un workflow multi-agent.
 
@@ -460,6 +559,24 @@ ${JSON.stringify(AGENT_ORDER_RESPONSE_SCHEMA, null, 2)}
 
 Contexte à analyser :
 ${JSON.stringify(context, null, 2)}`;
+  }
+
+  private createAgentOrderContext(
+    instructions: ProjectInstructions,
+    agents: AgentDefinition[]
+  ): object {
+    return {
+      projectInstructions: {
+        fileName: instructions.fileName,
+        content: instructions.content
+      },
+      agents: agents.map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        description: agent.description,
+        prompt: agent.prompt
+      }))
+    };
   }
 
   private parseAgentOrders(
@@ -533,10 +650,11 @@ ${JSON.stringify(context, null, 2)}`;
 
   private resolveUpstreamItems(
     projectId: string,
+    project: AgentProject,
     agent: AgentDefinition,
     rawPreviousAgentResult: unknown
   ): string[] {
-    const previousAgent = this.actualLoadedProject?.agents.find(
+    const previousAgent = project.agents.find(
       (candidate) => candidate.order === agent.order - 1
     );
 
@@ -732,6 +850,47 @@ ${usageInstruction}`;
     }
 
     projectWorkflows.set(agentId, workflow);
+  }
+
+  private getAgentExecution(
+    projectId: string,
+    agentId: string
+  ): AgentExecutionState {
+    return this.agentExecutions.get(this.getAgentExecutionKey(projectId, agentId)) ?? {
+      status: "idle"
+    };
+  }
+
+  private setAgentExecution(
+    projectId: string,
+    agentId: string,
+    execution: AgentExecutionState
+  ): void {
+    this.agentExecutions.set(
+      this.getAgentExecutionKey(projectId, agentId),
+      execution
+    );
+
+    const loadedAgent = this.loadedProjects.get(projectId)?.project.agents.find(
+      (agent) => agent.id === agentId
+    );
+
+    if (loadedAgent) {
+      loadedAgent.executionStatus = execution.status;
+      loadedAgent.executionError = execution.error;
+    }
+  }
+
+  private deleteProjectExecutions(projectId: string): void {
+    for (const key of this.agentExecutions.keys()) {
+      if (key.startsWith(`${projectId}:`)) {
+        this.agentExecutions.delete(key);
+      }
+    }
+  }
+
+  private getAgentExecutionKey(projectId: string, agentId: string): string {
+    return `${projectId}:${agentId}`;
   }
 
   private withAdditionalInstructions(

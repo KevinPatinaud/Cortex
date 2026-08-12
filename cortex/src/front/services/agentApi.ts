@@ -12,6 +12,8 @@ export interface AgentDefinition {
   description: string;
   order: number;
   hasSession: boolean;
+  executionStatus: "idle" | "running" | "failed";
+  executionError?: string;
   conversation: AgentConversationMessage[];
   model?: string;
   reasoningEffort?: string;

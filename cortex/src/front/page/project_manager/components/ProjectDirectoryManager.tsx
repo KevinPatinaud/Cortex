@@ -15,12 +15,15 @@ import {
   selectProjectDirectory
 } from "../../../services/projectApi.ts";
 import { ConfirmationDialog } from "./ConfirmationDialog.tsx";
-import { ProjectList } from "./ProjectList.tsx";
+import {
+  ProjectList,
+  type ProjectActivityStatus
+} from "./ProjectList.tsx";
 
 interface ProjectDirectoryManagerProps {
+  projectActivity: Record<string, ProjectActivityStatus>;
   onProjectLoaded: (project: Project, content: AgentProject) => void;
   onProjectCleared: (projectId: string) => void;
-  onProjectWorkflowReset: (projectId: string) => void;
 }
 
 interface ProjectConfirmation {
@@ -38,9 +41,9 @@ function getProjectName(project: Project): string {
 }
 
 export function ProjectDirectoryManager({
+  projectActivity,
   onProjectLoaded,
-  onProjectCleared,
-  onProjectWorkflowReset
+  onProjectCleared
 }: ProjectDirectoryManagerProps) {
   const directoryDialog = useRef<HTMLDialogElement>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -175,8 +178,10 @@ export function ProjectDirectoryManager({
 
     try {
       await resetAgentProjectWorkflow(project.id);
-      onProjectWorkflowReset(project.id);
-      setSaveMessage("Le workflow a été réinitialisé.");
+      const content = await loadAgentProject(project.id);
+      setSelectedProjectId(project.id);
+      onProjectLoaded(project, content);
+      setSaveMessage("Les fichiers du projet ont été rechargés.");
       return true;
     } catch (requestError) {
       setError(getErrorMessage(requestError));
@@ -246,6 +251,7 @@ export function ProjectDirectoryManager({
         <div className="project-sidebar__content">
           <ProjectList
             projects={projects}
+            projectActivity={projectActivity}
             isLoading={isLoadingProjects}
             deletingProjectId={deletingProjectId}
             resettingProjectId={resettingProjectId}

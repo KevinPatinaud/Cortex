@@ -46,6 +46,7 @@ export function toCodexAgentDefinitions(
           "",
         order: index + 1,
         hasSession: false,
+           executionStatus: "idle",
         conversation: [],
         ...(model ? { model } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),

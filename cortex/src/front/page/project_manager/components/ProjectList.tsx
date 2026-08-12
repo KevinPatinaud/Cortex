@@ -1,8 +1,11 @@
-import { Folder, RotateCcw, Trash2 } from "lucide-react";
+import { Check, Folder, LoaderCircle, RotateCcw, Trash2 } from "lucide-react";
 import type { Project } from "../../../services/projectApi.ts";
+
+export type ProjectActivityStatus = "running" | "completed";
 
 interface ProjectListProps {
   projects: Project[];
+  projectActivity: Record<string, ProjectActivityStatus>;
   isLoading: boolean;
   deletingProjectId: string | null;
   resettingProjectId: string | null;
@@ -20,6 +23,7 @@ function getProjectName(directoryPath: string): string {
 
 export function ProjectList({
   projects,
+  projectActivity,
   isLoading,
   deletingProjectId,
   resettingProjectId,
@@ -47,6 +51,7 @@ export function ProjectList({
         const projectName = getProjectName(project.directoryPath);
         const isSelected = selectedProjectId === project.id;
         const isProjectLoading = loadingProjectId === project.id;
+        const activityStatus = projectActivity[project.id];
 
         return (
           <li
@@ -63,7 +68,27 @@ export function ProjectList({
             >
               <Folder aria-hidden="true" size={18} strokeWidth={1.8} />
               <span className="project-list__details">
-                <strong>{projectName}</strong>
+                <span className="project-list__name-row">
+                  <strong>{projectName}</strong>
+                  {activityStatus && (
+                    <span
+                      className={`project-list__activity project-list__activity--${activityStatus}`}
+                      role="status"
+                      title={activityStatus === "running"
+                        ? "Un agent est en cours d'exécution"
+                        : "Un agent a terminé, résultat à consulter"}
+                    >
+                      {activityStatus === "running" ? (
+                        <LoaderCircle aria-hidden="true" size={12} />
+                      ) : (
+                        <Check aria-hidden="true" size={12} />
+                      )}
+                      <span>
+                        {activityStatus === "running" ? "En cours" : "À voir"}
+                      </span>
+                    </span>
+                  )}
+                </span>
                 <small>
                   {isProjectLoading ? "Chargement..." : project.directoryPath}
                 </small>
