@@ -1,10 +1,12 @@
 
 import type {
+  AgentConfiguration,
   AgentEngine,
   AgentExecutionOptions,
   AgentExecutionResult,
   AgentProvider
 } from "./AgentProvider.ts";
+import type { AgentConfigurationService } from "./AgentConfigurationService.ts";
 
 export interface AgentStatus {
   engine: AgentEngine | null;
@@ -16,7 +18,20 @@ export class AgentService {
   private activeProvider: AgentProvider | null = null;
   private detectionPromise: Promise<AgentProvider | null> | null = null;
 
-  constructor(private readonly providers: AgentProvider[]) {}
+  constructor(
+    private readonly providers: AgentProvider[],
+    private readonly configurationService: AgentConfigurationService
+  ) {}
+
+  getConfiguration(): Promise<AgentConfiguration> {
+    return this.configurationService.getConfiguration();
+  }
+
+  saveConfiguration(
+    configuration: AgentConfiguration
+  ): Promise<AgentConfiguration> {
+    return this.configurationService.saveConfiguration(configuration);
+  }
 
   async getStatus(): Promise<AgentStatus> {
     const provider = await this.getActiveProvider();
@@ -51,7 +66,9 @@ export class AgentService {
       );
     }
 
-    return provider.ask(prompt, options);
+    const configuration = await this.configurationService.getConfiguration();
+
+    return provider.ask(prompt, { ...options, configuration });
   }
 
   private async getActiveProvider(): Promise<AgentProvider | null> {

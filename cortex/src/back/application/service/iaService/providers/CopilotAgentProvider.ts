@@ -9,6 +9,7 @@ import type {
   AgentExecutionResult,
   AgentProvider
 } from "../AgentProvider.ts";
+import { DEFAULT_AGENT_CONFIGURATION } from "../AgentProvider.ts";
 import {
   AgentToolRegistry,
   GITHUB_PULL_REQUESTS_CAPABILITY
@@ -40,13 +41,19 @@ export class CopilotAgentProvider implements AgentProvider {
     prompt: string,
     options: AgentExecutionOptions = {}
   ): Promise<AgentExecutionResult> {
+    const configuration = options.configuration ?? DEFAULT_AGENT_CONFIGURATION;
     const client = new CopilotClient({ useLoggedInUser: true });
     let session: CopilotSession | undefined;
 
     try {
       await this.withinTimeout(client.start(), 30_000);
       const sessionConfiguration: SessionConfig = {
-        onPermissionRequest: approveAll,
+        onPermissionRequest: configuration.allowAll && configuration.autopilot
+          ? approveAll
+          : () => ({
+              kind: "reject",
+              feedback: "La configuration globale n'autorise pas cette action."
+            }),
         tools: this.toolRegistry.resolve([GITHUB_PULL_REQUESTS_CAPABILITY])
       };
 
@@ -65,7 +72,10 @@ export class CopilotAgentProvider implements AgentProvider {
       session = options.sessionId
         ? await client.resumeSession(options.sessionId, sessionConfiguration)
         : await client.createSession(sessionConfiguration);
-      const result = await session.sendAndWait({ prompt }, 300_000);
+      const result = await session.sendAndWait({
+        prompt,
+        agentMode: configuration.autopilot ? "autopilot" : "plan"
+      }, 300_000);
       const answer = result?.data.content;
 
       if (!answer) {

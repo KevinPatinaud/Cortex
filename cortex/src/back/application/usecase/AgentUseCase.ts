@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import type { AgentEngine } from "../service/iaService/AgentProvider.ts";
+import type {
+  AgentConfiguration,
+  AgentEngine
+} from "../service/iaService/AgentProvider.ts";
 import type {
   AgentService,
   AgentStatus
@@ -15,6 +18,11 @@ import type {
 import { parseAgentResponse } from "../../../shared/AgentResponse.ts";
 
 export type AgentStatusOutput = AgentStatus;
+
+export interface AgentConfigurationInput {
+  autopilot?: unknown;
+  allowAll?: unknown;
+}
 
 export interface RunAgentInput {
   agentId?: unknown;
@@ -216,6 +224,28 @@ export class AgentUseCase {
 
   getStatus(): Promise<AgentStatus> {
     return this.agentService.getStatus();
+  }
+
+  getConfiguration(): Promise<AgentConfiguration> {
+    return this.agentService.getConfiguration();
+  }
+
+  saveConfiguration(
+    input: AgentConfigurationInput | null | undefined
+  ): Promise<AgentConfiguration> {
+    if (
+      typeof input?.autopilot !== "boolean" ||
+      typeof input?.allowAll !== "boolean"
+    ) {
+      throw new ValidationError(
+        "Les options autopilot et allowAll doivent être des booléens."
+      );
+    }
+
+    return this.agentService.saveConfiguration({
+      autopilot: input.autopilot,
+      allowAll: input.allowAll
+    });
   }
 
   getActualLoadedProject(): AgentProject | null {

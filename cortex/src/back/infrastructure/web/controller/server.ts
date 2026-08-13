@@ -3,6 +3,7 @@ import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AgentService } from "../../../application/service/iaService/AgentService.ts";
+import { AgentConfigurationService } from "../../../application/service/iaService/AgentConfigurationService.ts";
 import { createDefaultAgentToolRegistry } from "../../../application/service/iaService/iaTools/AgentToolRegistry.ts";
 import { ClaudeAgentProvider } from "../../../application/service/iaService/providers/ClaudeAgentProvider.ts";
 import { CodexAgentProvider } from "../../../application/service/iaService/providers/CodexAgentProvider.ts";
@@ -23,11 +24,14 @@ const clientDirectory = path.join(workspaceDirectory, "dist");
 const configurationFile = path.join(workspaceDirectory, "config.json");
 const shouldOpenBrowser = process.argv.includes("--open");
 const agentToolRegistry = createDefaultAgentToolRegistry();
+const agentConfigurationService = new AgentConfigurationService(
+  configurationFile
+);
 const agentService = new AgentService([
   new CodexAgentProvider(workspaceDirectory),
   new ClaudeAgentProvider(workspaceDirectory),
   new CopilotAgentProvider(agentToolRegistry)
-]);
+], agentConfigurationService);
 const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(configurationFile);
 const projectUseCase = new ProjectUseCase(

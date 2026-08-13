@@ -113,6 +113,7 @@ main {
 }
 
 .agent-project__header h1 {
+  max-width: none;
   overflow-wrap: anywhere;
   font-size: clamp(1.85rem, 3vw, 2.75rem);
   line-height: 1.04;
@@ -857,6 +858,10 @@ main {
   opacity: 0.68;
 }
 
+.agent-card--disabled .agent-card__additional-instructions textarea:disabled {
+  cursor: default;
+}
+
 @keyframes agent-card-message-in {
   from {
     opacity: 0;
@@ -1171,24 +1176,9 @@ main {
   transform: translateY(-1px);
 }
 
-.agent-engine-status {
-  position: relative;
-  display: flex;
-  min-width: 0;
+.agent-engine-panel {
+  display: grid;
   margin-top: 0.7rem;
-  padding: 0.7rem;
-  align-items: flex-start;
-  gap: 0.62rem;
-  border: 1px solid rgb(75 143 237 / 18%);
-  border-radius: 9px;
-  background: rgb(44 105 194 / 7%);
-  color: #a8bdd9;
-}
-
-.agent-engine-status > svg {
-  flex: 0 0 auto;
-  margin-top: 0.1rem;
-  color: #5f9ff5;
 }
 
 .agent-engine-status__content {
@@ -1201,6 +1191,142 @@ main {
 .agent-engine-status__content strong,
 .agent-engine-status__error {
   display: block;
+}
+
+.agent-engine-settings {
+  overflow: hidden;
+  border: 1px solid rgb(75 143 237 / 18%);
+  border-radius: 9px;
+  background: rgb(44 105 194 / 7%);
+}
+
+.agent-engine-settings summary,
+.agent-engine-settings label {
+  display: flex;
+  align-items: center;
+}
+
+.agent-engine-settings summary {
+  min-height: 3.6rem;
+  padding: 0.65rem 0.75rem;
+  gap: 0.62rem;
+  color: #8eb8f1;
+  cursor: pointer;
+  list-style: none;
+}
+
+.agent-engine-settings summary > svg:first-child {
+  flex: 0 0 auto;
+  color: #5f9ff5;
+}
+
+.agent-engine-settings summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-engine-settings__saving {
+  margin-left: auto;
+  color: #718aaa;
+  font-size: 0.56rem;
+}
+
+.agent-engine-settings__chevron {
+  margin-left: 0;
+  flex: 0 0 auto;
+  transition: transform 160ms ease;
+}
+
+.agent-engine-settings[open] .agent-engine-settings__chevron {
+  transform: rotate(180deg);
+}
+
+.agent-engine-settings__content {
+  border-top: 1px solid rgb(75 143 237 / 14%);
+}
+
+.agent-engine-settings label {
+  min-height: 3.1rem;
+  padding: 0.5rem 0.65rem;
+  justify-content: space-between;
+  gap: 0.6rem;
+  color: #dceaff;
+  cursor: pointer;
+}
+
+.agent-engine-settings label + label {
+  border-top: 1px solid rgb(75 143 237 / 10%);
+}
+
+.agent-engine-settings label > span,
+.agent-engine-settings label strong,
+.agent-engine-settings label small {
+  display: block;
+}
+
+.agent-engine-settings label > span {
+  min-width: 0;
+}
+
+.agent-engine-settings label strong {
+  font-size: 0.7rem;
+}
+
+.agent-engine-settings label small {
+  margin-top: 0.15rem;
+  color: #6f89aa;
+  font-size: 0.57rem;
+  line-height: 1.35;
+}
+
+.agent-engine-settings input[type="checkbox"] {
+  position: relative;
+  width: 2rem;
+  height: 1.1rem;
+  margin: 0;
+  flex: 0 0 auto;
+  appearance: none;
+  border: 1px solid rgb(111 137 170 / 42%);
+  border-radius: 999px;
+  background: #142a47;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.agent-engine-settings input[type="checkbox"]::after {
+  position: absolute;
+  top: 0.13rem;
+  left: 0.14rem;
+  width: 0.72rem;
+  height: 0.72rem;
+  border-radius: 50%;
+  background: #8ca3c0;
+  content: "";
+  transition: background 160ms ease, transform 160ms ease;
+}
+
+.agent-engine-settings input[type="checkbox"]:checked {
+  border-color: rgb(49 199 230 / 60%);
+  background: #176aa1;
+}
+
+.agent-engine-settings input[type="checkbox"]:checked::after {
+  background: #d9faff;
+  transform: translateX(0.88rem);
+}
+
+.agent-engine-settings input[type="checkbox"]:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.agent-engine-settings__error {
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  border-top: 1px solid rgb(220 91 109 / 18%);
+  background: rgb(220 91 109 / 8%);
+  color: #e99aaa;
+  font-size: 0.6rem;
+  line-height: 1.4;
 }
 
 .agent-engine-status__content small {
@@ -1221,11 +1347,20 @@ main {
   white-space: nowrap;
 }
 
+.agent-engine-settings summary .agent-engine-status__content strong {
+  margin-top: 0;
+}
+
+.agent-engine-settings summary .agent-engine-status__content small {
+  margin-top: 0.2rem;
+}
+
 .agent-engine-status__indicator {
   width: 0.5rem;
   height: 0.5rem;
+  margin-left: auto;
   flex: 0 0 auto;
-  margin-top: 0.25rem;
+  margin-top: 0;
   border-radius: 50%;
   background: #45d6b2;
   box-shadow: 0 0 0 3px rgb(69 214 178 / 12%), 0 0 10px rgb(69 214 178 / 52%);

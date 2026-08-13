@@ -5,6 +5,7 @@ import type {
   AgentExecutionResult,
   AgentProvider
 } from "../AgentProvider.ts";
+import { DEFAULT_AGENT_CONFIGURATION } from "../AgentProvider.ts";
 import { CliAgentProvider } from "../CliAgentProvider.ts";
 
 export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvider {
@@ -19,14 +20,20 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
     prompt: string,
     options: AgentExecutionOptions = {}
   ): Promise<AgentExecutionResult> {
+    const configuration = options.configuration ?? DEFAULT_AGENT_CONFIGURATION;
     const sessionId = options.sessionId ||
       (options.persistSession ? randomUUID() : undefined);
+    const permissionMode = !configuration.autopilot
+      ? "plan"
+      : configuration.allowAll
+        ? "bypassPermissions"
+        : "auto";
     const args = [
       "--print",
       "--output-format",
       "text",
       "--permission-mode",
-      "plan"
+      permissionMode
     ];
 
     if (sessionId) {

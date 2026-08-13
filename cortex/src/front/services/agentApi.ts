@@ -52,6 +52,11 @@ export interface UpstreamAgentResult {
   selectedItemIndexes: number[];
 }
 
+export interface AgentConfiguration {
+  autopilot: boolean;
+  allowAll: boolean;
+}
+
 export async function getAgentStatus(): Promise<AgentStatus> {
   const response = await fetch("/api/agents/status");
   const data = await response.json() as AgentStatus;
@@ -61,6 +66,38 @@ export async function getAgentStatus(): Promise<AgentStatus> {
   }
 
   return data;
+}
+
+export async function getAgentConfiguration(): Promise<AgentConfiguration> {
+  const response = await fetch("/api/agents/configuration");
+  const data = await response.json() as AgentConfiguration & ApiErrorResponse;
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || "Impossible de charger la configuration des agents."
+    );
+  }
+
+  return { autopilot: data.autopilot, allowAll: data.allowAll };
+}
+
+export async function saveAgentConfiguration(
+  configuration: AgentConfiguration
+): Promise<AgentConfiguration> {
+  const response = await fetch("/api/agents/configuration", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(configuration)
+  });
+  const data = await response.json() as AgentConfiguration & ApiErrorResponse;
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || "Impossible d'enregistrer la configuration des agents."
+    );
+  }
+
+  return { autopilot: data.autopilot, allowAll: data.allowAll };
 }
 
 export async function loadAgentProject(

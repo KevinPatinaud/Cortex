@@ -16,6 +16,16 @@ export const agentErrorMappings = {
       error: message
     })
   },
+  getConfiguration: {
+    fallbackStatus: 500,
+    fallbackMessage: "Impossible de charger la configuration des agents.",
+    logMessage: "Impossible de charger la configuration des agents :"
+  },
+  saveConfiguration: {
+    fallbackStatus: 500,
+    fallbackMessage: "Impossible d'enregistrer la configuration des agents.",
+    logMessage: "Impossible d'enregistrer la configuration des agents :"
+  },
   loadProject: {
     fallbackStatus: 500,
     fallbackMessage: "Impossible de charger le projet.",

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import type {
+  AgentConfigurationInput,
   AgentUseCase,
   RunAgentInput
 } from "../../../application/usecase/AgentUseCase.ts";
@@ -54,6 +55,20 @@ export function createAgentController(agentUseCase: AgentUseCase): Router {
     asyncRoute(async (_request, response) => {
       response.json(toAgentStatusResponse(await agentUseCase.getStatus()));
     }, agentErrorMappings.status)
+  );
+
+  router.get(
+    "/configuration",
+    asyncRoute(async (_request, response) => {
+      response.json(await agentUseCase.getConfiguration());
+    }, agentErrorMappings.getConfiguration)
+  );
+
+  router.put(
+    "/configuration",
+    asyncRoute<AgentConfigurationInput>(async (request, response) => {
+      response.json(await agentUseCase.saveConfiguration(request.body));
+    }, agentErrorMappings.saveConfiguration)
   );
 
   return router;

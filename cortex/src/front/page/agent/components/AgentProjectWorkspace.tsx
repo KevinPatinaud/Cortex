@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowDown, Bot, ChevronDown, GitBranch, RotateCcw } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, GitBranch, LoaderCircle, RotateCcw, Send } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -496,12 +496,18 @@ function AgentCard({
             )
           }
         >
-          <RotateCcw
-            aria-hidden="true"
-            className={isRunning ? "agent-card__run-icon--running" : undefined}
-            size={15}
-            strokeWidth={1.8}
-          />
+          {isRunning ? (
+            <LoaderCircle
+              aria-hidden="true"
+              className="agent-card__run-icon--running"
+              size={15}
+              strokeWidth={1.8}
+            />
+          ) : hasSession ? (
+            <RotateCcw aria-hidden="true" size={15} strokeWidth={1.8} />
+          ) : (
+            <Send aria-hidden="true" size={15} strokeWidth={1.8} />
+          )}
           {isRunning
             ? "Exécution..."
             : hasSession ? "Relancer" : "Lancer"

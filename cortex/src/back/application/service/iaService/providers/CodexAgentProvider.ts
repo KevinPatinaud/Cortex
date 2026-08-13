@@ -6,6 +6,7 @@ import type {
   AgentExecutionResult,
   AgentProvider
 } from "../AgentProvider.ts";
+import { DEFAULT_AGENT_CONFIGURATION } from "../AgentProvider.ts";
 import { CliAgentProvider } from "../CliAgentProvider.ts";
 
 export class CodexAgentProvider extends CliAgentProvider implements AgentProvider {
@@ -50,22 +51,22 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     prompt: string,
     options: AgentExecutionOptions = {}
   ): Promise<AgentExecutionResult> {
-    const args = options.sessionId
-      ? [
-          "exec",
-          "resume",
-          "--json",
-          "--config",
-          "sandbox_mode=\"read-only\""
-        ]
-      : [
-          "exec",
-          "--json",
-          "--sandbox",
-          "read-only",
-          "--color",
-          "never"
-        ];
+    const configuration = options.configuration ?? DEFAULT_AGENT_CONFIGURATION;
+    const args = ["exec"];
+
+    if (!configuration.autopilot) {
+      args.push("--config", "sandbox_mode=\"read-only\"");
+    } else if (configuration.allowAll) {
+      args.push("--dangerously-bypass-approvals-and-sandbox");
+    } else {
+      args.push("--approve-for-me");
+    }
+
+    if (options.sessionId) {
+      args.push("resume", "--json");
+    } else {
+      args.push("--json", "--color", "never");
+    }
 
     if (!options.sessionId && !options.persistSession) {
       args.push("--ephemeral");

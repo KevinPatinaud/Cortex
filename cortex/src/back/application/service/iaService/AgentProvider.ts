@@ -1,7 +1,18 @@
 
 export type AgentEngine = "codex" | "claude" | "copilot";
 
+export interface AgentConfiguration {
+  autopilot: boolean;
+  allowAll: boolean;
+}
+
+export const DEFAULT_AGENT_CONFIGURATION: AgentConfiguration = {
+  autopilot: true,
+  allowAll: true
+};
+
 export interface AgentExecutionOptions {
+  configuration?: AgentConfiguration;
   model?: string;
   persistSession?: boolean;
   reasoningEffort?: string;
