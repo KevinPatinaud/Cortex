@@ -42,28 +42,31 @@
   },
   "agentWorkflows": {
     "2ecb8282-97fe-4d56-b90d-78744eec879c": {
-      "hash": "97105c315bfb47640a34c687da501dc34cb233629e5cbec38e4c82b5485fd494",
+      "hash": "3a2c92357d1c4e7f745d07cf3e7474edacb8a688853472173edbd49fd5ac23bf",
       "agents": [
         {
           "id": ".codex/agents/ville_selecteur.toml",
           "nextAgentIds": [
             ".codex/agents/recherche météo.toml"
-          ]
+          ],
+          "inputMode": "separate"
         },
         {
           "id": ".codex/agents/recherche météo.toml",
           "nextAgentIds": [
             ".codex/agents/choix vestimentaire.toml"
-          ]
+          ],
+          "inputMode": "separate"
         },
         {
           "id": ".codex/agents/choix vestimentaire.toml",
-          "nextAgentIds": []
+          "nextAgentIds": [],
+          "inputMode": "separate"
         }
       ]
     },
     "27a6dde8-7174-4520-a045-10ae0108e036": {
-      "hash": "71e6220987b65e15f01ec90834fea2442a35b85c92fa4d81be6b132d65e88c15",
+      "hash": "bd77d4771681010c787f45145f87f25863d81616aefb5ef4d60c7c1e698773c6",
       "agents": [
         {
           "id": ".codex/agents/choix activité.toml",
@@ -90,7 +93,7 @@
         {
           "id": ".codex/agents/Agent de voyage.toml",
           "nextAgentIds": [],
-          "inputMode": "aggregate"
+          "inputMode": "separate"
         }
       ]
     },

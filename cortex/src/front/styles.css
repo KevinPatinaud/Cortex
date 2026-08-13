@@ -9,6 +9,10 @@
   --color-line: rgb(73 113 174 / 18%);
   --color-primary: #2563eb;
   --color-primary-bright: #3b82f6;
+  --color-handoff: #4f6f9f;
+  --color-handoff-hover: #45638f;
+  --color-handoff-rail: #8fb3e1;
+  --color-handoff-rail-muted: #c8d8ec;
   --color-cyan: #31c7e6;
   --color-danger: #dc5b6d;
   color: var(--color-text);
@@ -486,7 +490,7 @@ main {
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
-  border: 1px solid rgb(37 99 235 / 24%);
+  border: 1px solid #bac9dc;
   border-radius: 8px;
   background: #f5f8fd;
   color: #526681;
@@ -495,9 +499,9 @@ main {
 }
 
 .handoff-toggle:hover {
-  border-color: rgb(37 99 235 / 46%);
-  background: #edf4ff;
-  color: #1e4f91;
+  border-color: #8fa7c5;
+  background: #f0f4f9;
+  color: #3f5c85;
   transform: translateY(-1px);
 }
 
@@ -514,15 +518,15 @@ main {
 }
 
 .handoff-toggle--active {
-  border-color: var(--color-primary);
-  background: var(--color-primary);
+  border-color: var(--color-handoff);
+  background: var(--color-handoff);
   color: #fff;
-  box-shadow: 0 7px 16px rgb(37 99 235 / 18%);
+  box-shadow: 0 4px 10px rgb(79 111 159 / 15%);
 }
 
 .handoff-toggle--active:hover {
-  border-color: #1d4ed8;
-  background: #1d4ed8;
+  border-color: var(--color-handoff-hover);
+  background: var(--color-handoff-hover);
   color: #fff;
 }
 
@@ -544,29 +548,29 @@ main {
 }
 
 .agent-card--handoff {
-  border-color: rgb(37 99 235 / 28%);
+  border-color: #c7d7ea;
   background: #fff;
   box-shadow:
     0 18px 45px rgb(35 73 128 / 10%),
-    inset 4px 0 0 var(--color-primary);
+    inset 4px 0 0 var(--color-handoff-rail);
 }
 
 .agent-card--handoff:hover {
-  border-color: rgb(37 99 235 / 38%);
+  border-color: #afc5df;
   box-shadow:
     0 22px 52px rgb(35 73 128 / 14%),
-    inset 4px 0 0 var(--color-primary);
+    inset 4px 0 0 var(--color-handoff-rail);
 }
 
 .agent-card--handoff.agent-card--disabled {
-  border-color: rgb(37 99 235 / 20%);
+  border-color: #d7dbe1;
   background: #f5f6f8;
-  box-shadow: inset 4px 0 0 var(--color-primary);
+  box-shadow: inset 4px 0 0 var(--color-handoff-rail-muted);
 }
 
 .agent-card--handoff.agent-card--disabled:hover {
-  border-color: rgb(37 99 235 / 20%);
-  box-shadow: inset 4px 0 0 var(--color-primary);
+  border-color: #d7dbe1;
+  box-shadow: inset 4px 0 0 var(--color-handoff-rail-muted);
 }
 
 .agent-card__configuration {
@@ -647,18 +651,18 @@ main {
 .agent-card--parallel-ready.agent-card--handoff {
   box-shadow:
     0 18px 45px rgb(35 73 128 / 11%),
-    inset 4px 0 0 var(--color-primary);
+    inset 4px 0 0 var(--color-handoff-rail);
 }
 
 .agent-card--parallel-ready.agent-card--handoff:hover {
   box-shadow:
     0 21px 50px rgb(35 73 128 / 14%),
-    inset 4px 0 0 var(--color-primary);
+    inset 4px 0 0 var(--color-handoff-rail);
 }
 
 .agent-card--parallel-ready.agent-card--handoff.agent-card--disabled,
 .agent-card--parallel-ready.agent-card--handoff.agent-card--disabled:hover {
-  box-shadow: inset 4px 0 0 var(--color-primary);
+  box-shadow: inset 4px 0 0 var(--color-handoff-rail-muted);
 }
 
 .agent-card__prompt {
