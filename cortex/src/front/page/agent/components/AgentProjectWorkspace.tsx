@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { ArrowDown, Bot, ChevronDown, GitBranch, LoaderCircle, RotateCcw, Send } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, FastForward, GitBranch, LoaderCircle, Pause, RotateCcw, Send } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -166,6 +166,46 @@ interface AgentResultState {
 }
 
 type AgentResultStates = Record<string, AgentResultState>;
+
+function getAutomaticHandoffSelections(
+  state: AgentResultState
+): number[] {
+  const selectedItemIndexes: number[] = [];
+  let itemIndexOffset = 0;
+
+  for (const response of state.responses) {
+    if (response.items.length > 1) {
+      const existingSelections = state.selectedItemIndexes.filter(
+        (itemIndex) =>
+          itemIndex >= itemIndexOffset &&
+          itemIndex < itemIndexOffset + response.items.length
+      );
+
+      if (existingSelections.length > 0) {
+        selectedItemIndexes.push(...(
+          response.isMultiSelectionAllowed === true
+            ? existingSelections
+            : existingSelections.slice(0, 1)
+        ));
+      } else if (response.isMultiSelectionAllowed === true) {
+        selectedItemIndexes.push(...response.items.map(
+          (_item, itemIndex) => itemIndexOffset + itemIndex
+        ));
+      } else {
+        selectedItemIndexes.push(itemIndexOffset);
+      }
+    }
+
+    itemIndexOffset += response.items.length;
+  }
+
+  return selectedItemIndexes;
+}
+
+function haveSameIndexes(first: number[], second: number[]): boolean {
+  return first.length === second.length &&
+    first.every((itemIndex, index) => itemIndex === second[index]);
+}
 
 function findLastAgentResponses(
   threads: AgentConversationThread[]
@@ -367,6 +407,8 @@ function getWorkflowLevels(agents: AgentDefinition[]): AgentDefinition[][] {
 
 interface AgentCardProps {
   agent: AgentDefinition;
+  handoffEnabled: boolean;
+  shouldAutoRun: boolean;
   plannedThreadCount: number;
   upstreamAgentResults?: UpstreamAgentResult[];
   isInvalidated: boolean;
@@ -384,6 +426,54 @@ interface AgentCardProps {
   ) => void;
   onRunStart: (agentId: string) => void;
   onRunEnd: (succeeded: boolean) => void;
+  onHandoffEnabledChange: (agentId: string, enabled: boolean) => void;
+}
+
+interface HandoffToggleProps {
+  checked: boolean;
+  description: string;
+  variant?: "agent" | "global";
+  onChange: (checked: boolean) => void;
+}
+
+function HandoffToggle({
+  checked,
+  description,
+  variant = "agent",
+  onChange
+}: HandoffToggleProps) {
+  const stateLabel = checked ? "HANDS-OFF" : "HANDS-ON";
+
+  return (
+    <button
+      className={`handoff-toggle handoff-toggle--${variant}${
+        checked ? " handoff-toggle--active" : ""
+      }`}
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={`${stateLabel}. ${description}`}
+      title={`État actuel : ${stateLabel}. ${description}`}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="handoff-toggle__label">
+        {checked ? (
+          <FastForward
+            aria-hidden="true"
+            size={variant === "global" ? 16 : 14}
+            strokeWidth={2}
+          />
+        ) : (
+          <Pause
+            aria-hidden="true"
+            size={variant === "global" ? 16 : 14}
+            strokeWidth={2}
+          />
+        )}
+        {stateLabel}
+      </span>
+    </button>
+  );
 }
 
 interface AgentThreadPresentation {
@@ -463,6 +553,7 @@ function AgentThreadConversation({
 }
 
 interface AgentInstanceCardProps extends AgentThreadConversationProps {
+  hideAdditionalInstructions: boolean;
   index: number;
   isFrozen: boolean;
   isRunning: boolean;
@@ -472,6 +563,7 @@ interface AgentInstanceCardProps extends AgentThreadConversationProps {
 function AgentInstanceCard({
   agentName,
   disabled,
+  hideAdditionalInstructions,
   index,
   isFrozen,
   isRunning,
@@ -482,8 +574,17 @@ function AgentInstanceCard({
   const threadId = conversationProps.presentation.thread.id;
   const [additionalInstructions, setAdditionalInstructions] = useState("");
 
+  useEffect(() => {
+    if (hideAdditionalInstructions) {
+      setAdditionalInstructions("");
+    }
+  }, [hideAdditionalInstructions]);
+
   async function handleRun(): Promise<void> {
-    const succeeded = await onRun(additionalInstructions.trim(), threadId);
+    const succeeded = await onRun(
+      hideAdditionalInstructions ? "" : additionalInstructions.trim(),
+      threadId
+    );
 
     if (succeeded) {
       setAdditionalInstructions("");
@@ -505,17 +606,19 @@ function AgentInstanceCard({
         disabled={disabled}
         {...conversationProps}
       />
-      <div className="agent-card__additional-instructions">
-        <label htmlFor={additionalInstructionsId}>Précisions</label>
-        <textarea
-          id={additionalInstructionsId}
-          value={additionalInstructions}
-          onChange={(event) => setAdditionalInstructions(event.target.value)}
-          placeholder="Ajoutez une précision pour cette instance..."
-          rows={4}
-          disabled={isRunning || disabled}
-        />
-      </div>
+      {!hideAdditionalInstructions && (
+        <div className="agent-card__additional-instructions">
+          <label htmlFor={additionalInstructionsId}>Précisions</label>
+          <textarea
+            id={additionalInstructionsId}
+            value={additionalInstructions}
+            onChange={(event) => setAdditionalInstructions(event.target.value)}
+            placeholder="Ajoutez une précision pour cette instance..."
+            rows={4}
+            disabled={isRunning || disabled}
+          />
+        </div>
+      )}
       <div className="agent-card__actions">
         <button
           className="agent-card__run-button"
@@ -546,6 +649,8 @@ function AgentInstanceCard({
 
 function AgentCard({
   agent,
+  handoffEnabled,
+  shouldAutoRun,
   plannedThreadCount,
   upstreamAgentResults,
   isInvalidated,
@@ -556,9 +661,11 @@ function AgentCard({
   onResponseChange,
   onSelectedItemIndexesChange,
   onRunStart,
-  onRunEnd
+  onRunEnd,
+  onHandoffEnabledChange
 }: AgentCardProps) {
   const additionalInstructionsId = useId();
+  const autoRunAttemptedRef = useRef(false);
   const [runningThreadId, setRunningThreadId] = useState<string | null>(null);
   const [hasSession, setHasSession] = useState(agent.hasSession);
   const [threads, setThreads] = useState<AgentConversationThread[]>(
@@ -580,6 +687,12 @@ function AgentCard({
   useEffect(() => {
     setAdditionalInstructions("");
   }, [agent.id]);
+
+  useEffect(() => {
+    if (handoffEnabled) {
+      setAdditionalInstructions("");
+    }
+  }, [handoffEnabled]);
 
   useEffect(() => {
     if (isInvalidated) {
@@ -630,6 +743,25 @@ function AgentCard({
     }
   }
 
+  useEffect(() => {
+    if (!shouldAutoRun) {
+      autoRunAttemptedRef.current = false;
+      return;
+    }
+
+    if (
+      autoRunAttemptedRef.current ||
+      isRunning ||
+      !canRun ||
+      isFrozen
+    ) {
+      return;
+    }
+
+    autoRunAttemptedRef.current = true;
+    void handleRun("");
+  }, [shouldAutoRun, isRunning, canRun, isFrozen]);
+
   let itemIndexOffset = 0;
   const threadPresentation = threads.map((thread) => {
     let lastAgentMessageIndex = -1;
@@ -663,7 +795,8 @@ function AgentCard({
       className={`agent-card${
         isMultithreaded ? " agent-card--multithreaded" : ""
       }${isParallelRunPrepared ? " agent-card--parallel-ready" : ""
-      }${isDisabled ? " agent-card--disabled" : ""}`}
+      }${isDisabled ? " agent-card--disabled" : ""
+      }${handoffEnabled ? " agent-card--handoff" : ""}`}
       aria-disabled={isDisabled || undefined}
       aria-label={isParallelRunPrepared
         ? `${agent.name}, lancement préparé sur ${plannedThreadCount} instances parallèles`
@@ -672,15 +805,22 @@ function AgentCard({
     >
       <header className="agent-card__header">
         <Bot aria-hidden="true" size={22} strokeWidth={1.7} />
-        <div>
+        <div className="agent-card__identity">
           <h2>{agent.name}</h2>
         </div>
-        {agent.model && (
-          <dl className="agent-card__model">
-            <dt>Modèle</dt>
-            <dd>{agent.model}</dd>
-          </dl>
-        )}
+        <div className="agent-card__header-actions">
+          <HandoffToggle
+            checked={handoffEnabled}
+            description={`${handoffEnabled ? "Désactiver" : "Activer"} le mode HANDS-OFF pour ${agent.name}`}
+            onChange={(enabled) => onHandoffEnabledChange(agent.id, enabled)}
+          />
+          {agent.model && (
+            <dl className="agent-card__model">
+              <dt>Modèle</dt>
+              <dd>{agent.model}</dd>
+            </dl>
+          )}
+        </div>
       </header>
       <details className="agent-card__prompt">
         <summary>
@@ -728,6 +868,7 @@ function AgentCard({
               <AgentInstanceCard
                 agentName={agent.name}
                 disabled={isDisabled || isRunning}
+                hideAdditionalInstructions={handoffEnabled}
                 index={index}
                 isFrozen={isFrozen}
                 isRunning={isRunning && (
@@ -758,7 +899,7 @@ function AgentCard({
               }
             />
           )}
-          {!isParallelRunPrepared && (
+          {!handoffEnabled && (
             <div className="agent-card__additional-instructions">
               <label htmlFor={additionalInstructionsId}>Précisions</label>
               <textarea
@@ -779,7 +920,7 @@ function AgentCard({
               className="agent-card__run-button"
               type="button"
               onClick={() => void handleRun(
-                isParallelRunPrepared ? "" : additionalInstructions.trim()
+                handoffEnabled ? "" : additionalInstructions.trim()
               )}
               disabled={isRunning || !canRun || isFrozen}
               title={isFrozen
@@ -836,9 +977,18 @@ export function AgentProjectWorkspace({
   const [launchedAgentIds, setLaunchedAgentIds] = useState<Set<string>>(
     () => new Set()
   );
+  const [handoffEnabledAgentIds, setHandoffEnabledAgentIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const handoffEnabledAgentIdsByProject = useRef<Record<string, Set<string>>>({});
 
   useEffect(() => {
     setActiveTab("agents");
+    setHandoffEnabledAgentIds(new Set(
+      content
+        ? handoffEnabledAgentIdsByProject.current[content.projectId] ?? []
+        : []
+    ));
   }, [content?.projectId]);
 
   useEffect(() => {
@@ -921,6 +1071,63 @@ export function AgentProjectWorkspace({
     };
   }, [content, onContentRefresh]);
 
+  useEffect(() => {
+    if (!content) {
+      return;
+    }
+
+    const enabledAgentIds = handoffEnabledAgentIdsByProject.current[
+      content.projectId
+    ] ?? new Set<string>();
+    const upstreamAgentIds = new Set<string>();
+
+    for (const agent of content.agents) {
+      if (!enabledAgentIds.has(agent.id)) {
+        continue;
+      }
+
+      for (const upstreamAgent of content.agents) {
+        if (upstreamAgent.nextAgentIds.includes(agent.id)) {
+          upstreamAgentIds.add(upstreamAgent.id);
+        }
+      }
+    }
+
+    let nextStates = agentResultStates;
+    const storedSelections = {
+      ...(selectedItemIndexesByProject.current[content.projectId] ?? {})
+    };
+
+    for (const upstreamAgentId of upstreamAgentIds) {
+      const state = agentResultStates[upstreamAgentId];
+
+      if (!state || state.responses.length === 0) {
+        continue;
+      }
+
+      const automaticSelections = getAutomaticHandoffSelections(state);
+
+      if (haveSameIndexes(state.selectedItemIndexes, automaticSelections)) {
+        continue;
+      }
+
+      if (nextStates === agentResultStates) {
+        nextStates = { ...agentResultStates };
+      }
+
+      nextStates[upstreamAgentId] = {
+        ...state,
+        selectedItemIndexes: automaticSelections
+      };
+      storedSelections[upstreamAgentId] = automaticSelections;
+    }
+
+    if (nextStates !== agentResultStates) {
+      selectedItemIndexesByProject.current[content.projectId] = storedSelections;
+      setAgentResultStates(nextStates);
+    }
+  }, [content, handoffEnabledAgentIds, agentResultStates]);
+
   if (!project || !content) {
     return (
       <section className="workspace-content">
@@ -945,6 +1152,33 @@ export function AgentProjectWorkspace({
   const workflowAgents = [...content.agents];
   const agentsById = new Map(workflowAgents.map((agent) => [agent.id, agent]));
   const workflowLevels = getWorkflowLevels(workflowAgents);
+  const isGlobalHandoffEnabled = workflowAgents.some(
+    (agent) => handoffEnabledAgentIds.has(agent.id)
+  );
+
+  function handleGlobalHandoffChange(enabled: boolean): void {
+    const nextAgentIds = enabled
+      ? new Set(workflowAgents.map((agent) => agent.id))
+      : new Set<string>();
+
+    handoffEnabledAgentIdsByProject.current[projectId] = nextAgentIds;
+    setHandoffEnabledAgentIds(nextAgentIds);
+  }
+
+  function handleAgentHandoffChange(agentId: string, enabled: boolean): void {
+    setHandoffEnabledAgentIds((currentAgentIds) => {
+      const nextAgentIds = new Set(currentAgentIds);
+
+      if (enabled) {
+        nextAgentIds.add(agentId);
+      } else {
+        nextAgentIds.delete(agentId);
+      }
+
+      handoffEnabledAgentIdsByProject.current[projectId] = nextAgentIds;
+      return nextAgentIds;
+    });
+  }
 
   function getDescendantAgentIds(sourceAgentId: string): Set<string> {
     const descendantIds = new Set<string>();
@@ -1082,33 +1316,46 @@ export function AgentProjectWorkspace({
       <header className="agent-project__header">
         <p className="eyebrow">Projet {content.engine}</p>
         <h1>{projectName}</h1>
-        <div className="agent-project__tabs" role="tablist" aria-label="Contenu du projet">
-          <button
-            className={`agent-project__tab${
-              activeTab === "instructions" ? " agent-project__tab--active" : ""
-            }`}
-            id={instructionsTabId}
-            type="button"
-            role="tab"
-            aria-controls={instructionsPanelId}
-            aria-selected={activeTab === "instructions"}
-            onClick={() => setActiveTab("instructions")}
-          >
-            Instructions projet
-          </button>
-          <button
-            className={`agent-project__tab${
-              activeTab === "agents" ? " agent-project__tab--active" : ""
-            }`}
-            id={agentsTabId}
-            type="button"
-            role="tab"
-            aria-controls={agentsPanelId}
-            aria-selected={activeTab === "agents"}
-            onClick={() => setActiveTab("agents")}
-          >
-            {agentsTabLabel}
-          </button>
+        <div className="agent-project__tabs-row">
+          <div className="agent-project__tabs" role="tablist" aria-label="Contenu du projet">
+            <button
+              className={`agent-project__tab${
+                activeTab === "instructions" ? " agent-project__tab--active" : ""
+              }`}
+              id={instructionsTabId}
+              type="button"
+              role="tab"
+              aria-controls={instructionsPanelId}
+              aria-selected={activeTab === "instructions"}
+              onClick={() => setActiveTab("instructions")}
+            >
+              Instructions projet
+            </button>
+            <button
+              className={`agent-project__tab${
+                activeTab === "agents" ? " agent-project__tab--active" : ""
+              }`}
+              id={agentsTabId}
+              type="button"
+              role="tab"
+              aria-controls={agentsPanelId}
+              aria-selected={activeTab === "agents"}
+              onClick={() => setActiveTab("agents")}
+            >
+              {agentsTabLabel}
+            </button>
+          </div>
+          {content.agents.length > 0 && (
+            <HandoffToggle
+              checked={isGlobalHandoffEnabled}
+              description={isGlobalHandoffEnabled
+                ? "Désactiver le mode HANDS-OFF pour tous les agents"
+                : "Activer le mode HANDS-OFF pour tous les agents"
+              }
+              variant="global"
+              onChange={handleGlobalHandoffChange}
+            />
+          )}
         </div>
       </header>
 
@@ -1186,6 +1433,13 @@ export function AgentProjectWorkspace({
                           >
                             <AgentCard
                               agent={agent}
+                              handoffEnabled={handoffEnabledAgentIds.has(agent.id)}
+                              shouldAutoRun={
+                                handoffEnabledAgentIds.has(agent.id) &&
+                                upstreamAgents.length > 0 &&
+                                !launchedAgentIds.has(agent.id) &&
+                                prerequisiteMessage === null
+                              }
                               plannedThreadCount={getPlannedThreadCount(
                                 agent,
                                 upstreamAgents,
@@ -1214,6 +1468,7 @@ export function AgentProjectWorkspace({
                                 agent.id,
                                 succeeded
                               )}
+                              onHandoffEnabledChange={handleAgentHandoffChange}
                             />
                           </li>
                         );

@@ -3,209 +3,123 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Le Courrier du jour — 13 août 2026</title>
+  <title>Le Repporter — Édition du 13 août 2026</title>
   <style>
     :root {
-      --ink: #17212b;
-      --muted: #687580;
-      --paper: #f7f4ed;
-      --card: #fffdf8;
-      --line: #d9d2c5;
-      --accent: #a73c2f;
-      --accent-dark: #76291f;
+      --ink: #19232d;
+      --muted: #65717a;
+      --paper: #fffdf8;
+      --cream: #f1ede5;
+      --line: #d8d0c2;
+      --accent: #a32e2e;
+      --accent-dark: #762026;
     }
-
     * { box-sizing: border-box; }
-
-    body {
-      margin: 0;
-      color: var(--ink);
-      background: var(--paper);
-      font-family: Georgia, 'Times New Roman', serif;
-      line-height: 1.7;
-    }
-
-    .page {
-      width: min(1120px, calc(100% - 40px));
-      margin: 0 auto;
-    }
-
-    .masthead {
-      padding: 28px 0 18px;
-      border-bottom: 4px double var(--ink);
-    }
-
-    .kicker {
-      margin: 0 0 4px;
-      color: var(--accent);
-      font: 700 0.78rem/1.2 Arial, sans-serif;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-    }
-
-    .brand {
-      display: flex;
-      align-items: end;
-      justify-content: space-between;
-      gap: 20px;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: clamp(2.8rem, 8vw, 5.8rem);
-      line-height: 0.95;
-      letter-spacing: -0.06em;
-    }
-
-    .date {
-      margin: 0 0 6px;
-      color: var(--muted);
-      font: 700 0.8rem/1.3 Arial, sans-serif;
-      letter-spacing: 0.08em;
-      text-align: right;
-      text-transform: uppercase;
-    }
-
-    main { padding: 46px 0 64px; }
-
-    .edition-label {
-      display: inline-block;
-      margin-bottom: 18px;
-      padding: 5px 10px;
-      color: #fff;
-      background: var(--accent);
-      font: 700 0.72rem/1.2 Arial, sans-serif;
-      letter-spacing: 0.12em;
-      text-transform: uppercase;
-    }
-
-    article {
-      max-width: 900px;
-      padding: clamp(26px, 5vw, 62px);
-      background: var(--card);
-      border: 1px solid var(--line);
-      box-shadow: 0 18px 45px rgba(48, 37, 24, 0.08);
-    }
-
-    .article-meta {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 10px 18px;
-      margin-bottom: 18px;
-      color: var(--accent);
-      font: 700 0.75rem/1.3 Arial, sans-serif;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-    }
-
-    .article-meta span + span::before {
-      content: '•';
-      margin-right: 18px;
-      color: var(--line);
-    }
-
-    h2 {
-      max-width: 820px;
-      margin: 0 0 24px;
-      font-size: clamp(2.2rem, 5vw, 4.5rem);
-      line-height: 1.02;
-      letter-spacing: -0.045em;
-    }
-
-    .standfirst {
-      margin: 0 0 30px;
-      padding: 0 0 28px;
-      border-bottom: 1px solid var(--line);
-      color: var(--accent-dark);
-      font-size: clamp(1.15rem, 2vw, 1.4rem);
-      line-height: 1.5;
-    }
-
-    .article-body {
-      columns: 2 300px;
-      column-gap: clamp(28px, 5vw, 64px);
-      font-size: 1.08rem;
-    }
-
-    .article-body p {
-      margin: 0 0 1.2em;
-      break-inside: avoid;
-    }
-
-    .article-body p:first-child::first-letter {
-      float: left;
-      margin: 0.04em 0.1em 0 0;
-      color: var(--accent);
-      font-size: 4.2em;
-      line-height: 0.8;
-    }
-
-    .source {
-      margin: 34px 0 0;
-      padding-top: 16px;
-      border-top: 1px solid var(--line);
-      color: var(--muted);
-      font: 0.78rem/1.5 Arial, sans-serif;
-    }
-
-    .source a { color: var(--accent-dark); }
-
-    footer {
-      padding: 16px 0 30px;
-      border-top: 1px solid var(--line);
-      color: var(--muted);
-      font: 0.72rem/1.5 Arial, sans-serif;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-
-    @media (max-width: 650px) {
-      .page { width: min(100% - 24px, 1120px); }
-      .brand { align-items: start; flex-direction: column; gap: 12px; }
-      .date { text-align: left; }
-      main { padding-top: 28px; }
-      article { padding: 24px 20px; }
-      .article-body { columns: 1; }
-    }
+    body { margin: 0; color: var(--ink); background: var(--cream); font-family: Georgia, "Times New Roman", serif; line-height: 1.68; }
+    .masthead { max-width: 1200px; margin: 0 auto; padding: 42px 28px 28px; text-align: center; }
+    .kicker, .article-number { color: var(--accent); font: 700 .78rem/1.2 Arial, sans-serif; letter-spacing: .2em; text-transform: uppercase; }
+    h1 { margin: 10px 0 3px; font-size: clamp(3rem, 7vw, 6rem); line-height: .95; letter-spacing: -.06em; }
+    .strapline { margin: 12px 0 0; color: var(--muted); font: .95rem/1.4 Arial, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+    .rule { max-width: 1200px; height: 4px; margin: 0 auto 34px; background: var(--accent); border-top: 1px solid var(--accent-dark); }
+    main { max-width: 1200px; margin: 0 auto; padding: 0 28px 56px; }
+    .edition-note { max-width: 800px; margin: 0 auto 34px; color: var(--muted); font-style: italic; text-align: center; }
+    .articles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 30px; }
+    article { padding: 28px 30px 30px; background: var(--paper); border: 1px solid var(--line); box-shadow: 0 10px 28px rgba(61, 43, 25, .07); }
+    article:first-child, article:nth-child(2) { grid-column: 1 / -1; }
+    h2 { margin: 10px 0 18px; font-size: clamp(1.8rem, 3.4vw, 3.1rem); line-height: 1.08; letter-spacing: -.035em; }
+    h3 { margin: 24px 0 6px; color: var(--accent-dark); font-size: 1.2rem; line-height: 1.2; }
+    p { margin: 0 0 15px; }
+    .source { margin-top: 22px; padding-top: 14px; color: var(--muted); border-top: 1px solid var(--line); font: .86rem/1.55 Arial, sans-serif; }
+    a { color: var(--accent-dark); }
+    footer { max-width: 1200px; margin: 0 auto; padding: 22px 28px 36px; color: var(--muted); border-top: 1px solid var(--line); font: .78rem/1.5 Arial, sans-serif; text-align: center; }
+    @media (max-width: 760px) { .masthead { padding-top: 30px; } main { padding: 0 16px 38px; } .articles { display: block; } article { margin-bottom: 20px; padding: 22px 20px; } h1 { font-size: 3.7rem; } }
   </style>
 </head>
 <body>
-  <div class="page">
-    <header class="masthead">
-      <p class="kicker">Édition internationale</p>
-      <div class="brand">
-        <h1>Le Courrier</h1>
-        <p class="date">Jeudi 13 août 2026<br>Journal du jour</p>
-      </div>
-    </header>
+  <header class="masthead">
+    <div class="kicker">Le journal des événements</div>
+    <h1>Le Repporter</h1>
+    <div class="strapline">Édition du 13 août 2026 · France, Europe et monde</div>
+  </header>
+  <div class="rule" aria-hidden="true"></div>
 
-    <main>
-      <span class="edition-label">À la une · Afrique</span>
+  <main>
+    <p class="edition-note">Une édition consacrée à la sécheresse, aux incendies, aux tensions diplomatiques et aux recompositions politiques.</p>
+
+    <section class="articles" aria-label="Articles de l'édition">
       <article>
-        <div class="article-meta">
-          <span>Politique &amp; économie</span>
-          <span>Zambie</span>
-        </div>
-        <h2>Élections en Zambie : le scrutin du 13 août placé sous le signe du coût de la vie et du cuivre</h2>
-        <p class="standfirst">Les Zambiens sont appelés aux urnes pour une élection présidentielle dont les résultats sont attendus le 17 août. Le vote se joue aussi sur la trajectoire économique du pays et la gestion de sa ressource minière stratégique.</p>
-
-        <div class="article-body">
-          <p>Les Zambiens sont appelés aux urnes le 13 août 2026 pour une élection présidentielle dont les résultats sont attendus le 17 août. Le scrutin intervient dans un contexte où les préoccupations économiques occupent une place centrale, notamment face à la hausse du coût de la vie et au bilan du président sortant, Hakainde Hichilema.</p>
-          <p>Au-delà du choix d’un président, cette élection doit ainsi être lue comme un vote sur la trajectoire économique du pays. Hichilema défend son bilan, tandis que les électeurs évaluent concrètement les effets des politiques menées sur leur quotidien. La question du pouvoir d’achat pourrait peser lourd dans les urnes : les indicateurs macroéconomiques ne suffisent pas à convaincre si les ménages continuent de ressentir une pression accrue sur leurs dépenses.</p>
-          <p>Le coût de la vie constitue donc l’un des principaux enjeux du scrutin. Il oblige le président sortant à démontrer que son action économique peut produire des résultats visibles pour la population. Pour les électeurs, l’élection représente une occasion de juger la capacité du pouvoir à transformer les ressources du pays en amélioration des conditions de vie.</p>
-          <p>Le cuivre se trouve au cœur de cette équation. Ressource stratégique de la Zambie, il est à la fois un levier de croissance et un enjeu de souveraineté économique. Sa valeur dépasse les frontières nationales, alors que les intérêts chinois et américains se disputent une place dans le secteur. Cette concurrence internationale offre à Lusaka des possibilités d’investissement et de partenariats, mais elle soulève également la question des conditions dans lesquelles les richesses minières profitent réellement au pays.</p>
-          <p>Le prochain président devra ainsi arbitrer entre l’attractivité des capitaux étrangers, la protection des intérêts nationaux et la nécessité de faire du cuivre un moteur de développement plus largement partagé. La relation avec la Chine et les États-Unis ne relève pas seulement de la diplomatie : elle touche directement à la stratégie économique de la Zambie et à sa capacité à maîtriser son avenir minier.</p>
-          <p>Dans ce contexte, le scrutin du 13 août combine trois dimensions. Il s’agit d’abord d’un vote de confiance ou de défiance à l’égard de Hakainde Hichilema. Il constitue ensuite un référendum politique sur la réponse apportée au coût de la vie. Il est enfin un choix stratégique sur la manière dont la Zambie entend gérer son cuivre face aux puissances étrangères.</p>
-          <p>Les résultats attendus le 17 août permettront de mesurer la priorité donnée par les électeurs à chacune de ces questions. Une victoire de Hichilema confirmerait la poursuite de sa ligne économique et de sa stratégie dans le secteur du cuivre. Une alternance ouvrirait, au contraire, un débat sur la réorientation du bilan économique et sur l’équilibre à trouver entre les intérêts chinois, américains et zambiens.</p>
-          <p>Quelle que soit l’issue du vote, le prochain mandat sera jugé sur sa capacité à relier la richesse minière du pays aux réalités quotidiennes de la population. En Zambie, la présidentielle ne se résume donc pas à une compétition politique : elle engage aussi le pouvoir d’achat, la gestion du cuivre et la place du pays dans la rivalité économique internationale.</p>
-        </div>
-
-        <p class="source">Source : <a href="https://apnews.com/article/c2e3a627284296099089e03d2454e3b7" target="_blank" rel="noopener">AP News</a></p>
+        <div class="article-number">01 · Environnement</div>
+        <h2>Sécheresse historique en France : l’eau potable sous tension dans 92 départements</h2>
+        <p>La France fait face à une situation de sécheresse qualifiée d’historique, avec des restrictions d’eau désormais en vigueur dans 92 départements. Alors que les nappes phréatiques continuent de baisser, plus de 40 000 personnes sont déjà touchées par des coupures d’eau potable. Cette crise met à l’épreuve les habitants, l’agriculture et les collectivités.</p>
+        <h3>Une situation sans précédent</h3>
+        <p>La sécheresse s’installe sur une grande partie du territoire français. Le nombre de départements concernés par des mesures de restriction témoigne de l’ampleur nationale du phénomène. Dans certaines zones, les tensions se concentrent désormais sur l’accès à l’eau potable, une évolution qui inquiète les autorités et les populations.</p>
+        <p>Selon Le Monde, les coupures touchent déjà plus de 40 000 personnes. Cette situation illustre le passage d’une crise principalement liée à la gestion des usages de l’eau à une difficulté qui affecte directement la vie quotidienne. Les habitants concernés peuvent subir des interruptions d’approvisionnement et doivent parfois adapter leurs pratiques aux consignes locales.</p>
+        <h3>Des nappes phréatiques en baisse</h3>
+        <p>La diminution des nappes phréatiques constitue l’un des principaux facteurs d’inquiétude. Ces réserves souterraines jouent un rôle essentiel dans l’alimentation en eau des territoires, notamment lorsque les précipitations sont insuffisantes. Leur baisse réduit les marges de manœuvre des collectivités et complique la gestion de la ressource à court comme à moyen terme.</p>
+        <p>Le ministère de la Transition écologique décrit une situation précoce et exceptionnelle et met en avant un dispositif de gestion locale de la ressource en eau. Cette approche vise à adapter les décisions aux réalités de chaque territoire, alors que les niveaux de tension peuvent varier d’un département à l’autre.</p>
+        <h3>Des conséquences pour les habitants</h3>
+        <p>Pour les populations, les restrictions entraînent des changements concrets dans les usages quotidiens. Les mesures peuvent limiter certains prélèvements et imposer des économies d’eau. Lorsque l’approvisionnement est interrompu, la difficulté devient plus immédiate : les familles, les établissements et les activités locales doivent s’organiser pour faire face à une ressource devenue incertaine.</p>
+        <p>La crise pose également une question d’égalité entre les territoires. Les communes confrontées aux coupures doivent mobiliser des solutions d’urgence, tandis que les habitants sont appelés à réduire leur consommation. La capacité à garantir un accès continu à l’eau potable devient ainsi un enjeu central pour les services publics locaux.</p>
+        <h3>L’agriculture et les collectivités sous pression</h3>
+        <p>L’agriculture est directement concernée par les restrictions, qui peuvent limiter l’utilisation de l’eau pour les cultures et l’élevage. Dans un contexte de baisse des nappes, les arbitrages entre les différents usages deviennent plus difficiles. Les exploitants doivent composer avec une ressource moins disponible, tandis que les collectivités doivent préserver l’approvisionnement des habitants.</p>
+        <p>Les communes et les services chargés de l’eau sont confrontés à une double exigence : répondre aux besoins immédiats et préserver les réserves restantes. La gestion locale mise en avant par le ministère doit permettre de prendre en compte ces contraintes tout en coordonnant les décisions entre les différents acteurs.</p>
+        <h3>Une crise qui oblige à repenser la gestion de l’eau</h3>
+        <p>L’extension des restrictions à 92 départements et les coupures affectant plus de 40 000 personnes montrent que la sécheresse ne relève plus seulement d’épisodes ponctuels. Elle touche simultanément les réserves, les usages agricoles, les services publics et la vie quotidienne.</p>
+        <p>Face à cette situation exceptionnelle, la priorité est de protéger l’accès à l’eau potable, de réduire les consommations et d’adapter la gestion aux réalités locales. La baisse des nappes phréatiques rappelle toutefois que les décisions prises dans l’urgence devront s’accompagner d’une réflexion durable sur la préservation de la ressource.</p>
+        <div class="source">Sources : Le Monde, « As drought grips France, tensions over drinking water mount: ‘We are in uncharted territory’ » : <a href="https://www.lemonde.fr/en/environment/article/2026/08/13/as-drought-grips-france-tensions-over-drinking-water-mount-we-are-in-uncharted-territory_6756456_114.html">lemonde.fr</a> ; ministère de la Transition écologique, « Sécheresse : face à une situation précoce et exceptionnelle, un dispositif de gestion locale de la ressource en eau est mis en place » : <a href="https://www.ecologie.gouv.fr/presse/secheresse-face-situation-precoce-exceptionnelle-dispositif-gestion-locale-ressource-eau-est">ecologie.gouv.fr</a>.</div>
       </article>
-    </main>
 
-    <footer>Le Courrier du jour · Une publication éditoriale</footer>
-  </div>
+      <article>
+        <div class="article-number">02 · Climat</div>
+        <h2>Incendies en France et en Espagne : l’été où la chaleur a dépassé les moyens de secours</h2>
+        <p>À la fin de juillet 2026, la France et l’Espagne affrontent une nouvelle vague d’incendies, attisés par des températures extrêmes, des sols desséchés et des vents changeants. En France, les autorités ont évacué plus de 220 000 personnes dans la région de la Gironde, tandis que le bilan des déplacements dans le sud-ouest dépasse 250 000 personnes en incluant d’autres foyers. En Espagne, 76 000 habitants ont été évacués et 30 000 autres confinés à leur domicile.</p>
+        <p>Le feu le plus spectaculaire en France ravage les forêts de pins et les zones de broussailles à l’ouest de Bordeaux. En Gironde, environ 42 000 hectares ont brûlé, soit une superficie quatre fois supérieure à celle de Paris. Les flammes se sont approchées à une quinzaine de kilomètres de Bordeaux et ont menacé la presqu’île du Cap Ferret, accessible par une seule route. Des ferries spécialement affrétés ont permis d’évacuer des centaines de vacanciers et de résidents.</p>
+        <p>Dans les Landes, un autre incendie a conduit à l’évacuation de 36 000 personnes. Plus au sud, dans le Var, près de 3 000 habitants ont également dû quitter leur logement. Des entreprises situées aux abords de Bordeaux ont fermé préventivement, tandis qu’un centre d’exposition de la ville a été transformé en hébergement d’urgence pour accueillir les sinistrés, y compris des personnes âgées évacuées de maisons de retraite.</p>
+        <p>La situation a été aggravée par des conditions météorologiques particulièrement difficiles. Après des températures d’environ 33 °C, le sud-ouest français devait atteindre 42 °C. Des vents secs, venant du sud-ouest le matin puis de l’ouest l’après-midi, menaçaient de relancer les flammes. Les pompiers ont décrit un incendie stable par moments, mais toujours hors de contrôle et capable de changer rapidement de direction.</p>
+        <p>Le feu a parfois produit son propre système de vents et des phénomènes comparés à une tempête de feu. Ces embrasements, accompagnés d’éclairs susceptibles de provoquer de nouveaux départs, ont rendu les opérations imprévisibles. Environ 2 500 pompiers ont été mobilisés, avec le soutien de 18 avions et hélicoptères, de soldats et de renforts venus d’autres pays européens. Au moins 75 pompiers ont été soignés pour des blessures. Dans certaines communes, des bénévoles ont tenté de protéger les maisons avec les moyens du bord, parfois à l’aide de simples seaux d’eau.</p>
+        <p>En Espagne, plusieurs foyers ont également mobilisé d’importants moyens. Dans la province de Castellón, un incendie est resté hors de contrôle pendant cinq jours, brûlant plus de 10 000 hectares. Son périmètre atteignait environ 75,5 kilomètres et près de 10 000 habitants évacués ne pouvaient toujours pas regagner leur domicile. Dans les régions de Madrid et d’Ávila, la situation s’est améliorée, permettant le retour progressif des habitants de 15 communes, mais les équipes restaient mobilisées pour éteindre les points chauds et empêcher toute reprise.</p>
+        <p>Les dégâts ne sont pas seulement matériels. En Espagne, des images tournées dans la province d’Ávila ont montré des carcasses de cerfs au milieu d’une forêt réduite en cendres. Les paysages forestiers, les habitats naturels et la faune ont été lourdement touchés. Les incendies français ont, eux aussi, détruit de vastes étendues de pins et de broussailles, des végétations particulièrement inflammables après plusieurs épisodes de chaleur.</p>
+        <p>Les secours doivent désormais intervenir dans un contexte où les incendies se propagent plus vite et deviennent plus difficiles à contenir. En Espagne, le relief escarpé et très sec complique l’accès des équipes. Dans les deux pays, les vents peuvent modifier brutalement la progression des flammes, tandis que la chaleur épuise les intervenants et réduit les marges de sécurité. Les opérations nécessitent une coordination permanente entre pompiers, militaires, moyens aériens, autorités locales et populations évacuées.</p>
+        <p>Les études évoquées par l’Associated Press établissent un lien direct entre ces conditions et le changement climatique. Selon une analyse rapide de World Weather Attribution, le réchauffement d’origine humaine aurait rendu vingt fois plus probable l’épisode de chaleur et de sécheresse à l’origine des incendies espagnols, et aurait doublé la probabilité de conditions extrêmes en France. Une autre étude estime que le nombre annuel de journées présentant un risque météorologique élevé d’incendie dans le sud de l’Europe est passé d’environ dix à près de vingt-cinq, avec une intensité supérieure d’environ 50 % à celle observée entre 1981 et 2010.</p>
+        <p>Ces résultats n’expliquent pas à eux seuls le départ de chaque feu, mais ils montrent que la chaleur et la sécheresse créent un environnement de plus en plus favorable à leur propagation. En Espagne, l’abandon de certaines terres a aussi laissé se développer une végétation non entretenue, devenue un combustible supplémentaire. En Gironde, les vastes pinèdes ont fourni une matière particulièrement inflammable.</p>
+        <p>Les épisodes de juillet 2026 posent ainsi la question de la préparation estivale. Les évacuations massives, les hébergements d’urgence, l’appel à des renforts internationaux et l’utilisation conjointe d’avions, d’hélicoptères et de moyens militaires montrent l’ampleur des dispositifs désormais nécessaires. Mais les chercheurs cités par l’AP soulignent également qu’au-delà d’un certain niveau de chaleur et de sécheresse, même des moyens importants ne suffisent plus à stopper la progression d’un incendie.</p>
+        <p>Lorsque les températures doivent enfin baisser et que des orages sont annoncés dans le sud-ouest français, l’accalmie reste fragile. Les retours ne peuvent être autorisés qu’une fois les zones sécurisées et les feux maîtrisés. Pour les habitants, la catastrophe ne s’achève donc pas avec la disparition des flammes : il faut encore mesurer les destructions, restaurer les territoires et se préparer à des étés où les incendies pourraient devenir plus fréquents, plus vastes et plus rapides.</p>
+        <div class="source">Sources : <a href="https://www.investing.com/news/world-news/france-and-spain-fight-to-contain-wildfires-as-temperatures-soar-again-4819126">Reuters</a> ; <a href="https://apnews.com/article/5b9b063bdcf9b69867fa71ba31be8aa5">Associated Press</a>.</div>
+      </article>
+
+      <article>
+        <div class="article-number">03 · Proche-Orient</div>
+        <h2>Gaza : une trêve toujours fragile malgré de nouvelles avancées diplomatiques</h2>
+        <p>Les négociations engagées le 30 juillet ont fait apparaître des progrès dans la recherche d’un cessez-le-feu à Gaza, sans toutefois lever les principaux obstacles à un accord durable. Alors que les médiateurs poursuivent leurs efforts pour rapprocher les positions, les désaccords demeurent sur les conditions concrètes de mise en œuvre d’une éventuelle trêve.</p>
+        <p>La reprise des discussions nourrit un espoir prudent. Les avancées annoncées témoignent d’une volonté de maintenir le dialogue malgré la persistance des tensions. Mais la question de l’application de l’accord reste centrale : les parties ne semblent pas encore s’entendre sur les modalités précises qui permettraient de garantir son entrée en vigueur et son respect dans la durée.</p>
+        <p>Cette fragilité diplomatique s’accompagne d’une réalité militaire toujours lourde. Des frappes israéliennes ont fait trois morts à Gaza, dont deux enfants, selon Reuters via MarketScreener. Ces nouvelles victimes illustrent le décalage entre les annonces diplomatiques et la situation sur le terrain, où les hostilités continuent de menacer les populations civiles.</p>
+        <p>Les médiateurs tentent ainsi de préserver la dynamique des négociations tout en faisant face à l’urgence humanitaire. Chaque journée sans cessez-le-feu accroît les souffrances et complique davantage la mise en place d’une réponse efficace pour les habitants de Gaza. La poursuite des frappes entretient également la méfiance et réduit l’espace nécessaire aux compromis.</p>
+        <p>À ce stade, les discussions constituent donc une ouverture, mais pas encore une garantie de trêve. Leur réussite dépendra de la capacité des parties à régler les différends liés à la mise en œuvre et à transformer les progrès diplomatiques en mesures effectives sur le terrain. En attendant, la situation humanitaire demeure au cœur des préoccupations et rappelle le coût immédiat de l’absence d’accord.</p>
+        <div class="source">Source : <a href="https://ca.marketscreener.com/news/israeli-strikes-kill-three-in-gaza-including-two-children-amid-new-ceasefire-push-ce7f50dad989f52c">Reuters via MarketScreener</a>.</div>
+      </article>
+
+      <article>
+        <div class="article-number">04 · Afrique</div>
+        <h2>RDC : le feu vert de la Cour constitutionnelle relance le débat sur l’avenir politique de Félix Tshisekedi</h2>
+        <p>La Cour constitutionnelle de la République démocratique du Congo a validé le cadre légal du référendum, une décision qui ravive les interrogations sur l’évolution des institutions et les ambitions politiques éventuelles du président Félix Tshisekedi. Présentée comme une étape juridique, cette validation est perçue par l’opposition comme une possible ouverture vers une réforme constitutionnelle susceptible de permettre un troisième mandat présidentiel.</p>
+        <h3>Une décision aux conséquences politiques</h3>
+        <p>La validation de la loi référendaire donne désormais un cadre légal à l’organisation d’une éventuelle consultation populaire. Sur le plan institutionnel, elle constitue un feu vert important pour le pouvoir, qui pourrait soumettre à l’approbation des électeurs des modifications concernant l’organisation et le fonctionnement de l’État.</p>
+        <p>La décision ne signifie pas automatiquement qu’une réforme constitutionnelle sera adoptée ni qu’un troisième mandat est acquis. Elle crée cependant les conditions juridiques d’un débat national sur l’avenir des institutions congolaises. C’est précisément cette perspective qui inquiète l’opposition et alimente les soupçons sur les intentions du chef de l’État.</p>
+        <h3>L’opposition dénonce un risque de verrouillage institutionnel</h3>
+        <p>Les critiques se concentrent sur le risque qu’une réforme constitutionnelle soit utilisée pour modifier les règles encadrant la durée ou le nombre des mandats présidentiels. Pour les opposants au pouvoir, le référendum pourrait devenir un instrument permettant de contourner les limites actuelles et d’ouvrir la voie à une nouvelle candidature de Félix Tshisekedi.</p>
+        <p>Cette crainte explique la virulence des réactions politiques. L’opposition redoute qu’une consultation populaire, présentée comme un exercice démocratique, serve en réalité à légitimer une transformation des règles du jeu au bénéfice du président en exercice. Elle s’interroge également sur les garanties qui entoureraient le processus, notamment sur la neutralité du débat et sur la capacité des institutions à préserver l’équilibre entre les pouvoirs.</p>
+        <h3>Un enjeu juridique au cœur du débat</h3>
+        <p>La question centrale est celle de la portée exacte de la réforme envisagée. La Cour constitutionnelle a validé le cadre du référendum, mais le contenu d’éventuelles modifications reste déterminant. Toute réforme devra être examinée à l’aune des règles constitutionnelles et de leur interprétation, tandis que le pouvoir devra convaincre que la procédure répond à un véritable objectif institutionnel.</p>
+        <p>Le débat porte donc autant sur la légalité du référendum que sur son objectif politique. Pour le pouvoir, la réforme pourrait être défendue comme une adaptation nécessaire des institutions. Pour ses adversaires, elle risquerait de fragiliser les mécanismes de limitation du pouvoir présidentiel et de concentrer davantage l’autorité autour de l’exécutif.</p>
+        <h3>Une séquence à haut risque pour la RDC</h3>
+        <p>La validation de la loi référendaire ouvre une période de forte incertitude politique. Le gouvernement devra clarifier ses intentions et préciser les changements envisagés afin d’éviter que le référendum ne soit immédiatement assimilé à une manœuvre en faveur d’un troisième mandat. De son côté, l’opposition devrait continuer à mobiliser contre ce qu’elle considère comme une menace pour l’alternance et l’équilibre institutionnel.</p>
+        <p>Au-delà du sort de la réforme, c’est la confiance dans les institutions congolaises qui se trouve en jeu. Le référendum pourrait être présenté comme un moyen de consulter directement la population. Mais s’il apparaît comme une tentative de modifier les règles présidentielles, il risque d’approfondir la polarisation politique et de provoquer une nouvelle confrontation entre le pouvoir et ses opposants.</p>
+        <p>La décision de la Cour constitutionnelle marque ainsi le début, et non l’aboutissement, d’une bataille juridique et politique. L’avenir institutionnel de la RDC dépendra désormais du contenu du projet, de la transparence de la procédure et de la capacité des acteurs congolais à garantir que le débat constitutionnel ne se transforme pas en crise autour de la succession présidentielle.</p>
+        <div class="source">Sources : France 24 via Boursorama ; Ouragan.cd.</div>
+      </article>
+    </section>
+  </main>
+
+  <footer>Le Repporter · Page générée à partir des quatre articles transmis par les écrivains.</footer>
 </body>
 </html>

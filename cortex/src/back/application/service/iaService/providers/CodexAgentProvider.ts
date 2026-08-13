@@ -9,6 +9,8 @@ import type {
 import { DEFAULT_AGENT_CONFIGURATION } from "../AgentProvider.ts";
 import { CliAgentProvider } from "../CliAgentProvider.ts";
 
+const AGENT_EXECUTION_TIMEOUT_MS = 15 * 60 * 1000;
+
 export class CodexAgentProvider extends CliAgentProvider implements AgentProvider {
   readonly engine = "codex" as const;
   readonly label = "Codex";
@@ -98,7 +100,7 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     const output = await this.runCommand(this.command, [
       ...this.argumentPrefix,
       ...args
-    ], 120_000, options.workingDirectory);
+    ], AGENT_EXECUTION_TIMEOUT_MS, options.workingDirectory);
     const result = parseCodexJsonOutput(output, options.sessionId);
 
     if (!result.answer) {
