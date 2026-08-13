@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FolderPlus } from "lucide-react";
+import { FilePlus2 } from "lucide-react";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
 import {
   getActualLoadedAgentProject,
@@ -12,7 +12,7 @@ import {
   getSavedProjects,
   type Project,
   saveProjectDirectory,
-  selectProjectDirectory
+  selectProjectInstructionsFile
 } from "../../../services/projectApi.ts";
 import { ConfirmationDialog } from "./ConfirmationDialog.tsx";
 import {
@@ -100,18 +100,18 @@ export function ProjectDirectoryManager({
     };
   }, []);
 
-  async function handleDirectorySelection(): Promise<void> {
+  async function handleInstructionsFileSelection(): Promise<void> {
     setIsSelecting(true);
     setError("");
     setSaveMessage("");
 
     try {
-      const selectedDirectoryPath = await selectProjectDirectory();
+      const selectedDirectoryPath = await selectProjectInstructionsFile();
 
       if (selectedDirectoryPath) {
         const result = await saveProjectDirectory(selectedDirectoryPath);
         setProjects(result.projects);
-        setSaveMessage("Le répertoire du projet a été enregistré.");
+        setSaveMessage("Le projet a été ajouté depuis son fichier d'instructions.");
       }
     } catch (requestError) {
       setError(getErrorMessage(requestError));
@@ -241,10 +241,10 @@ export function ProjectDirectoryManager({
           <button
             className="project-sidebar__add-button"
             type="button"
-            onClick={handleDirectorySelection}
+            onClick={handleInstructionsFileSelection}
             disabled={isSelecting}
           >
-            <FolderPlus aria-hidden="true" size={18} />
+            <FilePlus2 aria-hidden="true" size={18} />
             {isSelecting ? "Ouverture..." : "Ajouter un projet"}
           </button>
           <AgentEngineStatus />

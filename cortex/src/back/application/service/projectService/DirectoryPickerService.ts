@@ -1,10 +1,11 @@
 
 import { execFile } from "node:child_process";
+import path from "node:path";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
-const WINDOWS_DIRECTORY_PICKER_SCRIPT = `
+const WINDOWS_INSTRUCTIONS_FILE_PICKER_SCRIPT = `
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
 Add-Type -TypeDefinition @'
@@ -16,9 +17,10 @@ namespace Cortex.Windows
     [Flags]
     internal enum FileOpenOptions : uint
     {
-        PickFolders = 0x00000020,
+        StrictFileTypes = 0x00000004,
         ForceFileSystem = 0x00000040,
         PathMustExist = 0x00000800,
+        FileMustExist = 0x00001000,
         DontAddToRecent = 0x02000000
     }
 
@@ -102,11 +104,11 @@ namespace Cortex.Windows
         void Compare(IShellItem shellItem, uint hint, out int order);
     }
 
-    public static class DirectoryPicker
+    public static class InstructionsFilePicker
     {
         private const int Cancelled = unchecked((int)0x800704C7);
 
-        public static string SelectDirectory()
+        public static string SelectFile()
         {
             IFileDialog dialog = (IFileDialog)new FileOpenDialog();
             IShellItem selectedItem = null;
@@ -118,14 +120,27 @@ namespace Cortex.Windows
                 dialog.GetOptions(out options);
                 dialog.SetOptions(
                     options |
-                    FileOpenOptions.PickFolders |
+                    FileOpenOptions.StrictFileTypes |
                     FileOpenOptions.ForceFileSystem |
                     FileOpenOptions.PathMustExist |
+                    FileOpenOptions.FileMustExist |
                     FileOpenOptions.DontAddToRecent
                 );
-                dialog.SetTitle("Sélectionnez le répertoire du projet");
-                dialog.SetOkButtonLabel("Sélectionner ce dossier");
-                dialog.SetFileNameLabel("Dossier :");
+                dialog.SetFileTypes(
+                    1,
+                    new FilterSpec[]
+                    {
+                        new FilterSpec
+                        {
+                            Name = "Fichiers d'instructions (AGENTS.md, CLAUDE.md)",
+                            Spec = "AGENTS.md;CLAUDE.md"
+                        }
+                    }
+                );
+                dialog.SetFileTypeIndex(1);
+                dialog.SetTitle("Sélectionnez le fichier d'instructions du projet");
+                dialog.SetOkButtonLabel("Sélectionner ce fichier");
+                dialog.SetFileNameLabel("Fichier :");
 
                 int result = dialog.Show(IntPtr.Zero);
 
@@ -162,28 +177,42 @@ namespace Cortex.Windows
 }
 '@
 
-$selectedDirectory = [Cortex.Windows.DirectoryPicker]::SelectDirectory()
+$selectedFile = [Cortex.Windows.InstructionsFilePicker]::SelectFile()
 
-if ($null -ne $selectedDirectory) {
-  [Console]::Write($selectedDirectory)
+if ($null -ne $selectedFile) {
+  [Console]::Write($selectedFile)
 }
 `;
 
 export class DirectoryPickerService {
-  async selectDirectory(): Promise<string | null> {
+  async selectProjectDirectoryFromInstructionsFile(): Promise<string | null> {
     if (process.platform !== "win32") {
       throw new Error("Le sélecteur natif est disponible uniquement sous Windows.");
     }
 
     const { stdout } = await execFileAsync(
       "powershell.exe",
-      ["-NoLogo", "-NoProfile", "-STA", "-Command", WINDOWS_DIRECTORY_PICKER_SCRIPT],
+      ["-NoLogo", "-NoProfile", "-STA", "-Command", WINDOWS_INSTRUCTIONS_FILE_PICKER_SCRIPT],
       {
         encoding: "utf8",
         windowsHide: true
       }
     );
 
-    return stdout.trim() || null;
+    const selectedFilePath = stdout.trim();
+
+    if (!selectedFilePath) {
+      return null;
+    }
+
+    const selectedFileName = path.basename(selectedFilePath).toUpperCase();
+
+    if (selectedFileName !== "AGENTS.MD" && selectedFileName !== "CLAUDE.MD") {
+      throw new Error(
+        "Le fichier sélectionné doit s'appeler AGENTS.md ou CLAUDE.md."
+      );
+    }
+
+    return path.dirname(selectedFilePath);
   }
 }

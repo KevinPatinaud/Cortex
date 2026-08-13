@@ -74,14 +74,14 @@ export async function deleteProjectDirectory(
   return data;
 }
 
-export async function selectProjectDirectory(): Promise<string | null> {
-  const response = await fetch("/api/projects/select-directory", {
+export async function selectProjectInstructionsFile(): Promise<string | null> {
+  const response = await fetch("/api/projects/select-instructions-file", {
     method: "POST"
   });
   const data = await response.json() as DirectorySelectionResponse & ApiErrorResponse;
 
   if (!response.ok) {
-    throw new Error(data.error || "Impossible d'ouvrir le sélecteur de répertoire.");
+    throw new Error(data.error || "Impossible d'ouvrir le sélecteur de fichier.");
   }
 
   return data.directoryPath;

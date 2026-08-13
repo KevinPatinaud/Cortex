@@ -65,8 +65,8 @@ export class ProjectUseCase {
     return result.projects;
   }
 
-  selectProjectDirectory(): Promise<string | null> {
-    return this.directoryPickerService.selectDirectory();
+  selectProjectDirectoryFromInstructionsFile(): Promise<string | null> {
+    return this.directoryPickerService.selectProjectDirectoryFromInstructionsFile();
   }
 
   private getRequiredDirectoryPath(directoryPath: unknown): string {

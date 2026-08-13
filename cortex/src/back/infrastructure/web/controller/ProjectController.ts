@@ -44,9 +44,9 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
   );
 
   router.post(
-    "/select-directory",
+    "/select-instructions-file",
     asyncRoute(async (_request, response) => {
-      const directoryPath = await projectUseCase.selectProjectDirectory();
+      const directoryPath = await projectUseCase.selectProjectDirectoryFromInstructionsFile();
       response.json(toSelectedDirectoryResponse(directoryPath));
     }, projectErrorMappings.selectDirectory)
   );

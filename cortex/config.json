@@ -17,7 +17,7 @@
       "directoryPath": "C:\\dev\\Cortex\\My Agents Projects\\4 - plage ou montagne"
     },
     {
-      "id": "536864b6-a7a8-4f78-ba73-164a34d9d49b",
+      "id": "c13f0824-82eb-4b65-9238-555d7009ab5c",
       "directoryPath": "C:\\dev\\Cortex\\My Agents Projects\\5 - Repporter"
     }
   ],
@@ -98,7 +98,31 @@
       ]
     },
     "536864b6-a7a8-4f78-ba73-164a34d9d49b": {
-      "hash": "40ec6fb71e1a22a3328eca3f80c88ce7ef19857634b767a9bfb8920640d0b936",
+      "hash": "fa0a670d19e84797cc3d638a7f3fad02c1dc52cccf716113d63243293fad4093",
+      "agents": [
+        {
+          "id": ".codex/agents/repporter.toml",
+          "nextAgentIds": [
+            ".codex/agents/ecrivain.toml"
+          ],
+          "inputMode": "separate"
+        },
+        {
+          "id": ".codex/agents/ecrivain.toml",
+          "nextAgentIds": [
+            ".codex/agents/publieur.toml"
+          ],
+          "inputMode": "separate"
+        },
+        {
+          "id": ".codex/agents/publieur.toml",
+          "nextAgentIds": [],
+          "inputMode": "aggregate"
+        }
+      ]
+    },
+    "c13f0824-82eb-4b65-9238-555d7009ab5c": {
+      "hash": "fa0a670d19e84797cc3d638a7f3fad02c1dc52cccf716113d63243293fad4093",
       "agents": [
         {
           "id": ".codex/agents/repporter.toml",
