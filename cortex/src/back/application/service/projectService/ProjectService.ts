@@ -20,6 +20,7 @@ export interface AgentWorkflowConfiguration {
   agents: Array<{
     id: string;
     nextAgentIds: string[];
+    inputMode: "separate" | "aggregate";
   }>;
 }
 
@@ -465,7 +466,8 @@ export class ProjectService {
         this.isRecord(agent) &&
         typeof agent.id === "string" &&
         Array.isArray(agent.nextAgentIds) &&
-        agent.nextAgentIds.every((agentId) => typeof agentId === "string")
+        agent.nextAgentIds.every((agentId) => typeof agentId === "string") &&
+        (agent.inputMode === "separate" || agent.inputMode === "aggregate")
       );
   }
 

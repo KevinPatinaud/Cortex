@@ -40,9 +40,11 @@ function toCopilotAgentDefinition(file: ProjectFile): AgentDefinition {
       file.name.replace(/\.agent\.md$/i, ""),
     description: markdown.attributes.description?.trim() || "",
     nextAgentIds: [],
+    inputMode: "separate",
     hasSession: false,
     executionStatus: "idle",
     conversation: [],
+    threads: [],
     ...(model ? { model } : {}),
     ...(reasoningEffort ? { reasoningEffort } : {}),
     prompt: markdown.body.trim()

@@ -45,9 +45,11 @@ export function toCodexAgentDefinitions(
           registeredAgent?.description ||
           "",
         nextAgentIds: [],
+        inputMode: "separate",
         hasSession: false,
         executionStatus: "idle",
         conversation: [],
+        threads: [],
         ...(model ? { model } : {}),
         ...(reasoningEffort ? { reasoningEffort } : {}),
         prompt: readString(contentTomlFile.developer_instructions) || ""

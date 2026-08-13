@@ -4,6 +4,7 @@ export interface AgentResponsePayload {
   status: AgentResponseStatus;
   items: Array<{ content: string }>;
   isMultiSelectionAllowed: boolean | null;
+  isMultiSelectionThreaded: boolean | null;
   notes: string | null;
 }
 
@@ -25,6 +26,10 @@ export function parseAgentResponse(
         parsedContent.isMultiSelectionAllowed === null
       ) ||
       !(
+        typeof parsedContent.isMultiSelectionThreaded === "boolean" ||
+        parsedContent.isMultiSelectionThreaded === null
+      ) ||
+      !(
         typeof parsedContent.notes === "string" ||
         parsedContent.notes === null
       )
@@ -36,6 +41,7 @@ export function parseAgentResponse(
       status: parsedContent.status,
       items: parsedContent.items as Array<{ content: string }>,
       isMultiSelectionAllowed: parsedContent.isMultiSelectionAllowed,
+      isMultiSelectionThreaded: parsedContent.isMultiSelectionThreaded,
       notes: parsedContent.notes
     };
   } catch {

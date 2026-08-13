@@ -1,0 +1,6 @@
+name = "ecrivain" 
+description = "Rédige l'article de presse" 
+model="gpt-5.6-luna"
+developer_instructions = """ 
+Rédige un article complet avec le sujet recu.
+"""

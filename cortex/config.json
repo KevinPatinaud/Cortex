@@ -1,0 +1,122 @@
+{
+  "projects": [
+    {
+      "id": "548b6e2b-5d12-4bd0-a187-13ecce9f8da3",
+      "directoryPath": "C:\\dev\\Cortex\\My Agents Projects\\1 - simple agent"
+    },
+    {
+      "id": "2ecb8282-97fe-4d56-b90d-78744eec879c",
+      "directoryPath": "C:\\dev\\Cortex\\My Agents Projects\\2 - multiple agents"
+    },
+    {
+      "id": "2667ab98-7181-48da-a0de-e503d02f535c",
+      "directoryPath": "C:\\dev\\Cortex\\My Agents Projects\\3 - test instructions globales"
+    },
+    {
+      "id": "27a6dde8-7174-4520-a045-10ae0108e036",
+      "directoryPath": "C:\\dev\\Cortex\\My Agents Projects\\4 - plage ou montagne"
+    },
+    {
+      "id": "536864b6-a7a8-4f78-ba73-164a34d9d49b",
+      "directoryPath": "C:\\dev\\Cortex\\My Agents Projects\\5 - Repporter"
+    }
+  ],
+  "agentOrders": {
+    "2ecb8282-97fe-4d56-b90d-78744eec879c": {
+      "hash": "892288991f531b26a90f65c2ecdc6faf5e60844cf3181602819e947cc4776429",
+      "agents": [
+        {
+          "id": ".codex/agents/ville_selecteur.toml",
+          "order": 1
+        },
+        {
+          "id": ".codex/agents/recherche météo.toml",
+          "order": 2
+        },
+        {
+          "id": ".codex/agents/choix vestimentaire.toml",
+          "order": 3
+        }
+      ]
+    }
+  },
+  "agentWorkflows": {
+    "2ecb8282-97fe-4d56-b90d-78744eec879c": {
+      "hash": "97105c315bfb47640a34c687da501dc34cb233629e5cbec38e4c82b5485fd494",
+      "agents": [
+        {
+          "id": ".codex/agents/ville_selecteur.toml",
+          "nextAgentIds": [
+            ".codex/agents/recherche météo.toml"
+          ]
+        },
+        {
+          "id": ".codex/agents/recherche météo.toml",
+          "nextAgentIds": [
+            ".codex/agents/choix vestimentaire.toml"
+          ]
+        },
+        {
+          "id": ".codex/agents/choix vestimentaire.toml",
+          "nextAgentIds": []
+        }
+      ]
+    },
+    "27a6dde8-7174-4520-a045-10ae0108e036": {
+      "hash": "71e6220987b65e15f01ec90834fea2442a35b85c92fa4d81be6b132d65e88c15",
+      "agents": [
+        {
+          "id": ".codex/agents/choix activité.toml",
+          "nextAgentIds": [
+            ".codex/agents/recherche montagne.toml",
+            ".codex/agents/recherche plage.toml"
+          ],
+          "inputMode": "separate"
+        },
+        {
+          "id": ".codex/agents/recherche montagne.toml",
+          "nextAgentIds": [
+            ".codex/agents/Agent de voyage.toml"
+          ],
+          "inputMode": "separate"
+        },
+        {
+          "id": ".codex/agents/recherche plage.toml",
+          "nextAgentIds": [
+            ".codex/agents/Agent de voyage.toml"
+          ],
+          "inputMode": "separate"
+        },
+        {
+          "id": ".codex/agents/Agent de voyage.toml",
+          "nextAgentIds": [],
+          "inputMode": "aggregate"
+        }
+      ]
+    },
+    "536864b6-a7a8-4f78-ba73-164a34d9d49b": {
+      "hash": "40ec6fb71e1a22a3328eca3f80c88ce7ef19857634b767a9bfb8920640d0b936",
+      "agents": [
+        {
+          "id": ".codex/agents/repporter.toml",
+          "nextAgentIds": [
+            ".codex/agents/ecrivain.toml"
+          ],
+          "inputMode": "separate"
+        },
+        {
+          "id": ".codex/agents/ecrivain.toml",
+          "nextAgentIds": [
+            ".codex/agents/publieur.toml"
+          ],
+          "inputMode": "separate"
+        },
+        {
+          "id": ".codex/agents/publieur.toml",
+          "nextAgentIds": [],
+          "inputMode": "aggregate"
+        }
+      ]
+    }
+  }
+}

@@ -193,9 +193,14 @@ function createWorkflowAnswer(): string {
     agents: [
       {
         id: ".claude/agents/implementation.md",
-        nextAgentIds: [".claude/agents/analysis.md"]
+        nextAgentIds: [".claude/agents/analysis.md"],
+        inputMode: "separate"
       },
-      { id: ".claude/agents/analysis.md", nextAgentIds: [] }
+      {
+        id: ".claude/agents/analysis.md",
+        nextAgentIds: [],
+        inputMode: "separate"
+      }
     ]
   });
 }
@@ -203,12 +208,14 @@ function createWorkflowAnswer(): string {
 function createAgentAnswer(
   items: string[],
   isMultiSelectionAllowed: boolean | null,
+  isMultiSelectionThreaded: boolean | null = null,
   notes = "NE_PAS_TRANSMETTRE"
 ): string {
   return JSON.stringify({
     status: "success",
     items: items.map((content) => ({ content })),
     isMultiSelectionAllowed,
+    isMultiSelectionThreaded,
     notes
   });
 }
@@ -218,9 +225,14 @@ test("configure le graphe des agents selon la réponse du moteur local", async (
     agents: [
       {
         id: ".claude/agents/analysis.md",
-        nextAgentIds: [".claude/agents/implementation.md"]
+        nextAgentIds: [".claude/agents/implementation.md"],
+        inputMode: "separate"
       },
-      { id: ".claude/agents/implementation.md", nextAgentIds: [] }
+      {
+        id: ".claude/agents/implementation.md",
+        nextAgentIds: [],
+        inputMode: "aggregate"
+      }
     ]
   }));
 
@@ -234,6 +246,8 @@ test("configure le graphe des agents selon la réponse du moteur local", async (
     ]
   );
   assert.deepEqual(project.agents[0].nextAgentIds, [project.agents[1].id]);
+  assert.equal(project.agents[0].inputMode, "separate");
+  assert.equal(project.agents[1].inputMode, "aggregate");
   assert.equal(calls.length, 1);
   assert.equal(calls[0].engine, "claude");
   assert.deepEqual(calls[0].options, {
@@ -250,9 +264,14 @@ test("réutilise le workflow enregistré lorsque le hash est identique", async (
     agents: [
       {
         id: ".claude/agents/analysis.md",
-        nextAgentIds: [".claude/agents/implementation.md"]
+        nextAgentIds: [".claude/agents/implementation.md"],
+        inputMode: "separate"
       },
-      { id: ".claude/agents/implementation.md", nextAgentIds: [] }
+      {
+        id: ".claude/agents/implementation.md",
+        nextAgentIds: [],
+        inputMode: "aggregate"
+      }
     ]
   }));
 
@@ -317,11 +336,13 @@ test("conserve un workflow linéaire si le graphe est invalide", async (t) => {
     agents: [
       {
         id: ".claude/agents/implementation.md",
-        nextAgentIds: [".claude/agents/analysis.md"]
+        nextAgentIds: [".claude/agents/analysis.md"],
+        inputMode: "separate"
       },
       {
         id: ".claude/agents/analysis.md",
-        nextAgentIds: [".claude/agents/implementation.md"]
+        nextAgentIds: [".claude/agents/implementation.md"],
+        inputMode: "separate"
       }
     ]
   }));
@@ -345,6 +366,20 @@ test("configure directement un agent unique comme fin de workflow", async () => 
 
   assert.deepEqual(project.agents[0].nextAgentIds, []);
   assert.equal(calls.length, 0);
+});
+
+test("réserve l'orchestration des agents suivants à Cortex", async () => {
+  const { useCase, calls } = createSequentialUseCase([{
+    answer: createAgentAnswer(["Sujet à transmettre"], true, true),
+    sessionId: "session-id"
+  }], 1);
+  const project = await useCase.loadProject("project-id");
+
+  await useCase.runAgent("project-id", { agentId: project.agents[0].id });
+
+  assert.match(calls[0].prompt, /Cortex orchestre exclusivement le workflow/);
+  assert.match(calls[0].prompt, /ne délègue aucune tâche à un sous-agent/i);
+  assert.match(calls[0].prompt, /retourne les éléments à leur transmettre/);
 });
 
 test("transmet automatiquement l'unique item sans les notes", async () => {
@@ -381,7 +416,8 @@ test("transmet uniquement les items sélectionnés sans les notes", async () => 
     {
       answer: createAgentAnswer(
         ["CHOIX_ALPHA", "CHOIX_BETA", "CHOIX_GAMMA"],
-        true
+        true,
+        false
       ),
       sessionId: "first-session"
     },
@@ -408,6 +444,209 @@ test("transmet uniquement les items sélectionnés sans les notes", async () => 
   assert.doesNotMatch(calls[2].prompt, /NE_PAS_TRANSMETTRE/);
 });
 
+test("exécute une instance suivante par item sélectionné en mode multithread", async () => {
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: createWorkflowAnswer() },
+    {
+      answer: createAgentAnswer(
+        ["CHOIX_ALPHA", "CHOIX_BETA", "CHOIX_GAMMA"],
+        true,
+        true
+      ),
+      sessionId: "first-session"
+    },
+    {
+      answer: createAgentAnswer(["Résultat alpha"], null),
+      sessionId: "alpha-session"
+    },
+    {
+      answer: createAgentAnswer(["Résultat gamma"], null),
+      sessionId: "gamma-session"
+    },
+    {
+      answer: createAgentAnswer(["Résultat alpha corrigé"], null),
+      sessionId: "alpha-session"
+    }
+  ]);
+  const project = await useCase.loadProject("project-id");
+  const [firstAgent, secondAgent] = project.agents;
+
+  await useCase.runAgent("project-id", { agentId: firstAgent.id });
+  const result = await useCase.runAgent("project-id", {
+    agentId: secondAgent.id,
+    upstreamAgentResults: [{
+      agentId: firstAgent.id,
+      selectedItemIndexes: [0, 2]
+    }]
+  });
+
+  assert.equal(calls.length, 4);
+  assert.match(calls[2].prompt, /CHOIX_ALPHA/);
+  assert.doesNotMatch(calls[2].prompt, /CHOIX_GAMMA/);
+  assert.match(calls[3].prompt, /CHOIX_GAMMA/);
+  assert.doesNotMatch(calls[3].prompt, /CHOIX_ALPHA/);
+  assert.equal(result.threads.length, 2);
+  assert.deepEqual(
+    result.threads.map((thread) => thread.conversation.at(-1)?.content),
+    [createAgentAnswer(["Résultat alpha"], null), createAgentAnswer(["Résultat gamma"], null)]
+  );
+
+  const targetedResult = await useCase.runAgent("project-id", {
+    agentId: secondAgent.id,
+    threadId: result.threads[0].id,
+    additionalInstructions: "Corrige uniquement cette branche.",
+    upstreamAgentResults: [{
+      agentId: firstAgent.id,
+      selectedItemIndexes: [0, 2]
+    }]
+  });
+
+  assert.equal(calls.length, 5);
+  assert.equal(calls[4].options.sessionId, "alpha-session");
+  assert.equal(
+    targetedResult.threads[0].conversation.at(-1)?.content,
+    createAgentAnswer(["Résultat alpha corrigé"], null)
+  );
+  assert.equal(
+    targetedResult.threads[1].conversation.at(-1)?.content,
+    createAgentAnswer(["Résultat gamma"], null)
+  );
+});
+
+test("propage les instances parallèles à l'agent suivant", async () => {
+  const workflowAnswer = JSON.stringify({
+    agents: [
+      {
+        id: ".claude/agents/implementation.md",
+        nextAgentIds: [".claude/agents/analysis.md"],
+        inputMode: "separate"
+      },
+      {
+        id: ".claude/agents/analysis.md",
+        nextAgentIds: [".claude/agents/review.md"],
+        inputMode: "separate"
+      },
+      {
+        id: ".claude/agents/review.md",
+        nextAgentIds: [],
+        inputMode: "separate"
+      }
+    ]
+  });
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: workflowAnswer },
+    {
+      answer: createAgentAnswer(["BRANCHE_A", "BRANCHE_B"], true, true),
+      sessionId: "source-session"
+    },
+    {
+      answer: createAgentAnswer(["ANALYSE_A"], null),
+      sessionId: "analysis-a-session"
+    },
+    {
+      answer: createAgentAnswer(["ANALYSE_B"], null),
+      sessionId: "analysis-b-session"
+    },
+    {
+      answer: createAgentAnswer(["REVUE_A"], null),
+      sessionId: "review-a-session"
+    },
+    {
+      answer: createAgentAnswer(["REVUE_B"], null),
+      sessionId: "review-b-session"
+    }
+  ], 3);
+  const project = await useCase.loadProject("project-id");
+  const [sourceAgent, analysisAgent, reviewAgent] = project.agents;
+
+  await useCase.runAgent("project-id", { agentId: sourceAgent.id });
+  await useCase.runAgent("project-id", {
+    agentId: analysisAgent.id,
+    upstreamAgentResults: [{
+      agentId: sourceAgent.id,
+      selectedItemIndexes: [0, 1]
+    }]
+  });
+  const result = await useCase.runAgent("project-id", {
+    agentId: reviewAgent.id,
+    upstreamAgentResults: [{
+      agentId: analysisAgent.id,
+      selectedItemIndexes: []
+    }]
+  });
+
+  assert.equal(result.threads.length, 2);
+  assert.match(calls[4].prompt, /ANALYSE_A/);
+  assert.doesNotMatch(calls[4].prompt, /ANALYSE_B/);
+  assert.match(calls[5].prompt, /ANALYSE_B/);
+  assert.doesNotMatch(calls[5].prompt, /ANALYSE_A/);
+});
+
+test("agrège les instances parallèles pour un agent de convergence", async () => {
+  const workflowAnswer = JSON.stringify({
+    agents: [
+      {
+        id: ".claude/agents/implementation.md",
+        nextAgentIds: [".claude/agents/analysis.md"],
+        inputMode: "separate"
+      },
+      {
+        id: ".claude/agents/analysis.md",
+        nextAgentIds: [".claude/agents/review.md"],
+        inputMode: "separate"
+      },
+      {
+        id: ".claude/agents/review.md",
+        nextAgentIds: [],
+        inputMode: "aggregate"
+      }
+    ]
+  });
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: workflowAnswer },
+    {
+      answer: createAgentAnswer(["SUJET_A", "SUJET_B"], true, true),
+      sessionId: "source-session"
+    },
+    {
+      answer: createAgentAnswer(["ARTICLE_A"], null),
+      sessionId: "article-a-session"
+    },
+    {
+      answer: createAgentAnswer(["ARTICLE_B"], null),
+      sessionId: "article-b-session"
+    },
+    {
+      answer: createAgentAnswer(["PUBLICATION_COMPLETE"], null),
+      sessionId: "publisher-session"
+    }
+  ], 3);
+  const project = await useCase.loadProject("project-id");
+  const [sourceAgent, writerAgent, publisherAgent] = project.agents;
+
+  await useCase.runAgent("project-id", { agentId: sourceAgent.id });
+  await useCase.runAgent("project-id", {
+    agentId: writerAgent.id,
+    upstreamAgentResults: [{
+      agentId: sourceAgent.id,
+      selectedItemIndexes: [0, 1]
+    }]
+  });
+  const result = await useCase.runAgent("project-id", {
+    agentId: publisherAgent.id,
+    upstreamAgentResults: [{
+      agentId: writerAgent.id,
+      selectedItemIndexes: []
+    }]
+  });
+
+  assert.equal(publisherAgent.inputMode, "aggregate");
+  assert.equal(result.threads.length, 1);
+  assert.equal(calls.length, 5);
+  assert.match(calls[4].prompt, /ARTICLE_A/);
+  assert.match(calls[4].prompt, /ARTICLE_B/);
+});
+
 test("poursuit après l'exécution d'au moins une branche", async () => {
   const workflowAnswer = JSON.stringify({
     agents: [
@@ -416,17 +655,24 @@ test("poursuit après l'exécution d'au moins une branche", async () => {
         nextAgentIds: [
           ".claude/agents/implementation.md",
           ".claude/agents/review.md"
-        ]
+        ],
+        inputMode: "separate"
       },
       {
         id: ".claude/agents/implementation.md",
-        nextAgentIds: [".claude/agents/synthesis.md"]
+        nextAgentIds: [".claude/agents/synthesis.md"],
+        inputMode: "separate"
       },
       {
         id: ".claude/agents/review.md",
-        nextAgentIds: [".claude/agents/synthesis.md"]
+        nextAgentIds: [".claude/agents/synthesis.md"],
+        inputMode: "separate"
       },
-      { id: ".claude/agents/synthesis.md", nextAgentIds: [] }
+      {
+        id: ".claude/agents/synthesis.md",
+        nextAgentIds: [],
+        inputMode: "aggregate"
+      }
     ]
   });
   const { useCase, calls } = createSequentialUseCase([

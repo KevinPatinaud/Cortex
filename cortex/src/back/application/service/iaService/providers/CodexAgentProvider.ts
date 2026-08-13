@@ -52,7 +52,10 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     options: AgentExecutionOptions = {}
   ): Promise<AgentExecutionResult> {
     const configuration = options.configuration ?? DEFAULT_AGENT_CONFIGURATION;
-    const args = ["exec"];
+    // Cortex orchestre lui-même les instances du workflow. Désactiver le
+    // multi-agent interne de Codex évite qu'une instruction métier demandant
+    // de lancer l'étape suivante consomme les threads de collaboration Codex.
+    const args = ["exec", "--disable", "multi_agent"];
 
     if (!configuration.autopilot) {
       args.push("--config", "sandbox_mode=\"read-only\"");

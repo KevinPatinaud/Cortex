@@ -11,10 +11,12 @@ export interface AgentDefinition {
   name: string;
   description: string;
   nextAgentIds: string[];
+  inputMode: "separate" | "aggregate";
   hasSession: boolean;
   executionStatus: "idle" | "running" | "failed";
   executionError?: string;
   conversation: AgentConversationMessage[];
+  threads: AgentConversationThread[];
   model?: string;
   reasoningEffort?: string;
   prompt: string;
@@ -23,6 +25,11 @@ export interface AgentDefinition {
 export interface AgentConversationMessage {
   role: "user" | "agent";
   content: string;
+}
+
+export interface AgentConversationThread {
+  id: string;
+  conversation: AgentConversationMessage[];
 }
 
 export interface ProjectInstructions {
@@ -45,6 +52,7 @@ export interface AgentRunResult {
   answer: string;
   hasSession: boolean;
   conversation: AgentConversationMessage[];
+  threads: AgentConversationThread[];
 }
 
 export interface UpstreamAgentResult {
@@ -133,7 +141,8 @@ export async function runAgent(
   projectId: string,
   agentId: string,
   additionalInstructions: string,
-  upstreamAgentResults?: UpstreamAgentResult[]
+  upstreamAgentResults?: UpstreamAgentResult[],
+  threadId?: string
 ): Promise<AgentRunResult> {
   const response = await fetch(
     `/api/agents/projects/${encodeURIComponent(projectId)}/agents/run`,
@@ -144,6 +153,7 @@ export async function runAgent(
       },
       body: JSON.stringify({
         agentId,
+        ...(threadId ? { threadId } : {}),
         ...(additionalInstructions.trim()
           ? { additionalInstructions: additionalInstructions.trim() }
           : {}),
@@ -162,7 +172,8 @@ export async function runAgent(
   return {
     answer: data.answer,
     hasSession: data.hasSession,
-    conversation: data.conversation
+    conversation: data.conversation,
+    threads: data.threads
   };
 }
 

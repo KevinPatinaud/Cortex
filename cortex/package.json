@@ -8,7 +8,7 @@
     "dev": "tsx watch src/back/infrastructure/web/controller/server.ts",
     "web": "vite",
     "build": "vite build",
-    "test": "node --import tsx --test src/back/application/usecase/AgentUseCase.test.ts src/back/application/service/iaService/AgentConfigurationService.test.ts",
+    "test": "node --import tsx --test src/back/application/usecase/AgentUseCase.test.ts src/back/application/service/iaService/AgentConfigurationService.test.ts src/back/application/service/iaService/providers/CodexAgentProvider.test.ts",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },

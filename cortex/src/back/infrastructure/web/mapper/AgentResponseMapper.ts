@@ -61,6 +61,7 @@ export interface AgentRunResponse {
   answer: string;
   hasSession: boolean;
   conversation: AgentRunOutput["conversation"];
+  threads: AgentRunOutput["threads"];
 }
 
 export function toAgentStatusResponse(
@@ -88,6 +89,7 @@ export function toAgentRunResponse(result: AgentRunOutput): AgentRunResponse {
   return {
     answer: result.answer,
     hasSession: result.hasSession,
-    conversation: result.conversation
+    conversation: result.conversation,
+    threads: result.threads
   };
 }

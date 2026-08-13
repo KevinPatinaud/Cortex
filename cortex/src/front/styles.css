@@ -223,6 +223,65 @@ main {
   filter: drop-shadow(0 2px 5px rgb(37 99 235 / 10%));
 }
 
+.agent-project__workflow-connector--parallel {
+  width: 5.5rem;
+  height: 3.35rem;
+  color: #5b5ee8;
+}
+
+.agent-project__parallel-connector {
+  position: relative;
+  display: flex;
+  width: 4.6rem;
+  height: 2.65rem;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.agent-project__parallel-connector::before,
+.agent-project__parallel-connector::after {
+  position: absolute;
+  content: "";
+}
+
+.agent-project__parallel-connector::before {
+  top: 0;
+  left: 50%;
+  width: 1px;
+  height: 1.05rem;
+  background: linear-gradient(#7298d6, #6468ee);
+}
+
+.agent-project__parallel-connector::after {
+  top: 1rem;
+  right: 0.48rem;
+  left: 0.48rem;
+  height: 1px;
+  background: linear-gradient(90deg, #8aa9d7, #6468ee 50%, #8aa9d7);
+  box-shadow: 0 0 12px rgb(99 102 241 / 26%);
+}
+
+.agent-project__parallel-connector i {
+  position: relative;
+  z-index: 1;
+  width: 1rem;
+  height: 0.78rem;
+  border: 1px solid rgb(99 102 241 / 44%);
+  border-radius: 3px;
+  background: #f2f3ff;
+  box-shadow: 0 3px 8px rgb(69 74 180 / 14%);
+}
+
+.agent-project__parallel-connector i::before {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  width: 1px;
+  height: 0.9rem;
+  background: #7f84ee;
+  content: "";
+}
+
 .agent-project__empty {
   margin: 0;
   padding: 1.5rem;
@@ -421,6 +480,53 @@ main {
   color: #285289;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.7rem;
+}
+
+.agent-card--multithreaded {
+  max-width: 92rem;
+  border-color: rgb(37 99 235 / 22%);
+  background:
+    linear-gradient(145deg, rgb(255 255 255 / 98%), rgb(244 249 255 / 96%));
+}
+
+.agent-card--parallel-ready {
+  position: relative;
+  z-index: 0;
+  border-color: rgb(79 104 210 / 34%);
+  box-shadow:
+    0 18px 45px rgb(35 73 128 / 11%),
+    inset 3px 0 0 rgb(99 102 241 / 55%);
+  isolation: isolate;
+}
+
+.agent-card--parallel-ready::before,
+.agent-card--parallel-ready::after {
+  position: absolute;
+  border: 1px solid rgb(99 102 241 / 20%);
+  border-radius: 16px;
+  background: rgb(248 249 255 / 88%);
+  content: "";
+  pointer-events: none;
+}
+
+.agent-card--parallel-ready::before {
+  z-index: -1;
+  inset: 0.38rem -0.42rem -0.42rem 0.38rem;
+  box-shadow: 0 8px 20px rgb(52 68 154 / 5%);
+}
+
+.agent-card--parallel-ready::after {
+  z-index: -2;
+  inset: 0.72rem -0.76rem -0.76rem 0.72rem;
+  border-color: rgb(99 102 241 / 12%);
+  background: rgb(250 251 255 / 72%);
+}
+
+.agent-card--parallel-ready:hover {
+  border-color: rgb(79 104 210 / 44%);
+  box-shadow:
+    0 21px 50px rgb(35 73 128 / 14%),
+    inset 3px 0 0 rgb(99 102 241 / 65%);
 }
 
 .agent-card__prompt {
@@ -856,6 +962,114 @@ main {
 .agent-card__additional-instructions textarea:disabled {
   cursor: wait;
   opacity: 0.68;
+}
+
+.agent-instances-zone {
+  margin-top: 1rem;
+  padding: 0.9rem;
+  overflow: hidden;
+  border: 1px solid rgb(37 99 235 / 18%);
+  border-radius: 13px;
+  background:
+    linear-gradient(135deg, rgb(230 241 255 / 80%), rgb(244 248 255 / 72%));
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 78%);
+}
+
+.agent-instances-zone__header {
+  display: flex;
+  margin-bottom: 0.85rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.agent-instances-zone__header > div {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #245cae;
+}
+
+.agent-instances-zone__header span {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.63rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.agent-instances-zone__header p {
+  margin: 0;
+  color: #6c83a5;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  text-align: right;
+}
+
+.agent-instances-zone__track {
+  display: flex;
+  padding: 0.15rem 0.1rem 0.65rem;
+  overflow-x: auto;
+  gap: 0.85rem;
+  scroll-padding-inline: 0.1rem;
+  scroll-snap-type: x proximity;
+  scrollbar-color: #8ba9d2 transparent;
+  scrollbar-width: thin;
+}
+
+.agent-instance-card {
+  display: flex;
+  min-width: min(23rem, calc(100vw - 6rem));
+  padding: 0.9rem;
+  border: 1px solid rgb(49 105 193 / 17%);
+  border-radius: 12px;
+  background: rgb(255 255 255 / 94%);
+  box-shadow: 0 10px 25px rgb(43 80 133 / 8%);
+  flex: 1 0 min(23rem, calc(100vw - 6rem));
+  flex-direction: column;
+  scroll-snap-align: start;
+}
+
+.agent-instance-card__header {
+  display: flex;
+  min-height: 1.6rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.agent-instance-card__index {
+  color: #235cae;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.agent-instance-card__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #6480a5;
+  font-size: 0.64rem;
+  font-weight: 700;
+}
+
+.agent-instance-card__status > span {
+  width: 0.42rem;
+  height: 0.42rem;
+  border-radius: 50%;
+  background: #22b884;
+  box-shadow: 0 0 0 3px rgb(34 184 132 / 12%);
+}
+
+.agent-instance-card .agent-card__conversation {
+  margin-top: 0.7rem;
+}
+
+.agent-instance-card .agent-card__conversation-messages {
+  max-height: 20rem;
 }
 
 .agent-card--disabled .agent-card__additional-instructions textarea:disabled {
@@ -1715,6 +1929,25 @@ dialog input {
   .agent-card__model {
     margin-left: 3.25rem;
     text-align: left;
+  }
+
+  .agent-instances-zone {
+    padding: 0.75rem;
+  }
+
+  .agent-instances-zone__header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.45rem;
+  }
+
+  .agent-instances-zone__header p {
+    text-align: left;
+  }
+
+  .agent-instance-card {
+    min-width: min(20rem, calc(100vw - 5rem));
+    flex-basis: min(20rem, calc(100vw - 5rem));
   }
 }
 

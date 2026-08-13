@@ -6,6 +6,7 @@ import {
   loadAgentProject,
   runAgent,
   type AgentConversationMessage,
+  type AgentConversationThread,
   type AgentDefinition,
   type AgentProject,
   type UpstreamAgentResult
@@ -61,11 +62,13 @@ function MarkdownContent({ content }: { content: string }) {
 
 function ConversationMessageContent({
   message,
+  itemIndexOffset = 0,
   selectedItemIndexes = [],
   onSelectedItemIndexesChange,
   disabled = false
 }: {
   message: AgentConversationMessage;
+  itemIndexOffset?: number;
   selectedItemIndexes?: number[];
   onSelectedItemIndexesChange?: (indexes: number[]) => void;
   disabled?: boolean;
@@ -81,18 +84,28 @@ function ConversationMessageContent({
   }
 
   const allowsMultipleSelection = response.isMultiSelectionAllowed === true;
+  const responseItemCount = response.items.length;
 
-  function handleItemSelection(itemIndex: number): void {
+  function handleItemSelection(localItemIndex: number): void {
     if (disabled || !onSelectedItemIndexesChange) {
       return;
     }
 
+    const itemIndex = itemIndexOffset + localItemIndex;
     const isAlreadySelected = selectedItemIndexes.includes(itemIndex);
     const nextIndexes = allowsMultipleSelection
       ? isAlreadySelected
         ? selectedItemIndexes.filter((index) => index !== itemIndex)
         : [...selectedItemIndexes, itemIndex]
-      : isAlreadySelected ? [] : [itemIndex];
+      : isAlreadySelected
+        ? selectedItemIndexes.filter((index) => index !== itemIndex)
+        : [
+          ...selectedItemIndexes.filter((index) =>
+            index < itemIndexOffset ||
+            index >= itemIndexOffset + responseItemCount
+          ),
+          itemIndex
+        ];
 
     onSelectedItemIndexesChange(nextIndexes);
   }
@@ -109,7 +122,9 @@ function ConversationMessageContent({
           aria-label="Réponses proposées"
         >
           {response.items.map((item, itemIndex) => {
-            const isSelected = selectedItemIndexes.includes(itemIndex);
+            const isSelected = selectedItemIndexes.includes(
+              itemIndexOffset + itemIndex
+            );
 
             return (
               <li key={itemIndex}>
@@ -145,23 +160,44 @@ function ConversationMessageContent({
 }
 
 interface AgentResultState {
-  response: AgentResponsePayload | null;
+  responses: AgentResponsePayload[];
   selectedItemIndexes: number[];
   isInvalidated: boolean;
 }
 
 type AgentResultStates = Record<string, AgentResultState>;
 
-function findLastAgentResponse(
-  conversation: AgentConversationMessage[]
-): AgentResponsePayload | null {
-  for (let index = conversation.length - 1; index >= 0; index -= 1) {
-    if (conversation[index].role === "agent") {
-      return parseAgentResponse(conversation[index].content);
+function findLastAgentResponses(
+  threads: AgentConversationThread[]
+): AgentResponsePayload[] {
+  const responses: AgentResponsePayload[] = [];
+
+  for (const thread of threads) {
+    for (let index = thread.conversation.length - 1; index >= 0; index -= 1) {
+      if (thread.conversation[index].role === "agent") {
+        const response = parseAgentResponse(thread.conversation[index].content);
+
+        if (response) {
+          responses.push(response);
+        }
+        break;
+      }
     }
   }
 
-  return null;
+  return responses;
+}
+
+function getAgentConversationThreads(
+  agent: AgentDefinition
+): AgentConversationThread[] {
+  if (agent.threads?.length > 0) {
+    return agent.threads;
+  }
+
+  return agent.conversation.length > 0
+    ? [{ id: "thread-1", conversation: agent.conversation }]
+    : [];
 }
 
 function getPrerequisiteMessage(
@@ -177,18 +213,22 @@ function getPrerequisiteMessage(
 
   const agentAwaitingSelection = upstreamAgents.find((agent) => {
     const state = states[agent.id];
-    return Boolean(state?.response && state.response.items.length > 1);
+    return Boolean(state?.responses.some((response) => response.items.length > 1));
   });
 
   if (agentAwaitingSelection) {
-    const response = states[agentAwaitingSelection.id].response!;
+    const response = states[agentAwaitingSelection.id].responses.find(
+      (candidate) => candidate.items.length > 1
+    )!;
     return response.isMultiSelectionAllowed === true
       ? `Sélectionnez un ou plusieurs résultats de « ${agentAwaitingSelection.name} ».`
       : `Sélectionnez un résultat de « ${agentAwaitingSelection.name} ».`;
   }
 
   if (upstreamAgents.some(
-    (agent) => states[agent.id]?.response?.items.length === 0
+    (agent) => states[agent.id]?.responses.some(
+      (response) => response.items.length === 0
+    )
   )) {
     return "Aucun agent précédent exécuté n'a produit de résultat transmissible.";
   }
@@ -207,30 +247,89 @@ function getUpstreamAgentResult(
   states: AgentResultStates
 ): UpstreamAgentResult | null {
   const state = states[agent.id];
-  const response = state?.response;
-
-  if (!response || response.items.length === 0) {
-    return null;
-  }
-
-  if (response.items.length === 1) {
-    return { agentId: agent.id, selectedItemIndexes: [] };
-  }
+  const responses = state?.responses ?? [];
 
   if (
-    state.selectedItemIndexes.length === 0 ||
-    (
-      response.isMultiSelectionAllowed !== true &&
-      state.selectedItemIndexes.length !== 1
-    )
+    responses.length === 0 ||
+    responses.some((response) => response.items.length === 0)
   ) {
     return null;
+  }
+
+  let itemOffset = 0;
+
+  for (const response of responses) {
+    if (response.items.length > 1) {
+      const selectedIndexes = state.selectedItemIndexes.filter(
+        (itemIndex) =>
+          itemIndex >= itemOffset &&
+          itemIndex < itemOffset + response.items.length
+      );
+
+      if (
+        selectedIndexes.length === 0 ||
+        (
+          response.isMultiSelectionAllowed !== true &&
+          selectedIndexes.length !== 1
+        )
+      ) {
+        return null;
+      }
+    }
+
+    itemOffset += response.items.length;
+  }
+
+  if (responses.every((response) => response.items.length === 1)) {
+    return { agentId: agent.id, selectedItemIndexes: [] };
   }
 
   return {
     agentId: agent.id,
     selectedItemIndexes: [...state.selectedItemIndexes]
   };
+}
+
+function getPlannedThreadCount(
+  agent: AgentDefinition,
+  upstreamAgents: AgentDefinition[],
+  states: AgentResultStates
+): number {
+  if (upstreamAgents.length === 0 || agent.inputMode === "aggregate") {
+    return 1;
+  }
+
+  let plannedThreadCount = 1;
+
+  for (const upstreamAgent of upstreamAgents) {
+    const state = states[upstreamAgent.id];
+
+    if (!state || !getUpstreamAgentResult(upstreamAgent, states)) {
+      return 1;
+    }
+
+    let itemIndexOffset = 0;
+    let upstreamThreadCount = 0;
+
+    for (const response of state.responses) {
+      const selectedItemCount = response.items.length === 1
+        ? 1
+        : state.selectedItemIndexes.filter((itemIndex) =>
+          itemIndex >= itemIndexOffset &&
+          itemIndex < itemIndexOffset + response.items.length
+        ).length;
+
+      upstreamThreadCount +=
+        response.isMultiSelectionThreaded === true && selectedItemCount > 1
+          ? selectedItemCount
+          : 1;
+      itemIndexOffset += response.items.length;
+    }
+
+    plannedThreadCount *= Math.max(1, upstreamThreadCount);
+  }
+
+  return plannedThreadCount;
 }
 
 function getWorkflowLevels(agents: AgentDefinition[]): AgentDefinition[][] {
@@ -268,6 +367,7 @@ function getWorkflowLevels(agents: AgentDefinition[]): AgentDefinition[][] {
 
 interface AgentCardProps {
   agent: AgentDefinition;
+  plannedThreadCount: number;
   upstreamAgentResults?: UpstreamAgentResult[];
   isInvalidated: boolean;
   isFrozen: boolean;
@@ -276,7 +376,7 @@ interface AgentCardProps {
   selectedItemIndexes: number[];
   onResponseChange: (
     agentId: string,
-    response: AgentResponsePayload | null
+    responses: AgentResponsePayload[]
   ) => void;
   onSelectedItemIndexesChange: (
     agentId: string,
@@ -286,8 +386,167 @@ interface AgentCardProps {
   onRunEnd: (succeeded: boolean) => void;
 }
 
+interface AgentThreadPresentation {
+  thread: AgentConversationThread;
+  lastAgentMessageIndex: number;
+  itemIndexOffset: number;
+}
+
+interface AgentThreadConversationProps {
+  agentName: string;
+  disabled: boolean;
+  presentation: AgentThreadPresentation;
+  selectedItemIndexes: number[];
+  onSelectedItemIndexesChange: (indexes: number[]) => void;
+}
+
+function AgentThreadConversation({
+  agentName,
+  disabled,
+  presentation,
+  selectedItemIndexes,
+  onSelectedItemIndexesChange
+}: AgentThreadConversationProps) {
+  const conversationRef = useRef<HTMLDivElement>(null);
+  const { thread, lastAgentMessageIndex, itemIndexOffset } = presentation;
+
+  useEffect(() => {
+    const conversationElement = conversationRef.current;
+
+    if (conversationElement) {
+      conversationElement.scrollTo({
+        top: conversationElement.scrollHeight,
+        behavior: "smooth"
+      });
+    }
+  }, [thread.conversation]);
+
+  return (
+    <section
+      className="agent-card__conversation"
+      aria-label={`Conversation avec ${agentName}`}
+    >
+      <span className="agent-card__conversation-title">Conversation</span>
+      <div
+        className="agent-card__conversation-messages"
+        ref={conversationRef}
+        role="log"
+        aria-live="polite"
+        aria-relevant="additions"
+      >
+        {thread.conversation.map((message, messageIndex) => (
+          <article
+            className={`agent-card__conversation-message agent-card__conversation-message--${message.role}`}
+            key={messageIndex}
+          >
+            <span>{message.role === "user" ? "Vous" : "Agent"}</span>
+            <ConversationMessageContent
+              message={message}
+              disabled={disabled}
+              itemIndexOffset={itemIndexOffset}
+              selectedItemIndexes={
+                messageIndex === lastAgentMessageIndex
+                  ? selectedItemIndexes
+                  : []
+              }
+              onSelectedItemIndexesChange={
+                messageIndex === lastAgentMessageIndex
+                  ? onSelectedItemIndexesChange
+                  : undefined
+              }
+            />
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+interface AgentInstanceCardProps extends AgentThreadConversationProps {
+  index: number;
+  isFrozen: boolean;
+  isRunning: boolean;
+  onRun: (additionalInstructions: string, threadId: string) => Promise<boolean>;
+}
+
+function AgentInstanceCard({
+  agentName,
+  disabled,
+  index,
+  isFrozen,
+  isRunning,
+  onRun,
+  ...conversationProps
+}: AgentInstanceCardProps) {
+  const additionalInstructionsId = useId();
+  const threadId = conversationProps.presentation.thread.id;
+  const [additionalInstructions, setAdditionalInstructions] = useState("");
+
+  async function handleRun(): Promise<void> {
+    const succeeded = await onRun(additionalInstructions.trim(), threadId);
+
+    if (succeeded) {
+      setAdditionalInstructions("");
+    }
+  }
+
+  return (
+    <article className="agent-instance-card">
+      <header className="agent-instance-card__header">
+        <span className="agent-instance-card__index">
+          Instance {String(index + 1).padStart(2, "0")}
+        </span>
+        <span className="agent-instance-card__status">
+          <span aria-hidden="true" /> Session active
+        </span>
+      </header>
+      <AgentThreadConversation
+        agentName={`${agentName}, instance ${index + 1}`}
+        disabled={disabled}
+        {...conversationProps}
+      />
+      <div className="agent-card__additional-instructions">
+        <label htmlFor={additionalInstructionsId}>Précisions</label>
+        <textarea
+          id={additionalInstructionsId}
+          value={additionalInstructions}
+          onChange={(event) => setAdditionalInstructions(event.target.value)}
+          placeholder="Ajoutez une précision pour cette instance..."
+          rows={4}
+          disabled={isRunning || disabled}
+        />
+      </div>
+      <div className="agent-card__actions">
+        <button
+          className="agent-card__run-button"
+          type="button"
+          onClick={() => void handleRun()}
+          disabled={isRunning || disabled}
+          title={isFrozen
+            ? "Cette instance est figée car un agent en aval a déjà été lancé."
+            : `Relancer l'instance ${index + 1}`
+          }
+        >
+          {isRunning ? (
+            <LoaderCircle
+              aria-hidden="true"
+              className="agent-card__run-icon--running"
+              size={15}
+              strokeWidth={1.8}
+            />
+          ) : (
+            <RotateCcw aria-hidden="true" size={15} strokeWidth={1.8} />
+          )}
+          {isRunning ? "Exécution..." : "Relancer cette instance"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function AgentCard({
   agent,
+  plannedThreadCount,
   upstreamAgentResults,
   isInvalidated,
   isFrozen,
@@ -300,24 +559,23 @@ function AgentCard({
   onRunEnd
 }: AgentCardProps) {
   const additionalInstructionsId = useId();
-  const conversationRef = useRef<HTMLDivElement>(null);
-  const [isAwaitingResponse, setIsAwaitingResponse] = useState(false);
+  const [runningThreadId, setRunningThreadId] = useState<string | null>(null);
   const [hasSession, setHasSession] = useState(agent.hasSession);
-  const [conversation, setConversation] = useState<AgentConversationMessage[]>(
-    agent.conversation
+  const [threads, setThreads] = useState<AgentConversationThread[]>(
+    getAgentConversationThreads(agent)
   );
   const [error, setError] = useState(agent.executionError ?? "");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
-  const isRunning = isAwaitingResponse || agent.executionStatus === "running";
+  const isRunning = runningThreadId !== null || agent.executionStatus === "running";
   const canRun = Boolean(agent.prompt.trim()) && !prerequisiteMessage;
   const isUnavailable = !canRun;
   const isDisabled = isUnavailable || isFrozen;
 
   useEffect(() => {
     setHasSession(agent.hasSession);
-    setConversation(agent.conversation);
+    setThreads(getAgentConversationThreads(agent));
     setError(agent.executionError ?? "");
-  }, [agent.conversation, agent.executionError, agent.hasSession]);
+  }, [agent.conversation, agent.executionError, agent.hasSession, agent.threads]);
 
   useEffect(() => {
     setAdditionalInstructions("");
@@ -326,32 +584,21 @@ function AgentCard({
   useEffect(() => {
     if (isInvalidated) {
       setHasSession(false);
-      setConversation([]);
+      setThreads([]);
       setAdditionalInstructions("");
       setError("");
     }
   }, [isInvalidated]);
 
-  useEffect(() => {
-    const conversationElement = conversationRef.current;
-
-    if (!conversationElement) {
-      return;
-    }
-
-    conversationElement.scrollTo({
-      top: conversationElement.scrollHeight,
-      behavior: "smooth"
-    });
-  }, [conversation]);
-
-  async function handleRun(): Promise<void> {
+  async function handleRun(
+    submittedInstructions: string,
+    threadId?: string
+  ): Promise<boolean> {
     if (isRunning || !canRun || isFrozen) {
-      return;
+      return false;
     }
 
-    const submittedInstructions = additionalInstructions.trim();
-    setIsAwaitingResponse(true);
+    setRunningThreadId(threadId ?? "all");
     onRunStart(agent.id);
     setError("");
 
@@ -360,34 +607,68 @@ function AgentCard({
         projectId,
         agent.id,
         submittedInstructions,
-        upstreamAgentResults
+        upstreamAgentResults,
+        threadId
       );
-      setConversation(result.conversation);
+      setThreads(result.threads);
       setHasSession(result.hasSession);
-      setAdditionalInstructions("");
-      onResponseChange(agent.id, parseAgentResponse(result.answer));
+      if (!threadId) {
+        setAdditionalInstructions("");
+      }
+      onResponseChange(
+        agent.id,
+        findLastAgentResponses(result.threads)
+      );
       onRunEnd(true);
+      return true;
     } catch (requestError) {
       setError(getErrorMessage(requestError));
       onRunEnd(false);
+      return false;
     } finally {
-      setIsAwaitingResponse(false);
+      setRunningThreadId(null);
     }
   }
 
-  let lastAgentMessageIndex = -1;
+  let itemIndexOffset = 0;
+  const threadPresentation = threads.map((thread) => {
+    let lastAgentMessageIndex = -1;
 
-  for (let index = conversation.length - 1; index >= 0; index -= 1) {
-    if (conversation[index].role === "agent") {
-      lastAgentMessageIndex = index;
-      break;
+    for (let index = thread.conversation.length - 1; index >= 0; index -= 1) {
+      if (thread.conversation[index].role === "agent") {
+        lastAgentMessageIndex = index;
+        break;
+      }
     }
-  }
+
+    const response = lastAgentMessageIndex < 0
+      ? null
+      : parseAgentResponse(
+        thread.conversation[lastAgentMessageIndex].content
+      );
+    const presentation = {
+      thread,
+      lastAgentMessageIndex,
+      itemIndexOffset
+    };
+    itemIndexOffset += response?.items.length ?? 0;
+    return presentation;
+  });
+  const isMultithreaded = threadPresentation.length > 1;
+  const isParallelRunPrepared =
+    !hasSession && !isMultithreaded && canRun && plannedThreadCount > 1;
 
   return (
     <article
-      className={`agent-card${isDisabled ? " agent-card--disabled" : ""}`}
+      className={`agent-card${
+        isMultithreaded ? " agent-card--multithreaded" : ""
+      }${isParallelRunPrepared ? " agent-card--parallel-ready" : ""
+      }${isDisabled ? " agent-card--disabled" : ""}`}
       aria-disabled={isDisabled || undefined}
+      aria-label={isParallelRunPrepared
+        ? `${agent.name}, lancement préparé sur ${plannedThreadCount} instances parallèles`
+        : undefined
+      }
     >
       <header className="agent-card__header">
         <Bot aria-hidden="true" size={22} strokeWidth={1.7} />
@@ -428,92 +709,109 @@ function AgentCard({
           <p className="agent-card__run-error" role="alert">{error}</p>
         )}
       </div>
-      {conversation.length > 0 && (
+      {isMultithreaded ? (
         <section
-          className="agent-card__conversation"
-          aria-label={`Conversation avec ${agent.name}`}
+          className="agent-instances-zone"
+          aria-label={`Instances de ${agent.name}`}
         >
-          <span className="agent-card__conversation-title">Conversation</span>
-          <div
-            className="agent-card__conversation-messages"
-            ref={conversationRef}
-            role="log"
-            aria-live="polite"
-            aria-relevant="additions"
-          >
-            {conversation.map((message, messageIndex) => (
-              <article
-                className={`agent-card__conversation-message agent-card__conversation-message--${message.role}`}
-                key={messageIndex}
-              >
-                <span>{message.role === "user" ? "Vous" : "Agent"}</span>
-                <ConversationMessageContent
-                  message={message}
-                  disabled={isDisabled}
-                  selectedItemIndexes={messageIndex === lastAgentMessageIndex
-                    ? selectedItemIndexes
-                    : []
-                  }
-                  onSelectedItemIndexesChange={
-                    messageIndex === lastAgentMessageIndex
-                      ? (indexes) => onSelectedItemIndexesChange(
-                          agent.id,
-                          indexes
-                        )
-                      : undefined
-                  }
-                />
-              </article>
+          <header className="agent-instances-zone__header">
+            <div>
+              <GitBranch aria-hidden="true" size={18} strokeWidth={1.7} />
+              <span>
+                Zone d'évolution · {threadPresentation.length} instances
+              </span>
+            </div>
+            <p>Chaque branche possède sa propre session et peut être relancée séparément.</p>
+          </header>
+          <div className="agent-instances-zone__track">
+            {threadPresentation.map((presentation, index) => (
+              <AgentInstanceCard
+                agentName={agent.name}
+                disabled={isDisabled || isRunning}
+                index={index}
+                isFrozen={isFrozen}
+                isRunning={isRunning && (
+                  runningThreadId === null ||
+                  runningThreadId === presentation.thread.id
+                )}
+                key={presentation.thread.id}
+                onRun={handleRun}
+                onSelectedItemIndexesChange={(indexes) =>
+                  onSelectedItemIndexesChange(agent.id, indexes)
+                }
+                presentation={presentation}
+                selectedItemIndexes={selectedItemIndexes}
+              />
             ))}
           </div>
         </section>
-      )}
-      <div className="agent-card__additional-instructions">
-        <label htmlFor={additionalInstructionsId}>Précisions</label>
-        <textarea
-          id={additionalInstructionsId}
-          value={additionalInstructions}
-          onChange={(event) => setAdditionalInstructions(event.target.value)}
-          placeholder={hasSession
-            ? "Ajoutez une précision pour la prochaine relance..."
-            : "Ajoutez une précision avant de lancer l'agent..."
-          }
-          rows={4}
-          disabled={isRunning || isDisabled}
-        />
-      </div>
-      <div className="agent-card__actions">
-        <button
-          className="agent-card__run-button"
-          type="button"
-          onClick={() => void handleRun()}
-          disabled={isRunning || !canRun || isFrozen}
-          title={isFrozen
-            ? "Cet agent est figé car un agent en aval a déjà été lancé."
-            : prerequisiteMessage || (canRun
-              ? `${hasSession ? "Relancer" : "Lancer"} ${agent.name}`
-              : "Cet agent ne contient aucune instruction."
-            )
-          }
-        >
-          {isRunning ? (
-            <LoaderCircle
-              aria-hidden="true"
-              className="agent-card__run-icon--running"
-              size={15}
-              strokeWidth={1.8}
+      ) : (
+        <>
+          {threadPresentation[0] && (
+            <AgentThreadConversation
+              agentName={agent.name}
+              disabled={isDisabled}
+              presentation={threadPresentation[0]}
+              selectedItemIndexes={selectedItemIndexes}
+              onSelectedItemIndexesChange={(indexes) =>
+                onSelectedItemIndexesChange(agent.id, indexes)
+              }
             />
-          ) : hasSession ? (
-            <RotateCcw aria-hidden="true" size={15} strokeWidth={1.8} />
-          ) : (
-            <Send aria-hidden="true" size={15} strokeWidth={1.8} />
           )}
-          {isRunning
-            ? "Exécution..."
-            : hasSession ? "Relancer" : "Lancer"
-          }
-        </button>
-      </div>
+          {!isParallelRunPrepared && (
+            <div className="agent-card__additional-instructions">
+              <label htmlFor={additionalInstructionsId}>Précisions</label>
+              <textarea
+                id={additionalInstructionsId}
+                value={additionalInstructions}
+                onChange={(event) => setAdditionalInstructions(event.target.value)}
+                placeholder={hasSession
+                  ? "Ajoutez une précision pour la prochaine relance..."
+                  : "Ajoutez une précision avant de lancer l'agent..."
+                }
+                rows={4}
+                disabled={isRunning || isDisabled}
+              />
+            </div>
+          )}
+          <div className="agent-card__actions">
+            <button
+              className="agent-card__run-button"
+              type="button"
+              onClick={() => void handleRun(
+                isParallelRunPrepared ? "" : additionalInstructions.trim()
+              )}
+              disabled={isRunning || !canRun || isFrozen}
+              title={isFrozen
+                ? "Cet agent est figé car un agent en aval a déjà été lancé."
+                : prerequisiteMessage || (canRun
+                  ? `${hasSession ? "Relancer" : "Lancer"} ${agent.name}`
+                  : "Cet agent ne contient aucune instruction."
+                )
+              }
+            >
+              {isRunning ? (
+                <LoaderCircle
+                  aria-hidden="true"
+                  className="agent-card__run-icon--running"
+                  size={15}
+                  strokeWidth={1.8}
+                />
+              ) : isParallelRunPrepared ? (
+                <GitBranch aria-hidden="true" size={16} strokeWidth={1.8} />
+              ) : hasSession ? (
+                <RotateCcw aria-hidden="true" size={15} strokeWidth={1.8} />
+              ) : (
+                <Send aria-hidden="true" size={15} strokeWidth={1.8} />
+              )}
+              {isRunning
+                ? "Exécution..."
+                : hasSession ? "Relancer" : "Lancer"
+              }
+            </button>
+          </div>
+        </>
+      )}
     </article>
   );
 }
@@ -556,11 +854,13 @@ export function AgentProjectWorkspace({
     ] ?? {};
 
     for (const agent of content.agents) {
-      const response = findLastAgentResponse(agent.conversation);
+      const responses = findLastAgentResponses(
+        getAgentConversationThreads(agent)
+      );
 
       restoredStates[agent.id] = {
-        response,
-        selectedItemIndexes: response
+        responses,
+        selectedItemIndexes: responses.length > 0
           ? [...(storedSelections[agent.id] ?? [])]
           : [],
         isInvalidated: false
@@ -674,7 +974,7 @@ export function AgentProjectWorkspace({
 
     for (const descendantId of getDescendantAgentIds(sourceAgentId)) {
       nextStates[descendantId] = {
-        response: null,
+        responses: [],
         selectedItemIndexes: [],
         isInvalidated: true
       };
@@ -685,7 +985,7 @@ export function AgentProjectWorkspace({
 
   function handleResponseChange(
     agentId: string,
-    response: AgentResponsePayload | null
+    responses: AgentResponsePayload[]
   ): void {
     const storedSelections = {
       ...(selectedItemIndexesByProject.current[projectId] ?? {})
@@ -701,7 +1001,7 @@ export function AgentProjectWorkspace({
     setAgentResultStates((currentStates) => ({
       ...clearDescendantAgentResults(currentStates, agentId),
       [agentId]: {
-        response,
+        responses,
         selectedItemIndexes: [],
         isInvalidated: false
       }
@@ -763,6 +1063,18 @@ export function AgentProjectWorkspace({
         ? "running"
         : succeeded ? "completed" : "idle"
     );
+  }
+
+  function getAgentLaunchThreadCount(agent: AgentDefinition): number {
+    const upstreamAgents = workflowAgents.filter(
+      (candidate) => candidate.nextAgentIds.includes(agent.id)
+    );
+
+    if (getPrerequisiteMessage(upstreamAgents, agentResultStates)) {
+      return 1;
+    }
+
+    return getPlannedThreadCount(agent, upstreamAgents, agentResultStates);
   }
 
   return (
@@ -835,80 +1147,105 @@ export function AgentProjectWorkspace({
             </p>
           ) : (
             <div className="agent-project__workflow">
-              {workflowLevels.map((levelAgents, levelIndex) => (
-                <section
-                  className="agent-project__workflow-level"
-                  aria-label={`Étape ${levelIndex + 1}`}
-                  key={levelIndex}
-                >
-                  <ol className="agent-project__workflow-cards">
-                    {levelAgents.map((agent) => {
-                      const upstreamAgents = workflowAgents.filter(
-                        (candidate) => candidate.nextAgentIds.includes(agent.id)
-                      );
-                      const prerequisiteMessage = getPrerequisiteMessage(
-                        upstreamAgents,
-                        agentResultStates
-                      );
-                      const upstreamAgentResults = prerequisiteMessage
-                        ? undefined
-                        : upstreamAgents
-                          .map((upstreamAgent) => getUpstreamAgentResult(
-                            upstreamAgent,
-                            agentResultStates
-                          ))
-                          .filter((result): result is UpstreamAgentResult =>
-                            result !== null
-                          );
+              {workflowLevels.map((levelAgents, levelIndex) => {
+                const nextLevelPreparesParallelRun =
+                  workflowLevels[levelIndex + 1]?.some(
+                    (agent) => getAgentLaunchThreadCount(agent) > 1
+                  ) ?? false;
 
-                      return (
-                        <li
-                          className="agent-project__workflow-step"
-                          key={`${content.projectId}:${agent.id}`}
-                        >
-                          <AgentCard
-                            agent={agent}
-                            upstreamAgentResults={upstreamAgentResults}
-                            isInvalidated={
-                              agentResultStates[agent.id]?.isInvalidated ?? false
-                            }
-                            isFrozen={[
-                              ...getDescendantAgentIds(agent.id)
-                            ].some((descendantId) =>
-                              launchedAgentIds.has(descendantId)
-                            )}
-                            prerequisiteMessage={prerequisiteMessage}
-                            projectId={content.projectId}
-                            selectedItemIndexes={
-                              agentResultStates[agent.id]?.selectedItemIndexes ?? []
-                            }
-                            onResponseChange={handleResponseChange}
-                            onSelectedItemIndexesChange={
-                              handleSelectedItemIndexesChange
-                            }
-                            onRunStart={handleRunStart}
-                            onRunEnd={(succeeded) => handleRunEnd(
-                              agent.id,
-                              succeeded
-                            )}
-                          />
-                        </li>
-                      );
-                    })}
-                  </ol>
-                  {levelIndex < workflowLevels.length - 1 && (
-                    <div
-                      className="agent-project__workflow-connector"
-                      aria-hidden="true"
-                    >
-                      {levelAgents.some((agent) => agent.nextAgentIds.length > 1)
-                        ? <GitBranch size={19} strokeWidth={1.5} />
-                        : <ArrowDown size={18} strokeWidth={1.5} />
-                      }
-                    </div>
-                  )}
-                </section>
-              ))}
+                return (
+                  <section
+                    className="agent-project__workflow-level"
+                    aria-label={`Étape ${levelIndex + 1}`}
+                    key={levelIndex}
+                  >
+                    <ol className="agent-project__workflow-cards">
+                      {levelAgents.map((agent) => {
+                        const upstreamAgents = workflowAgents.filter(
+                          (candidate) => candidate.nextAgentIds.includes(agent.id)
+                        );
+                        const prerequisiteMessage = getPrerequisiteMessage(
+                          upstreamAgents,
+                          agentResultStates
+                        );
+                        const upstreamAgentResults = prerequisiteMessage
+                          ? undefined
+                          : upstreamAgents
+                            .map((upstreamAgent) => getUpstreamAgentResult(
+                              upstreamAgent,
+                              agentResultStates
+                            ))
+                            .filter((result): result is UpstreamAgentResult =>
+                              result !== null
+                            );
+
+                        return (
+                          <li
+                            className="agent-project__workflow-step"
+                            key={`${content.projectId}:${agent.id}`}
+                          >
+                            <AgentCard
+                              agent={agent}
+                              plannedThreadCount={getPlannedThreadCount(
+                                agent,
+                                upstreamAgents,
+                                agentResultStates
+                              )}
+                              upstreamAgentResults={upstreamAgentResults}
+                              isInvalidated={
+                                agentResultStates[agent.id]?.isInvalidated ?? false
+                              }
+                              isFrozen={[
+                                ...getDescendantAgentIds(agent.id)
+                              ].some((descendantId) =>
+                                launchedAgentIds.has(descendantId)
+                              )}
+                              prerequisiteMessage={prerequisiteMessage}
+                              projectId={content.projectId}
+                              selectedItemIndexes={
+                                agentResultStates[agent.id]?.selectedItemIndexes ?? []
+                              }
+                              onResponseChange={handleResponseChange}
+                              onSelectedItemIndexesChange={
+                                handleSelectedItemIndexesChange
+                              }
+                              onRunStart={handleRunStart}
+                              onRunEnd={(succeeded) => handleRunEnd(
+                                agent.id,
+                                succeeded
+                              )}
+                            />
+                          </li>
+                        );
+                      })}
+                    </ol>
+                    {levelIndex < workflowLevels.length - 1 && (
+                      <div
+                        className={`agent-project__workflow-connector${
+                          nextLevelPreparesParallelRun
+                            ? " agent-project__workflow-connector--parallel"
+                            : ""
+                        }`}
+                        aria-hidden="true"
+                      >
+                        {nextLevelPreparesParallelRun ? (
+                          <span className="agent-project__parallel-connector">
+                            <i />
+                            <i />
+                            <i />
+                          </span>
+                        ) : levelAgents.some(
+                          (agent) => agent.nextAgentIds.length > 1
+                        ) ? (
+                          <GitBranch size={19} strokeWidth={1.5} />
+                        ) : (
+                          <ArrowDown size={18} strokeWidth={1.5} />
+                        )}
+                      </div>
+                    )}
+                  </section>
+                );
+              })}
             </div>
           )}
         </section>
