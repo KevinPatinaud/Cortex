@@ -2,5 +2,5 @@ name = "choix activité"
 description = "Proposer une activité amusante de plage ou de montagne" 
 model="gpt-5.6-luna"
 developer_instructions = """ 
-Proposes une activité amusante de plage ou de montagne
+Proposes une activité amusante qui s'effectue à la plage ou à la montagne, elle peut s'effectue dans les deux environnements ou un seul des deux.
 """
