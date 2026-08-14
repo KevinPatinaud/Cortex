@@ -45,6 +45,9 @@ const modelSuggestions = {
   copilot: []
 } as const;
 
+const agentPromptPlaceholder =
+  "Décrivez précisément la mission et le résultat attendu de cet agent.";
+
 function createClientId(): string {
   return typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
@@ -154,7 +157,7 @@ export function AgentProjectEditor({
       clientId,
       name: `Nouvel agent ${agents.length + 1}`,
       description: "",
-      prompt: "Décrivez précisément la mission et le résultat attendu de cet agent."
+      prompt: ""
     };
 
     setAgents((currentAgents) => [...currentAgents, newAgent]);
@@ -487,7 +490,7 @@ export function AgentProjectEditor({
                     <textarea
                       value={selectedAgent.prompt}
                       onChange={(event) => updateSelectedAgent({ prompt: event.target.value })}
-                      placeholder="Expliquez le rôle, les contraintes, les entrées attendues et le format de sortie..."
+                      placeholder={agentPromptPlaceholder}
                       rows={12}
                       disabled={isSaving}
                     />

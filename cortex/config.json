@@ -126,7 +126,7 @@
       ]
     },
     "c13f0824-82eb-4b65-9238-555d7009ab5c": {
-      "hash": "fa0a670d19e84797cc3d638a7f3fad02c1dc52cccf716113d63243293fad4093",
+      "hash": "e33e7cb760f08fb1d9566dbf089b30e7b6ba6893f876d0df4583c70a9da5e882",
       "agents": [
         {
           "id": ".codex/agents/repporter.toml",
@@ -150,12 +150,20 @@
       ]
     },
     "4c285d0f-ac4d-44dd-8969-18b0680bd72c": {
-      "hash": "b82c021df25d05c7f79b3caef6dd5372c569f8d9b7ce32b8d008ba9e1f01761c",
+      "hash": "26dd2e48996e9b9942c47bf482f73db7dc28df3d6d43ef035c5e9849ef13f556",
       "agents": [
+        {
+          "id": ".codex/agents/geologiste.toml",
+          "nextAgentIds": [
+            ".codex/agents/choix-plante.toml"
+          ],
+          "inputMode": "separate"
+        },
         {
           "id": ".codex/agents/choix-plante.toml",
           "nextAgentIds": [
-            ".codex/agents/choix-herbivore.toml"
+            ".codex/agents/choix-herbivore.toml",
+            ".codex/agents/agent-botaniste.toml"
           ],
           "inputMode": "separate"
         },
@@ -168,6 +176,13 @@
         },
         {
           "id": ".codex/agents/choix-carnivore.toml",
+          "nextAgentIds": [
+            ".codex/agents/choix-plante.toml"
+          ],
+          "inputMode": "separate"
+        },
+        {
+          "id": ".codex/agents/agent-botaniste.toml",
           "nextAgentIds": [],
           "inputMode": "separate"
         }

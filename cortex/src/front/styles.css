@@ -377,14 +377,37 @@ main {
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
+.agent-card__step-row {
+  display: flex;
+  margin-bottom: 0.7rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .agent-card__step {
   display: inline-flex;
-  margin-bottom: 0.7rem;
   color: #4f6f9f;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.59rem;
   font-weight: 750;
   letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.agent-card__cycle {
+  display: inline-flex;
+  padding: 0.22rem 0.48rem;
+  align-items: center;
+  gap: 0.28rem;
+  border: 1px solid rgb(124 88 220 / 24%);
+  border-radius: 999px;
+  background: rgb(124 88 220 / 8%);
+  color: #6b4fc0;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.56rem;
+  font-weight: 750;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
@@ -877,7 +900,8 @@ main {
 .agent-card__conversation-message > .agent-card__markdown,
 .agent-card__conversation-response,
 .agent-card__conversation-response-list,
-.agent-card__conversation-response-notes {
+.agent-card__conversation-response-notes,
+.agent-card__conversation-routing {
   margin: 0.52rem 0 0;
   color: #29486f;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
@@ -1091,6 +1115,44 @@ main {
   border-top: 1px solid rgb(46 105 196 / 10%);
   color: #607a9e;
   font-size: 0.68rem;
+}
+
+.agent-card__conversation-routing {
+  display: flex;
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  border-top: 1px solid rgb(46 105 196 / 10%);
+  color: #607a9e;
+  font-size: 0.64rem;
+}
+
+.agent-card__conversation-routing > span {
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.agent-card__conversation-routing ul {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  list-style: none;
+}
+
+.agent-card__conversation-routing li,
+.agent-card__conversation-routing strong {
+  padding: 0.2rem 0.42rem;
+  border: 1px solid rgb(37 99 235 / 18%);
+  border-radius: 999px;
+  background: rgb(37 99 235 / 7%);
+  color: #315d9d;
+  font-size: 0.64rem;
+  font-weight: 700;
 }
 
 .agent-card__additional-instructions {
@@ -1395,7 +1457,7 @@ main {
   text-align: left;
 }
 
-.project-list__select-button[aria-busy="true"],
+.project-list[aria-busy="true"] .project-list__select-button,
 .project-list__state[aria-busy="true"] {
   cursor: wait;
 }

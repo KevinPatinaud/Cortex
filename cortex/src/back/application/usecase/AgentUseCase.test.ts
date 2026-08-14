@@ -343,7 +343,7 @@ test("conserve un workflow linéaire si le graphe est invalide", async (t) => {
       },
       {
         id: ".claude/agents/analysis.md",
-        nextAgentIds: [".claude/agents/implementation.md"],
+        nextAgentIds: [".claude/agents/inconnu.md"],
         inputMode: "separate"
       }
     ]
@@ -359,6 +359,142 @@ test("conserve un workflow linéaire si le graphe est invalide", async (t) => {
     ]
   );
   assert.deepEqual(project.agents[0].nextAgentIds, [project.agents[1].id]);
+});
+
+test("configure et ordonne un workflow cyclique", async () => {
+  const implementationId = ".claude/agents/implementation.md";
+  const analysisId = ".claude/agents/analysis.md";
+  const reviewId = ".claude/agents/review.md";
+  const synthesisId = ".claude/agents/synthesis.md";
+  const { useCase, calls } = createUseCase(JSON.stringify({
+    agents: [
+      {
+        id: synthesisId,
+        nextAgentIds: [analysisId],
+        inputMode: "separate"
+      },
+      {
+        id: reviewId,
+        nextAgentIds: [synthesisId],
+        inputMode: "separate"
+      },
+      {
+        id: implementationId,
+        nextAgentIds: [analysisId],
+        inputMode: "separate"
+      },
+      {
+        id: analysisId,
+        nextAgentIds: [reviewId],
+        inputMode: "separate"
+      }
+    ]
+  }), 4);
+
+  const project = await useCase.loadProject("project-id");
+
+  assert.deepEqual(
+    project.agents.map((agent) => agent.id),
+    [implementationId, analysisId, reviewId, synthesisId]
+  );
+  assert.deepEqual(project.agents.at(-1)?.nextAgentIds, [analysisId]);
+  assert.match(calls[0].prompt, /Les cycles sont autorisés/);
+});
+
+test("démarre un cycle par son entrée puis accepte l'arête de retour", async () => {
+  const implementationId = ".claude/agents/implementation.md";
+  const analysisId = ".claude/agents/analysis.md";
+  const reviewId = ".claude/agents/review.md";
+  const synthesisId = ".claude/agents/synthesis.md";
+  const workflowAnswer = JSON.stringify({
+    agents: [
+      {
+        id: implementationId,
+        nextAgentIds: [analysisId],
+        inputMode: "separate"
+      },
+      {
+        id: analysisId,
+        nextAgentIds: [reviewId],
+        inputMode: "separate"
+      },
+      {
+        id: reviewId,
+        nextAgentIds: [synthesisId],
+        inputMode: "separate"
+      },
+      {
+        id: synthesisId,
+        nextAgentIds: [analysisId],
+        inputMode: "separate"
+      }
+    ]
+  });
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: workflowAnswer },
+    {
+      answer: createAgentAnswer(
+        ["CONTEXTE_INITIAL"],
+        null,
+        null,
+        null,
+        [analysisId]
+      ),
+      sessionId: "implementation-session"
+    },
+    {
+      answer: createAgentAnswer(["ANALYSE_1"], null, null, null, [reviewId]),
+      sessionId: "analysis-session-1"
+    },
+    {
+      answer: createAgentAnswer(["REVUE_1"], null, null, null, [synthesisId]),
+      sessionId: "review-session"
+    },
+    {
+      answer: createAgentAnswer(["RETOUR_CYCLE"], null, null, null, [analysisId]),
+      sessionId: "synthesis-session"
+    },
+    {
+      answer: createAgentAnswer(["ANALYSE_2"], null, null, null, [reviewId]),
+      sessionId: "analysis-session-2"
+    }
+  ], 4);
+  const project = await useCase.loadProject("project-id");
+  const byId = new Map(project.agents.map((agent) => [agent.id, agent]));
+
+  await useCase.runAgent("project-id", { agentId: implementationId });
+  await useCase.runAgent("project-id", {
+    agentId: analysisId,
+    upstreamAgentResults: [{
+      agentId: implementationId,
+      selectedItemIndexes: []
+    }]
+  });
+  await useCase.runAgent("project-id", {
+    agentId: reviewId,
+    upstreamAgentResults: [{
+      agentId: analysisId,
+      selectedItemIndexes: []
+    }]
+  });
+  await useCase.runAgent("project-id", {
+    agentId: synthesisId,
+    upstreamAgentResults: [{
+      agentId: reviewId,
+      selectedItemIndexes: []
+    }]
+  });
+  await useCase.runAgent("project-id", {
+    agentId: analysisId,
+    upstreamAgentResults: [
+      { agentId: implementationId, selectedItemIndexes: [] },
+      { agentId: synthesisId, selectedItemIndexes: [] }
+    ]
+  });
+
+  assert.equal(byId.get(analysisId)?.hasSession, true);
+  assert.match(calls[5].prompt, /CONTEXTE_INITIAL/);
+  assert.match(calls[5].prompt, /RETOUR_CYCLE/);
 });
 
 test("configure directement un agent unique comme fin de workflow", async () => {
@@ -382,6 +518,12 @@ test("réserve l'orchestration des agents suivants à Cortex", async () => {
   assert.match(calls[0].prompt, /Cortex orchestre exclusivement le workflow/);
   assert.match(calls[0].prompt, /ne délègue aucune tâche à un sous-agent/i);
   assert.match(calls[0].prompt, /retourne les éléments à leur transmettre/);
+  assert.match(
+    calls[0].prompt,
+    /Project workflow instructions for routing decisions/
+  );
+  assert.match(calls[0].prompt, /Toujours analyser avant d'implémenter/);
+  assert.match(calls[0].prompt, /logically consistent with the facts/);
 });
 
 test("transmet un résultat uniquement aux branches sélectionnées", async () => {

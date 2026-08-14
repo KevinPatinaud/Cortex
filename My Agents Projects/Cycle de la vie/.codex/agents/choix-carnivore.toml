@@ -1,4 +1,4 @@
 name = "Choix carnivore"
 description = "Choisit un carnivore"
 model = "gpt-5.6-luna"
-developer_instructions = "Choisit un carnivore mangeant l'herbivore précédemment sélectionné."
+developer_instructions = "Choisis aléatoirement, en utilisant impérativement le tirage fourni par Cortex, un carnivore pouvant réellement manger l'herbivore précédemment sélectionné. Considère plusieurs candidats valides et ne privilégie pas systématiquement le lion."

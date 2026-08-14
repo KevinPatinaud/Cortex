@@ -52,7 +52,10 @@ export function ProjectList({
   }
 
   return (
-    <ul className="project-list">
+    <ul
+      className="project-list"
+      aria-busy={loadingProjectId !== null}
+    >
       {projects.map((project) => {
         const projectName = getProjectName(project.directoryPath);
         const isSelected = selectedProjectId === project.id;

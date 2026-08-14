@@ -16,6 +16,11 @@ import {
   parseAgentResponse,
   type AgentResponsePayload
 } from "../../../../shared/AgentResponse.ts";
+import {
+  getCyclicAgentIds,
+  getWorkflowEdgeKey,
+  getWorkflowFeedbackEdgeKeys
+} from "../../../../shared/AgentWorkflowGraph.ts";
 
 interface AgentProjectWorkspaceProps {
   project: Project | null;
@@ -123,12 +128,14 @@ function MarkdownContent({ content }: { content: string }) {
 
 function ConversationMessageContent({
   message,
+  nextAgentNamesById,
   itemIndexOffset = 0,
   selectedItemIndexes = [],
   onSelectedItemIndexesChange,
   disabled = false
 }: {
   message: AgentConversationMessage;
+  nextAgentNamesById: ReadonlyMap<string, string>;
   itemIndexOffset?: number;
   selectedItemIndexes?: number[];
   onSelectedItemIndexesChange?: (indexes: number[]) => void;
@@ -214,6 +221,22 @@ function ConversationMessageContent({
       {response.notes && (
         <div className="agent-card__conversation-response-notes">
           <MarkdownContent content={response.notes} />
+        </div>
+      )}
+      {response.nextAgentIds !== null && (
+        <div className="agent-card__conversation-routing">
+          <span>Branche sélectionnée</span>
+          {response.nextAgentIds.length > 0 ? (
+            <ul>
+              {response.nextAgentIds.map((agentId) => (
+                <li key={agentId}>
+                  {nextAgentNamesById.get(agentId) ?? agentId}
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <strong>Fin du workflow</strong>
+          )}
         </div>
       )}
     </div>
@@ -305,22 +328,49 @@ function getPrerequisiteMessage(
   upstreamAgents: AgentDefinition[],
   targetAgentId: string,
   states: AgentResultStates,
-  workflowAgents: AgentDefinition[]
+  workflowAgents: AgentDefinition[],
+  feedbackEdgeKeys: ReadonlySet<string>
 ): string | null {
   if (upstreamAgents.length === 0) {
     return null;
   }
 
-  const pendingAgents = upstreamAgents.filter((agent) =>
-    getAgentProgressState(agent, workflowAgents, states) === "pending"
+  const triggerUpstreamAgents = getTriggerUpstreamAgents(
+    upstreamAgents,
+    targetAgentId,
+    states,
+    feedbackEdgeKeys
+  );
+
+  if (triggerUpstreamAgents.length === 0) {
+    return null;
+  }
+
+  const pendingAgents = triggerUpstreamAgents.filter((agent) =>
+    getAgentProgressState(
+      agent,
+      workflowAgents,
+      states,
+      feedbackEdgeKeys
+    ) === "pending"
   );
 
   if (pendingAgents.length > 0) {
-    return upstreamAgents.length === 1
+    return triggerUpstreamAgents.length === 1
       ? `Exécutez d'abord « ${pendingAgents[0].name} ».`
       : `Attendez la fin de tous les agents précédents : ${pendingAgents
         .map((agent) => `« ${agent.name} »`)
         .join(" et ")}.`;
+  }
+
+  const applicableTriggerAgents = getApplicableUpstreamAgents(
+    triggerUpstreamAgents,
+    targetAgentId,
+    states
+  );
+
+  if (applicableTriggerAgents.length === 0) {
+    return "Cette branche n'a pas été sélectionnée par les agents précédents.";
   }
 
   const applicableUpstreamAgents = getApplicableUpstreamAgents(
@@ -328,10 +378,6 @@ function getPrerequisiteMessage(
     targetAgentId,
     states
   );
-
-  if (applicableUpstreamAgents.length === 0) {
-    return "Cette branche n'a pas été sélectionnée par les agents précédents.";
-  }
 
   if (applicableUpstreamAgents.every((agent) =>
     getUpstreamAgentResult(agent, targetAgentId, states)
@@ -373,6 +419,7 @@ function getAgentProgressState(
   agent: AgentDefinition,
   workflowAgents: AgentDefinition[],
   states: AgentResultStates,
+  feedbackEdgeKeys: ReadonlySet<string>,
   visitingAgentIds = new Set<string>()
 ): "completed" | "pending" | "skipped" {
   if (agent.executionStatus === "running") {
@@ -391,14 +438,26 @@ function getAgentProgressState(
     return "pending";
   }
 
+  const triggerUpstreamAgents = getTriggerUpstreamAgents(
+    upstreamAgents,
+    agent.id,
+    states,
+    feedbackEdgeKeys
+  );
+
+  if (triggerUpstreamAgents.length === 0) {
+    return "pending";
+  }
+
   const nextVisitingAgentIds = new Set(visitingAgentIds);
   nextVisitingAgentIds.add(agent.id);
-  const upstreamStates = upstreamAgents.map((upstreamAgent) => ({
+  const upstreamStates = triggerUpstreamAgents.map((upstreamAgent) => ({
     agent: upstreamAgent,
     progress: getAgentProgressState(
       upstreamAgent,
       workflowAgents,
       states,
+      feedbackEdgeKeys,
       nextVisitingAgentIds
     )
   }));
@@ -415,6 +474,26 @@ function getAgentProgressState(
   )
     ? "pending"
     : "skipped";
+}
+
+function getTriggerUpstreamAgents(
+  upstreamAgents: AgentDefinition[],
+  targetAgentId: string,
+  states: AgentResultStates,
+  feedbackEdgeKeys: ReadonlySet<string>
+): AgentDefinition[] {
+  const feedbackUpstreamAgents = upstreamAgents.filter((agent) =>
+    feedbackEdgeKeys.has(getWorkflowEdgeKey(agent.id, targetAgentId))
+  );
+  const hasCompletedFeedback = feedbackUpstreamAgents.some((agent) =>
+    (states[agent.id]?.responses.length ?? 0) > 0
+  );
+
+  return hasCompletedFeedback
+    ? feedbackUpstreamAgents
+    : upstreamAgents.filter((agent) =>
+      !feedbackEdgeKeys.has(getWorkflowEdgeKey(agent.id, targetAgentId))
+    );
 }
 
 function getApplicableUpstreamAgents(
@@ -542,7 +621,10 @@ function getPlannedThreadCount(
   return plannedThreadCount;
 }
 
-function getWorkflowLevels(agents: AgentDefinition[]): AgentDefinition[][] {
+function getWorkflowLevels(
+  agents: AgentDefinition[],
+  feedbackEdgeKeys: ReadonlySet<string>
+): AgentDefinition[][] {
   const workflowAgents = [...agents];
   const agentsById = new Map(workflowAgents.map((agent) => [agent.id, agent]));
   const levelsByAgentId = new Map(
@@ -553,7 +635,10 @@ function getWorkflowLevels(agents: AgentDefinition[]): AgentDefinition[][] {
     const sourceLevel = levelsByAgentId.get(agent.id) ?? 0;
 
     for (const nextAgentId of agent.nextAgentIds) {
-      if (!agentsById.has(nextAgentId)) {
+      if (
+        !agentsById.has(nextAgentId) ||
+        feedbackEdgeKeys.has(getWorkflowEdgeKey(agent.id, nextAgentId))
+      ) {
         continue;
       }
 
@@ -578,6 +663,8 @@ function getWorkflowLevels(agents: AgentDefinition[]): AgentDefinition[][] {
 interface AgentCardProps {
   agent: AgentDefinition;
   stepLabel: string;
+  isCyclic: boolean;
+  nextAgentNamesById: ReadonlyMap<string, string>;
   handoffEnabled: boolean;
   shouldAutoRun: boolean;
   plannedThreadCount: number;
@@ -656,6 +743,7 @@ interface AgentThreadPresentation {
 interface AgentThreadConversationProps {
   agentName: string;
   disabled: boolean;
+  nextAgentNamesById: ReadonlyMap<string, string>;
   presentation: AgentThreadPresentation;
   selectedItemIndexes: number[];
   onSelectedItemIndexesChange: (indexes: number[]) => void;
@@ -664,6 +752,7 @@ interface AgentThreadConversationProps {
 function AgentThreadConversation({
   agentName,
   disabled,
+  nextAgentNamesById,
   presentation,
   selectedItemIndexes,
   onSelectedItemIndexesChange
@@ -704,6 +793,7 @@ function AgentThreadConversation({
             <ConversationMessageContent
               message={message}
               disabled={disabled}
+              nextAgentNamesById={nextAgentNamesById}
               itemIndexOffset={itemIndexOffset}
               selectedItemIndexes={
                 messageIndex === lastAgentMessageIndex
@@ -822,6 +912,8 @@ function AgentInstanceCard({
 function AgentCard({
   agent,
   stepLabel,
+  isCyclic,
+  nextAgentNamesById,
   handoffEnabled,
   shouldAutoRun,
   plannedThreadCount,
@@ -850,6 +942,8 @@ function AgentCard({
   const canRun = Boolean(agent.prompt.trim()) && !prerequisiteMessage;
   const isUnavailable = !canRun;
   const isDisabled = isUnavailable || isFrozen;
+  const shouldShowRunButton =
+    !handoffEnabled || isRunning || (canRun && !isFrozen);
 
   useEffect(() => {
     setHasSession(agent.hasSession);
@@ -976,7 +1070,15 @@ function AgentCard({
         : undefined
       }
     >
-      <span className="agent-card__step">{stepLabel}</span>
+      <div className="agent-card__step-row">
+        <span className="agent-card__step">{stepLabel}</span>
+        {isCyclic && (
+          <span className="agent-card__cycle">
+            <RotateCcw aria-hidden="true" size={12} strokeWidth={1.9} />
+            Cycle
+          </span>
+        )}
+      </div>
       <header className="agent-card__header">
         <Bot aria-hidden="true" size={22} strokeWidth={1.7} />
         <div className="agent-card__identity">
@@ -1047,6 +1149,7 @@ function AgentCard({
               <AgentInstanceCard
                 agentName={agent.name}
                 disabled={isDisabled || isRunning}
+                nextAgentNamesById={nextAgentNamesById}
                 hideAdditionalInstructions={handoffEnabled}
                 index={index}
                 isFrozen={isFrozen}
@@ -1071,6 +1174,7 @@ function AgentCard({
             <AgentThreadConversation
               agentName={agent.name}
               disabled={isDisabled}
+              nextAgentNamesById={nextAgentNamesById}
               presentation={threadPresentation[0]}
               selectedItemIndexes={selectedItemIndexes}
               onSelectedItemIndexesChange={(indexes) =>
@@ -1094,43 +1198,45 @@ function AgentCard({
               />
             </div>
           )}
-          <div className="agent-card__actions">
-            <button
-              className="agent-card__run-button"
-              type="button"
-              aria-busy={isRunning}
-              onClick={() => void handleRun(
-                handoffEnabled ? "" : additionalInstructions.trim()
-              )}
-              disabled={isRunning || !canRun || isFrozen}
-              title={isFrozen
-                ? "Cet agent est figé car un agent en aval a déjà été lancé."
-                : prerequisiteMessage || (canRun
-                  ? `${hasSession ? "Relancer" : "Lancer"} ${agent.name}`
-                  : "Cet agent ne contient aucune instruction."
-                )
-              }
-            >
-              {isRunning ? (
-                <LoaderCircle
-                  aria-hidden="true"
-                  className="agent-card__run-icon--running"
-                  size={15}
-                  strokeWidth={1.8}
-                />
-              ) : isParallelRunPrepared ? (
-                <GitBranch aria-hidden="true" size={16} strokeWidth={1.8} />
-              ) : hasSession ? (
-                <RotateCcw aria-hidden="true" size={15} strokeWidth={1.8} />
-              ) : (
-                <Send aria-hidden="true" size={15} strokeWidth={1.8} />
-              )}
-              {isRunning
-                ? "Exécution..."
-                : hasSession ? "Relancer" : "Lancer"
-              }
-            </button>
-          </div>
+          {shouldShowRunButton && (
+            <div className="agent-card__actions">
+              <button
+                className="agent-card__run-button"
+                type="button"
+                aria-busy={isRunning}
+                onClick={() => void handleRun(
+                  handoffEnabled ? "" : additionalInstructions.trim()
+                )}
+                disabled={isRunning || !canRun || isFrozen}
+                title={isFrozen
+                  ? "Cet agent est figé car un agent en aval a déjà été lancé."
+                  : prerequisiteMessage || (canRun
+                    ? `${hasSession ? "Relancer" : "Lancer"} ${agent.name}`
+                    : "Cet agent ne contient aucune instruction."
+                  )
+                }
+              >
+                {isRunning ? (
+                  <LoaderCircle
+                    aria-hidden="true"
+                    className="agent-card__run-icon--running"
+                    size={15}
+                    strokeWidth={1.8}
+                  />
+                ) : isParallelRunPrepared ? (
+                  <GitBranch aria-hidden="true" size={16} strokeWidth={1.8} />
+                ) : hasSession ? (
+                  <RotateCcw aria-hidden="true" size={15} strokeWidth={1.8} />
+                ) : (
+                  <Send aria-hidden="true" size={15} strokeWidth={1.8} />
+                )}
+                {isRunning
+                  ? "Exécution..."
+                  : hasSession ? "Relancer" : "Lancer"
+                }
+              </button>
+            </div>
+          )}
         </>
       )}
     </article>
@@ -1363,7 +1469,12 @@ export function AgentProjectWorkspace({
   const agentsPanelId = `${tabsId}-agents-panel`;
   const workflowAgents = [...content.agents];
   const agentsById = new Map(workflowAgents.map((agent) => [agent.id, agent]));
-  const workflowLevels = getWorkflowLevels(workflowAgents);
+  const workflowFeedbackEdgeKeys = getWorkflowFeedbackEdgeKeys(workflowAgents);
+  const cyclicAgentIds = getCyclicAgentIds(workflowAgents);
+  const workflowLevels = getWorkflowLevels(
+    workflowAgents,
+    workflowFeedbackEdgeKeys
+  );
   const isGlobalHandoffEnabled = workflowAgents.some(
     (agent) => handoffEnabledAgentIds.has(agent.id)
   );
@@ -1423,11 +1534,14 @@ export function AgentProjectWorkspace({
     });
   }
 
-  function getDescendantAgentIds(sourceAgentId: string): Set<string> {
+  function getForwardDescendantAgentIds(sourceAgentId: string): Set<string> {
     const descendantIds = new Set<string>();
-    const pendingIds = [
-      ...(agentsById.get(sourceAgentId)?.nextAgentIds ?? [])
-    ];
+    const pendingIds = (agentsById.get(sourceAgentId)?.nextAgentIds ?? [])
+      .filter((nextAgentId) =>
+        !workflowFeedbackEdgeKeys.has(
+          getWorkflowEdgeKey(sourceAgentId, nextAgentId)
+        )
+      );
 
     while (pendingIds.length > 0) {
       const agentId = pendingIds.shift()!;
@@ -1437,20 +1551,56 @@ export function AgentProjectWorkspace({
       }
 
       descendantIds.add(agentId);
-      pendingIds.push(...(agentsById.get(agentId)?.nextAgentIds ?? []));
+      pendingIds.push(
+        ...(agentsById.get(agentId)?.nextAgentIds ?? []).filter(
+          (nextAgentId) =>
+            !workflowFeedbackEdgeKeys.has(
+              getWorkflowEdgeKey(agentId, nextAgentId)
+            )
+        )
+      );
     }
 
     return descendantIds;
   }
 
-  function clearDescendantAgentResults(
+  function getInvalidatedAgentIds(sourceAgentId: string): Set<string> {
+    const invalidatedAgentIds = new Set<string>();
+    const visitedAgentIds = new Set([sourceAgentId]);
+    const pendingIds = [
+      ...(agentsById.get(sourceAgentId)?.nextAgentIds ?? [])
+    ];
+
+    while (pendingIds.length > 0) {
+      const agentId = pendingIds.shift()!;
+
+      if (visitedAgentIds.has(agentId)) {
+        continue;
+      }
+
+      visitedAgentIds.add(agentId);
+      invalidatedAgentIds.add(agentId);
+      pendingIds.push(
+        ...(agentsById.get(agentId)?.nextAgentIds ?? []).filter(
+          (nextAgentId) =>
+            !workflowFeedbackEdgeKeys.has(
+              getWorkflowEdgeKey(agentId, nextAgentId)
+            )
+        )
+      );
+    }
+
+    return invalidatedAgentIds;
+  }
+
+  function clearInvalidatedAgentResults(
     states: AgentResultStates,
-    sourceAgentId: string
+    invalidatedAgentIds: ReadonlySet<string>
   ): AgentResultStates {
     const nextStates = { ...states };
 
-    for (const descendantId of getDescendantAgentIds(sourceAgentId)) {
-      nextStates[descendantId] = {
+    for (const invalidatedAgentId of invalidatedAgentIds) {
+      nextStates[invalidatedAgentId] = {
         responses: [],
         selectedItemIndexes: [],
         isInvalidated: true
@@ -1460,23 +1610,49 @@ export function AgentProjectWorkspace({
     return nextStates;
   }
 
+  function rearmInvalidatedAgents(
+    sourceAgentId: string,
+    invalidatedAgentIds: ReadonlySet<string>
+  ): void {
+    const hasFeedbackSuccessor = (agentsById.get(sourceAgentId)?.nextAgentIds ?? [])
+      .some((nextAgentId) => workflowFeedbackEdgeKeys.has(
+        getWorkflowEdgeKey(sourceAgentId, nextAgentId)
+      ));
+
+    setLaunchedAgentIds((currentAgentIds) => {
+      const nextAgentIds = new Set(currentAgentIds);
+
+      for (const invalidatedAgentId of invalidatedAgentIds) {
+        nextAgentIds.delete(invalidatedAgentId);
+      }
+
+      if (hasFeedbackSuccessor) {
+        nextAgentIds.delete(sourceAgentId);
+      }
+
+      return nextAgentIds;
+    });
+  }
+
   function handleResponseChange(
     agentId: string,
     responses: AgentResponsePayload[]
   ): void {
+    const invalidatedAgentIds = getInvalidatedAgentIds(agentId);
     const storedSelections = {
       ...(selectedItemIndexesByProject.current[projectId] ?? {})
     };
 
     storedSelections[agentId] = [];
 
-    for (const descendantId of getDescendantAgentIds(agentId)) {
-      storedSelections[descendantId] = [];
+    for (const invalidatedAgentId of invalidatedAgentIds) {
+      storedSelections[invalidatedAgentId] = [];
     }
 
     selectedItemIndexesByProject.current[projectId] = storedSelections;
+    rearmInvalidatedAgents(agentId, invalidatedAgentIds);
     setAgentResultStates((currentStates) => ({
-      ...clearDescendantAgentResults(currentStates, agentId),
+      ...clearInvalidatedAgentResults(currentStates, invalidatedAgentIds),
       [agentId]: {
         responses,
         selectedItemIndexes: [],
@@ -1489,16 +1665,18 @@ export function AgentProjectWorkspace({
     agentId: string,
     selectedItemIndexes: number[]
   ): void {
+    const invalidatedAgentIds = getInvalidatedAgentIds(agentId);
     const storedSelections = {
       ...(selectedItemIndexesByProject.current[projectId] ?? {}),
       [agentId]: [...selectedItemIndexes]
     };
 
-    for (const descendantId of getDescendantAgentIds(agentId)) {
-      storedSelections[descendantId] = [];
+    for (const invalidatedAgentId of invalidatedAgentIds) {
+      storedSelections[invalidatedAgentId] = [];
     }
 
     selectedItemIndexesByProject.current[projectId] = storedSelections;
+    rearmInvalidatedAgents(agentId, invalidatedAgentIds);
     setAgentResultStates((currentStates) => {
       const currentState = currentStates[agentId];
 
@@ -1507,7 +1685,7 @@ export function AgentProjectWorkspace({
       }
 
       return {
-        ...clearDescendantAgentResults(currentStates, agentId),
+        ...clearInvalidatedAgentResults(currentStates, invalidatedAgentIds),
         [agentId]: {
           ...currentState,
           selectedItemIndexes
@@ -1551,7 +1729,8 @@ export function AgentProjectWorkspace({
       upstreamAgents,
       agent.id,
       agentResultStates,
-      workflowAgents
+      workflowAgents,
+      workflowFeedbackEdgeKeys
     )) {
       return 1;
     }
@@ -1695,7 +1874,8 @@ export function AgentProjectWorkspace({
                           upstreamAgents,
                           agent.id,
                           agentResultStates,
-                          workflowAgents
+                          workflowAgents,
+                          workflowFeedbackEdgeKeys
                         );
                         const applicableUpstreamAgents =
                           getApplicableUpstreamAgents(
@@ -1723,6 +1903,13 @@ export function AgentProjectWorkspace({
                             <AgentCard
                               agent={agent}
                               stepLabel={`Étape ${levelIndex + 1} sur ${workflowLevels.length}`}
+                              isCyclic={cyclicAgentIds.has(agent.id)}
+                              nextAgentNamesById={new Map(
+                                agent.nextAgentIds.map((nextAgentId) => [
+                                  nextAgentId,
+                                  agentsById.get(nextAgentId)?.name ?? nextAgentId
+                                ])
+                              )}
                               handoffEnabled={handoffEnabledAgentIds.has(agent.id)}
                               shouldAutoRun={
                                 handoffEnabledAgentIds.has(agent.id) &&
@@ -1740,7 +1927,7 @@ export function AgentProjectWorkspace({
                                 agentResultStates[agent.id]?.isInvalidated ?? false
                               }
                               isFrozen={[
-                                ...getDescendantAgentIds(agent.id)
+                                ...getForwardDescendantAgentIds(agent.id)
                               ].some((descendantId) =>
                                 launchedAgentIds.has(descendantId)
                               )}
