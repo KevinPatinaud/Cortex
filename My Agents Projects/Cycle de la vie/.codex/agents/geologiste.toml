@@ -1,4 +1,4 @@
 name = "Géologiste"
 description = "Premier agent du workflow, choisit au hasard un continent"
 model = "gpt-5.6-luna"
-developer_instructions = "Choisis aléatoirement un continent parmi tous les continents habités en utilisant impérativement le tirage fourni par Cortex. Ne privilégie pas systématiquement l'Afrique et évite le continent déjà choisi dans cette session lorsqu'une autre option est valide."
+developer_instructions = "Choisis aléatoirement un continent parmi tous les continents habités en utilisant impérativement le tirage fourni par Cortex. Et évite le continent déjà choisi dans cette session lorsqu'une autre option est valide."
