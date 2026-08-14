@@ -14,6 +14,7 @@ interface ProjectSelection {
 export function App() {
   const [selection, setSelection] = useState<ProjectSelection | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [deletedProject, setDeletedProject] = useState<{ id: string } | null>(null);
   const [projectActivity, setProjectActivity] = useState<
     Record<string, ProjectActivityStatus>
   >({});
@@ -34,6 +35,7 @@ export function App() {
     <main>
       <ProjectDirectoryManager
         activeProject={selection?.project ?? null}
+        deletedProject={deletedProject}
         isEditing={isEditing}
         projectActivity={projectActivity}
         onProjectLoaded={(project, content, openEditor = false) => {
@@ -49,15 +51,6 @@ export function App() {
           } else {
             clearProjectActivity(project.id);
           }
-        }}
-        onProjectCleared={(projectId) => {
-          clearProjectActivity(projectId);
-          setIsEditing(false);
-          setSelection((currentSelection) =>
-            currentSelection?.project.id === projectId
-              ? null
-              : currentSelection
-          );
         }}
       />
       {isEditing && selection ? (
@@ -77,6 +70,12 @@ export function App() {
                 }
               : currentSelection
             );
+          }}
+          onDeleted={(projectId) => {
+            clearProjectActivity(projectId);
+            setDeletedProject({ id: projectId });
+            setIsEditing(false);
+            setSelection(null);
           }}
         />
       ) : (

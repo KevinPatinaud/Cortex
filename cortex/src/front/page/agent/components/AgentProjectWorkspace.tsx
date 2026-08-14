@@ -10,6 +10,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   loadAgentProject,
+  resetAgentProjectWorkflow,
   runAgent,
   type AgentConversationMessage,
   type AgentConversationThread,
@@ -28,6 +29,7 @@ import {
   getWorkflowFeedbackEdgeKeys
 } from "../../../../shared/AgentWorkflowGraph.ts";
 import { useTranslation, type Translate } from "../../../i18n.tsx";
+import { ConfirmationDialog } from "../../project_manager/components/ConfirmationDialog.tsx";
 
 interface AgentProjectWorkspaceProps {
   project: Project | null;
@@ -1279,6 +1281,9 @@ export function AgentProjectWorkspace({
   const [launchedAgentIds, setLaunchedAgentIds] = useState<Set<string>>(
     () => new Set()
   );
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetError, setResetError] = useState("");
   const [handoffEnabledAgentIdsByProject, setHandoffEnabledAgentIdsByProject] =
     useState<HandoffEnabledAgentIdsByProject>(loadHandoffPreferences);
   const handoffEnabledAgentIds = content
@@ -1291,6 +1296,8 @@ export function AgentProjectWorkspace({
 
   useEffect(() => {
     setActiveTab("agents");
+    setIsResetDialogOpen(false);
+    setResetError("");
   }, [content?.projectId]);
 
   useEffect(() => {
@@ -1802,6 +1809,25 @@ export function AgentProjectWorkspace({
     );
   }
 
+  async function handleResetWorkflow(): Promise<void> {
+    setIsResetting(true);
+    setResetError("");
+
+    try {
+      await resetAgentProjectWorkflow(projectId);
+      const refreshedContent = await loadAgentProject(projectId);
+      delete selectedItemIndexesByProject.current[projectId];
+      delete runningAgentIdsByProject.current[projectId];
+      onContentRefresh(refreshedContent);
+      onRunStateChange(projectId, "idle");
+      setIsResetDialogOpen(false);
+    } catch (requestError) {
+      setResetError(getErrorMessage(requestError, t("common.unexpectedError")));
+    } finally {
+      setIsResetting(false);
+    }
+  }
+
   return (
     <section className="workspace-content workspace-content--project">
       <header className="agent-project__header">
@@ -1857,6 +1883,23 @@ export function AgentProjectWorkspace({
                 variant="global"
                 onChange={handleGlobalHandoffChange}
               />
+            )}
+            {activeTab === "agents" && (
+              <button
+                className="agent-project__reset-button"
+                type="button"
+                onClick={() => {
+                  setResetError("");
+                  setIsResetDialogOpen(true);
+                }}
+                disabled={isResetting || content.agents.some(
+                  (agent) => agent.executionStatus === "running"
+                )}
+                title={t("project.resetAria", { name: projectName })}
+              >
+                <RotateCcw aria-hidden="true" size={15} />
+                {t("project.reset")}
+              </button>
             )}
             <button
               className="agent-project__edit-button"
@@ -2163,6 +2206,26 @@ export function AgentProjectWorkspace({
             </div>
           )}
         </section>
+      )}
+
+      {isResetDialogOpen && (
+        <ConfirmationDialog
+          variant="reset"
+          title={t("project.resetTitle")}
+          description={t("project.resetDescription")}
+          projectName={projectName}
+          confirmLabel={t("project.reset")}
+          pendingLabel={t("project.resetting")}
+          isPending={isResetting}
+          error={resetError || undefined}
+          onCancel={() => {
+            if (!isResetting) {
+              setResetError("");
+              setIsResetDialogOpen(false);
+            }
+          }}
+          onConfirm={() => void handleResetWorkflow()}
+        />
       )}
     </section>
   );

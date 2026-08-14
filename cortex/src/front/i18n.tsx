@@ -155,6 +155,7 @@ const fr = {
   "editor.draftChanged": "Brouillon modifié",
   "editor.upToDate": "À jour",
   "editor.leave": "Quitter l’édition",
+  "editor.deleteProject": "Supprimer le projet",
   "editor.composition": "Composition",
   "editor.configured": "Configurées",
   "editor.toComplete": "À compléter",
@@ -197,6 +198,7 @@ type TranslationKey = keyof typeof fr;
 
 const en: Record<TranslationKey, string> = {
   ...fr,
+  "editor.deleteProject": "Delete project",
   "language.label": "Language", "language.help": "Interface language", "language.fr": "Français", "language.en": "English",
   "common.close": "Close", "common.cancel": "Cancel", "common.delete": "Delete", "common.add": "Add", "common.save": "Save", "common.saving": "Saving...", "common.loading": "Loading...", "common.unexpectedError": "An unexpected error occurred.",
   "sidebar.aria": "Project management", "sidebar.workspace": "Workspace", "sidebar.projects": "Projects", "sidebar.count": "{count} projects", "sidebar.hideList": "Hide project list", "sidebar.showList": "Show project list", "sidebar.hide": "Hide", "sidebar.change": "Change", "sidebar.editing": "Editing", "sidebar.activeProject": "Active project", "sidebar.newProject": "New project", "sidebar.opening": "Opening...", "sidebar.import": "Import an existing project",

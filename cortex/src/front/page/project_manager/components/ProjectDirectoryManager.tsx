@@ -5,19 +5,16 @@ import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx"
 import {
   getActualLoadedAgentProject,
   loadAgentProject,
-  resetAgentProjectWorkflow,
   type AgentProject
 } from "../../../services/agentApi.ts";
 import {
   createProject,
-  deleteProjectDirectory,
   getSavedProjects,
   type CreateProjectInput,
   type Project,
   saveProjectDirectory,
   selectProjectInstructionsFile
 } from "../../../services/projectApi.ts";
-import { ConfirmationDialog } from "./ConfirmationDialog.tsx";
 import { ProjectCreationDialog } from "./ProjectCreationDialog.tsx";
 import {
   ProjectList,
@@ -26,6 +23,7 @@ import {
 
 interface ProjectDirectoryManagerProps {
   activeProject: Project | null;
+  deletedProject: { id: string } | null;
   isEditing: boolean;
   projectActivity: Record<string, ProjectActivityStatus>;
   onProjectLoaded: (
@@ -33,12 +31,6 @@ interface ProjectDirectoryManagerProps {
     content: AgentProject,
     openEditor?: boolean
   ) => void;
-  onProjectCleared: (projectId: string) => void;
-}
-
-interface ProjectConfirmation {
-  action: "reset" | "delete";
-  project: Project;
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -52,27 +44,22 @@ function getProjectName(project: Project): string {
 
 export function ProjectDirectoryManager({
   activeProject,
+  deletedProject,
   isEditing,
   projectActivity,
-  onProjectLoaded,
-  onProjectCleared
+  onProjectLoaded
 }: ProjectDirectoryManagerProps) {
   const { t } = useTranslation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
-  const [deletingProjectId, setDeletingProjectId] = useState<string | null>(null);
-  const [resettingProjectId, setResettingProjectId] = useState<string | null>(null);
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isCreationDialogOpen, setIsCreationDialogOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
-  const [confirmation, setConfirmation] = useState<ProjectConfirmation | null>(
-    null
-  );
 
   useEffect(() => {
     if (!activeProject) {
@@ -83,6 +70,20 @@ export function ProjectDirectoryManager({
       project.id === activeProject.id ? activeProject : project
     ));
   }, [activeProject]);
+
+  useEffect(() => {
+    if (!deletedProject) {
+      return;
+    }
+
+    setProjects((currentProjects) => currentProjects.filter(
+      (project) => project.id !== deletedProject.id
+    ));
+    setSelectedProjectId((currentId) =>
+      currentId === deletedProject.id ? null : currentId
+    );
+    setSaveMessage(t("project.deleted"));
+  }, [deletedProject]);
 
   useEffect(() => {
     let isMounted = true;
@@ -143,74 +144,6 @@ export function ProjectDirectoryManager({
       setError(getErrorMessage(requestError, t("common.unexpectedError")));
     } finally {
       setIsSelecting(false);
-    }
-  }
-
-  async function handleDeleteProject(project: Project): Promise<boolean> {
-    setDeletingProjectId(project.id);
-    setError("");
-    setSaveMessage("");
-
-    try {
-      const result = await deleteProjectDirectory(project.directoryPath);
-      setProjects(result.projects);
-      setSaveMessage(t("project.deleted"));
-
-      if (selectedProjectId === project.id) {
-        setSelectedProjectId(null);
-        onProjectCleared(project.id);
-      }
-
-      return true;
-    } catch (requestError) {
-      setError(getErrorMessage(requestError, t("common.unexpectedError")));
-      return false;
-    } finally {
-      setDeletingProjectId(null);
-    }
-  }
-
-  async function handleResetWorkflow(project: Project): Promise<boolean> {
-    setResettingProjectId(project.id);
-    setError("");
-    setSaveMessage("");
-
-    try {
-      await resetAgentProjectWorkflow(project.id);
-      const content = await loadAgentProject(project.id);
-      setSelectedProjectId(project.id);
-      setIsProjectMenuOpen(false);
-      onProjectLoaded(project, content);
-      setSaveMessage(t("project.reloaded"));
-      return true;
-    } catch (requestError) {
-      setError(getErrorMessage(requestError, t("common.unexpectedError")));
-      return false;
-    } finally {
-      setResettingProjectId(null);
-    }
-  }
-
-  function openConfirmation(
-    action: ProjectConfirmation["action"],
-    project: Project
-  ): void {
-    setError("");
-    setSaveMessage("");
-    setConfirmation({ action, project });
-  }
-
-  async function handleConfirmation(): Promise<void> {
-    if (!confirmation) {
-      return;
-    }
-
-    const succeeded = confirmation.action === "reset"
-      ? await handleResetWorkflow(confirmation.project)
-      : await handleDeleteProject(confirmation.project);
-
-    if (succeeded) {
-      setConfirmation(null);
     }
   }
 
@@ -306,21 +239,17 @@ export function ProjectDirectoryManager({
             projects={projects}
             projectActivity={projectActivity}
             isLoading={isLoadingProjects}
-            deletingProjectId={deletingProjectId}
-            resettingProjectId={resettingProjectId}
             loadingProjectId={loadingProjectId}
             selectedProjectId={selectedProjectId}
             isInteractionLocked={isEditing}
             onSelect={(project) => void handleProjectSelection(project)}
-            onResetWorkflow={(project) => openConfirmation("reset", project)}
-            onDelete={(project) => openConfirmation("delete", project)}
           />
         </div>
 
         <footer className="project-sidebar__footer">
           <div className="project-sidebar__feedback" aria-live="polite">
             {saveMessage && <p className="success-message">{saveMessage}</p>}
-            {error && !confirmation && (
+            {error && (
               <p className="error" role="alert">{error}</p>
             )}
           </div>
@@ -367,41 +296,6 @@ export function ProjectDirectoryManager({
         />
       )}
 
-      {confirmation?.action === "reset" && (
-        <ConfirmationDialog
-          variant="reset"
-          title={t("project.resetTitle")}
-          description={t("project.resetDescription")}
-          projectName={getProjectName(confirmation.project)}
-          confirmLabel={t("project.reset")}
-          pendingLabel={t("project.resetting")}
-          isPending={resettingProjectId === confirmation.project.id}
-          error={error || undefined}
-          onCancel={() => {
-            setError("");
-            setConfirmation(null);
-          }}
-          onConfirm={() => void handleConfirmation()}
-        />
-      )}
-
-      {confirmation?.action === "delete" && (
-        <ConfirmationDialog
-          variant="delete"
-          title={t("project.deleteTitle")}
-          description={t("project.deleteDescription")}
-          projectName={getProjectName(confirmation.project)}
-          confirmLabel={t("common.delete")}
-          pendingLabel={t("project.deleting")}
-          isPending={deletingProjectId === confirmation.project.id}
-          error={error || undefined}
-          onCancel={() => {
-            setError("");
-            setConfirmation(null);
-          }}
-          onConfirm={() => void handleConfirmation()}
-        />
-      )}
     </>
   );
 }

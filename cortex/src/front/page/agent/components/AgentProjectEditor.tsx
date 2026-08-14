@@ -19,14 +19,19 @@ import {
   type AgentProject,
   type EditableAgentDefinition
 } from "../../../services/agentApi.ts";
-import type { Project } from "../../../services/projectApi.ts";
+import {
+  deleteProjectDirectory,
+  type Project
+} from "../../../services/projectApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
+import { ConfirmationDialog } from "../../project_manager/components/ConfirmationDialog.tsx";
 
 interface AgentProjectEditorProps {
   project: Project;
   content: AgentProject;
   onClose: () => void;
   onSaved: (content: AgentProject) => void;
+  onDeleted: (projectId: string) => void;
 }
 
 interface DraftAgent extends EditableAgentDefinition {
@@ -91,7 +96,8 @@ export function AgentProjectEditor({
   project,
   content,
   onClose,
-  onSaved
+  onSaved,
+  onDeleted
 }: AgentProjectEditorProps) {
   const { t } = useTranslation();
   const [section, setSection] = useState<EditorSection>("agents");
@@ -107,6 +113,8 @@ export function AgentProjectEditor({
   );
   const [deletedAgent, setDeletedAgent] = useState<DeletedAgent | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [error, setError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const initialDraft = useRef(serializeDraft(projectName, instructions, agents));
@@ -259,6 +267,21 @@ export function AgentProjectEditor({
     }
   }
 
+  async function handleDeleteProject(): Promise<void> {
+    setIsDeleting(true);
+    setError("");
+
+    try {
+      await deleteProjectDirectory(project.directoryPath);
+      setIsDeleteDialogOpen(false);
+      onDeleted(project.id);
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, t("common.unexpectedError")));
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   const suggestions = modelSuggestions[content.engine];
 
   return (
@@ -290,6 +313,18 @@ export function AgentProjectEditor({
             <i aria-hidden="true" />
             {isDirty ? t("editor.draftChanged") : t("editor.upToDate")}
           </span>
+          <button
+            className="project-editor__delete"
+            type="button"
+            onClick={() => {
+              setError("");
+              setIsDeleteDialogOpen(true);
+            }}
+            disabled={isSaving || isDeleting}
+          >
+            <Trash2 aria-hidden="true" size={16} />
+            {t("editor.deleteProject")}
+          </button>
           <button
             className="project-editor__exit"
             type="button"
@@ -554,6 +589,26 @@ export function AgentProjectEditor({
             </>
           )}
         </div>
+      )}
+
+      {isDeleteDialogOpen && (
+        <ConfirmationDialog
+          variant="delete"
+          title={t("project.deleteTitle")}
+          description={t("project.deleteDescription")}
+          projectName={getProjectName(project)}
+          confirmLabel={t("common.delete")}
+          pendingLabel={t("project.deleting")}
+          isPending={isDeleting}
+          error={error || undefined}
+          onCancel={() => {
+            if (!isDeleting) {
+              setError("");
+              setIsDeleteDialogOpen(false);
+            }
+          }}
+          onConfirm={() => void handleDeleteProject()}
+        />
       )}
     </section>
   );

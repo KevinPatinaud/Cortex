@@ -1,4 +1,4 @@
-import { Check, Folder, LoaderCircle, RotateCcw, Trash2 } from "lucide-react";
+import { Check, Folder, LoaderCircle } from "lucide-react";
 import type { Project } from "../../../services/projectApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
 
@@ -8,14 +8,10 @@ interface ProjectListProps {
   projects: Project[];
   projectActivity: Record<string, ProjectActivityStatus>;
   isLoading: boolean;
-  deletingProjectId: string | null;
-  resettingProjectId: string | null;
   loadingProjectId: string | null;
   selectedProjectId: string | null;
   isInteractionLocked: boolean;
   onSelect: (project: Project) => void;
-  onResetWorkflow: (project: Project) => void;
-  onDelete: (project: Project) => void;
 }
 
 function getProjectName(directoryPath: string): string {
@@ -27,14 +23,10 @@ export function ProjectList({
   projects,
   projectActivity,
   isLoading,
-  deletingProjectId,
-  resettingProjectId,
   loadingProjectId,
   selectedProjectId,
   isInteractionLocked,
-  onSelect,
-  onResetWorkflow,
-  onDelete
+  onSelect
 }: ProjectListProps) {
   const { t } = useTranslation();
 
@@ -106,26 +98,6 @@ export function ProjectList({
                   {isProjectLoading ? t("common.loading") : project.directoryPath}
                 </small>
               </span>
-            </button>
-            <button
-              className="project-list__reset-button"
-              type="button"
-              aria-label={t("project.resetAria", { name: projectName })}
-              title={t("project.resetAria", { name: projectName })}
-              onClick={() => onResetWorkflow(project)}
-              disabled={resettingProjectId === project.id || isInteractionLocked}
-            >
-              <RotateCcw aria-hidden="true" size={16} />
-            </button>
-            <button
-              className="project-list__delete-button"
-              type="button"
-              aria-label={t("project.deleteAria", { name: projectName })}
-              title={t("project.deleteAria", { name: projectName })}
-              onClick={() => onDelete(project)}
-              disabled={deletingProjectId === project.id || isInteractionLocked}
-            >
-              <Trash2 aria-hidden="true" size={16} />
             </button>
           </li>
         );
