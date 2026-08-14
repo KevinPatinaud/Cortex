@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FilePlus2 } from "lucide-react";
+import { ChevronDown, FilePlus2 } from "lucide-react";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
 import {
   getActualLoadedAgentProject,
@@ -54,6 +54,7 @@ export function ProjectDirectoryManager({
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<ProjectConfirmation | null>(
     null
   );
@@ -153,6 +154,7 @@ export function ProjectDirectoryManager({
       await resetAgentProjectWorkflow(project.id);
       const content = await loadAgentProject(project.id);
       setSelectedProjectId(project.id);
+      setIsProjectMenuOpen(false);
       onProjectLoaded(project, content);
       setSaveMessage("Les fichiers du projet ont été rechargés.");
       return true;
@@ -195,6 +197,7 @@ export function ProjectDirectoryManager({
     try {
       const content = await loadAgentProject(project.id);
       setSelectedProjectId(project.id);
+      setIsProjectMenuOpen(false);
       onProjectLoaded(project, content);
     } catch (requestError) {
       setError(getErrorMessage(requestError));
@@ -203,20 +206,51 @@ export function ProjectDirectoryManager({
     }
   }
 
+  const selectedProject = projects.find(
+    (project) => project.id === selectedProjectId
+  );
+  const isSidebarExpanded = isProjectMenuOpen || selectedProjectId === null;
+
   return (
     <>
-      <aside className="project-sidebar" aria-label="Gestion des projets">
+      <aside
+        className={`project-sidebar${
+          isSidebarExpanded ? " project-sidebar--expanded" : ""
+        }`}
+        aria-label="Gestion des projets"
+      >
         <header className="project-sidebar__header">
           <p className="project-sidebar__eyebrow">Espace de travail</p>
           <div className="project-sidebar__title-row">
             <h2>Projets</h2>
-            <span className="project-sidebar__count" aria-label={`${projects.length} projets`}>
-              {projects.length}
-            </span>
+            <div className="project-sidebar__title-actions">
+              <span className="project-sidebar__count" aria-label={`${projects.length} projets`}>
+                {projects.length}
+              </span>
+              <button
+                className="project-sidebar__toggle"
+                type="button"
+                aria-controls="project-sidebar-panel"
+                aria-expanded={isSidebarExpanded}
+                aria-label={isSidebarExpanded
+                  ? "Masquer la liste des projets"
+                  : "Afficher la liste des projets"
+                }
+                onClick={() => setIsProjectMenuOpen((isOpen) => !isOpen)}
+              >
+                <span>{isSidebarExpanded ? "Masquer" : "Changer"}</span>
+                <ChevronDown aria-hidden="true" size={17} />
+              </button>
+            </div>
           </div>
+          {selectedProject && (
+            <p className="project-sidebar__current-project">
+              Projet actif <strong>{getProjectName(selectedProject)}</strong>
+            </p>
+          )}
         </header>
 
-        <div className="project-sidebar__content">
+        <div className="project-sidebar__content" id="project-sidebar-panel">
           <ProjectList
             projects={projects}
             projectActivity={projectActivity}

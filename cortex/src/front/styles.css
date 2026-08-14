@@ -49,8 +49,8 @@ button {
 }
 
 button:disabled {
-  cursor: wait;
-  opacity: 0.62;
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 
 button:focus-visible,
@@ -375,6 +375,17 @@ main {
   transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
 }
 
+.agent-card__step {
+  display: inline-flex;
+  margin-bottom: 0.7rem;
+  color: #4f6f9f;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.59rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 .agent-card:hover {
   border-color: rgb(54 116 219 / 30%);
   box-shadow: 0 22px 52px rgb(35 73 128 / 13%);
@@ -389,14 +400,14 @@ main {
 
 .agent-card--disabled > :not(.agent-card__header) {
   filter: grayscale(1);
-  opacity: 0.5;
+  opacity: 0.82;
 }
 
 .agent-card--disabled .agent-card__header > svg,
 .agent-card--disabled .agent-card__identity,
 .agent-card--disabled .agent-card__model {
   filter: grayscale(1);
-  opacity: 0.5;
+  opacity: 0.78;
 }
 
 .agent-card--disabled:hover {
@@ -745,6 +756,10 @@ main {
   letter-spacing: 0.055em;
   text-transform: uppercase;
   transition: box-shadow 160ms ease, transform 160ms ease;
+}
+
+.agent-card__run-button[aria-busy="true"] {
+  cursor: wait;
 }
 
 .agent-card__run-button:hover:not(:disabled) {
@@ -1267,6 +1282,17 @@ main {
   gap: 1rem;
 }
 
+.project-sidebar__title-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.project-sidebar__toggle,
+.project-sidebar__current-project {
+  display: none;
+}
+
 .project-sidebar h2 {
   margin: 0;
   color: #f6faff;
@@ -1343,6 +1369,11 @@ main {
   background: transparent;
   color: inherit;
   text-align: left;
+}
+
+.project-list__select-button[aria-busy="true"],
+.project-list__state[aria-busy="true"] {
+  cursor: wait;
 }
 
 .project-list__select-button > svg {
@@ -2021,18 +2052,90 @@ dialog input {
 
 @media (max-width: 700px) {
   .project-sidebar {
-    position: relative;
+    position: sticky;
+    top: 0;
     width: 100%;
     min-height: auto;
-    max-height: 62vh;
+    max-height: none;
+    box-shadow: 0 12px 32px rgb(8 31 67 / 20%);
+  }
+
+  .project-sidebar--expanded {
+    position: relative;
+    max-height: 72vh;
   }
 
   .project-sidebar__header {
-    padding: 1.2rem;
+    padding: 0.9rem 1rem;
+  }
+
+  .project-sidebar__eyebrow {
+    margin-bottom: 0.3rem;
+    font-size: 0.55rem;
+  }
+
+  .project-sidebar h2 {
+    font-size: 1.18rem;
+  }
+
+  .project-sidebar__count {
+    min-width: 1.55rem;
+    min-height: 1.55rem;
+  }
+
+  .project-sidebar__toggle {
+    display: inline-flex;
+    min-height: 2.25rem;
+    padding: 0.4rem 0.6rem;
+    align-items: center;
+    gap: 0.35rem;
+    border: 1px solid rgb(99 168 255 / 28%);
+    border-radius: 8px;
+    background: rgb(37 99 235 / 12%);
+    color: #b8d6ff;
+    font-size: 0.67rem;
+    font-weight: 700;
+  }
+
+  .project-sidebar__toggle svg {
+    transition: transform 160ms ease;
+  }
+
+  .project-sidebar--expanded .project-sidebar__toggle svg {
+    transform: rotate(180deg);
+  }
+
+  .project-sidebar__current-project {
+    display: flex;
+    min-width: 0;
+    margin: 0.38rem 0 0;
+    align-items: baseline;
+    gap: 0.45rem;
+    color: #6f93c8;
+    font-size: 0.66rem;
+  }
+
+  .project-sidebar__current-project strong {
+    overflow: hidden;
+    color: #dcecff;
+    font-size: 0.74rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .project-sidebar:not(.project-sidebar--expanded) .project-sidebar__content,
+  .project-sidebar:not(.project-sidebar--expanded) .project-sidebar__footer {
+    display: none;
   }
 
   .project-sidebar__content {
     min-height: 8rem;
+  }
+
+  .project-list__reset-button,
+  .project-list__delete-button {
+    width: 2.5rem;
+    height: 2.5rem;
   }
 
   .workspace-content {
@@ -2078,6 +2181,13 @@ dialog input {
     width: calc(100% - 3.25rem);
     margin-left: 3.25rem;
     justify-content: flex-start;
+  }
+
+  .agent-card__header-actions > .handoff-toggle,
+  .agent-card__header-actions > .agent-card__model {
+    width: min(8.3rem, calc((100% - 0.55rem) / 2));
+    min-width: 0;
+    flex: 0 0 min(8.3rem, calc((100% - 0.55rem) / 2));
   }
 
   .agent-card__model {

@@ -34,7 +34,11 @@ export function ProjectList({
   onDelete
 }: ProjectListProps) {
   if (isLoading) {
-    return <p className="project-list__state">Chargement des projets...</p>;
+    return (
+      <p className="project-list__state" aria-busy="true">
+        Chargement des projets...
+      </p>
+    );
   }
 
   if (projects.length === 0) {
@@ -62,6 +66,7 @@ export function ProjectList({
             <button
               className="project-list__select-button"
               type="button"
+              aria-busy={isProjectLoading}
               aria-pressed={isSelected}
               onClick={() => onSelect(project)}
               disabled={loadingProjectId !== null}

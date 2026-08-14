@@ -5,6 +5,8 @@ export interface AgentResponsePayload {
   items: Array<{ content: string }>;
   isMultiSelectionAllowed: boolean | null;
   isMultiSelectionThreaded: boolean | null;
+  /** null identifies a response created before conditional routing was added. */
+  nextAgentIds: string[] | null;
   notes: string | null;
 }
 
@@ -30,6 +32,17 @@ export function parseAgentResponse(
         parsedContent.isMultiSelectionThreaded === null
       ) ||
       !(
+        parsedContent.nextAgentIds === undefined ||
+        (
+          Array.isArray(parsedContent.nextAgentIds) &&
+          parsedContent.nextAgentIds.every(
+            (agentId) => typeof agentId === "string"
+          ) &&
+          new Set(parsedContent.nextAgentIds).size ===
+            parsedContent.nextAgentIds.length
+        )
+      ) ||
+      !(
         typeof parsedContent.notes === "string" ||
         parsedContent.notes === null
       )
@@ -42,6 +55,9 @@ export function parseAgentResponse(
       items: parsedContent.items as Array<{ content: string }>,
       isMultiSelectionAllowed: parsedContent.isMultiSelectionAllowed,
       isMultiSelectionThreaded: parsedContent.isMultiSelectionThreaded,
+      nextAgentIds: parsedContent.nextAgentIds === undefined
+        ? null
+        : parsedContent.nextAgentIds as string[],
       notes: parsedContent.notes
     };
   } catch {

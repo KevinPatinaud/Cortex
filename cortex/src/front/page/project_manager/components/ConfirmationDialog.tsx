@@ -27,6 +27,7 @@ export function ConfirmationDialog({
   onConfirm
 }: ConfirmationDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const descriptionId = useId();
   const Icon = variant === "delete" ? Trash2 : RotateCcw;
@@ -38,7 +39,12 @@ export function ConfirmationDialog({
       dialog?.showModal();
     }
 
+    const focusFrame = window.requestAnimationFrame(() => {
+      cancelButtonRef.current?.focus();
+    });
+
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       if (dialog?.open) {
         dialog.close();
       }
@@ -104,7 +110,7 @@ export function ConfirmationDialog({
           <button
             className="confirmation-dialog__cancel"
             type="button"
-            autoFocus
+            ref={cancelButtonRef}
             onClick={onCancel}
             disabled={isPending}
           >

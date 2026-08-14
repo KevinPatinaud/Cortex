@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { ArrowDown, Bot, ChevronDown, FastForward, GitBranch, LoaderCircle, Pause, RotateCcw, Send } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -25,6 +25,66 @@ interface AgentProjectWorkspaceProps {
     projectId: string,
     status: "idle" | "running" | "completed"
   ) => void;
+}
+
+type HandoffEnabledAgentIdsByProject = Record<string, Set<string>>;
+
+const HANDOFF_PREFERENCES_STORAGE_KEY =
+  "cortex.agent-workflow.handoff-preferences.v1";
+const EMPTY_AGENT_ID_SET = new Set<string>();
+
+function loadHandoffPreferences(): HandoffEnabledAgentIdsByProject {
+  try {
+    const storedPreferences = window.localStorage.getItem(
+      HANDOFF_PREFERENCES_STORAGE_KEY
+    );
+
+    if (!storedPreferences) {
+      return {};
+    }
+
+    const parsedPreferences = JSON.parse(storedPreferences) as unknown;
+
+    if (
+      typeof parsedPreferences !== "object" ||
+      parsedPreferences === null ||
+      Array.isArray(parsedPreferences)
+    ) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(parsedPreferences)
+        .filter(([, agentIds]) =>
+          Array.isArray(agentIds) &&
+          agentIds.every((agentId) => typeof agentId === "string")
+        )
+        .map(([projectId, agentIds]) => [
+          projectId,
+          new Set(agentIds as string[])
+        ])
+    );
+  } catch {
+    return {};
+  }
+}
+
+function saveHandoffPreferences(
+  preferences: HandoffEnabledAgentIdsByProject
+): void {
+  try {
+    window.localStorage.setItem(
+      HANDOFF_PREFERENCES_STORAGE_KEY,
+      JSON.stringify(Object.fromEntries(
+        Object.entries(preferences).map(([projectId, agentIds]) => [
+          projectId,
+          [...agentIds]
+        ])
+      ))
+    );
+  } catch {
+    // Le workflow reste utilisable lorsque le stockage navigateur est indisponible.
+  }
 }
 
 function getProjectName(directoryPath: string): string {
@@ -242,56 +302,146 @@ function getAgentConversationThreads(
 
 function getPrerequisiteMessage(
   upstreamAgents: AgentDefinition[],
-  states: AgentResultStates
+  targetAgentId: string,
+  states: AgentResultStates,
+  workflowAgents: AgentDefinition[]
 ): string | null {
-  if (
-    upstreamAgents.length === 0 ||
-    upstreamAgents.some((agent) => getUpstreamAgentResult(agent, states))
-  ) {
+  if (upstreamAgents.length === 0) {
     return null;
   }
 
-  const agentAwaitingSelection = upstreamAgents.find((agent) => {
+  const pendingAgents = upstreamAgents.filter((agent) =>
+    getAgentProgressState(agent, workflowAgents, states) === "pending"
+  );
+
+  if (pendingAgents.length > 0) {
+    return upstreamAgents.length === 1
+      ? `Exécutez d'abord « ${pendingAgents[0].name} ».`
+      : `Attendez la fin de tous les agents précédents : ${pendingAgents
+        .map((agent) => `« ${agent.name} »`)
+        .join(" et ")}.`;
+  }
+
+  const applicableUpstreamAgents = getApplicableUpstreamAgents(
+    upstreamAgents,
+    targetAgentId,
+    states
+  );
+
+  if (applicableUpstreamAgents.length === 0) {
+    return "Cette branche n'a pas été sélectionnée par les agents précédents.";
+  }
+
+  if (applicableUpstreamAgents.every((agent) =>
+    getUpstreamAgentResult(agent, targetAgentId, states)
+  )) {
+    return null;
+  }
+
+  const agentAwaitingSelection = applicableUpstreamAgents.find((agent) => {
     const state = states[agent.id];
-    return Boolean(state?.responses.some((response) => response.items.length > 1));
+    return Boolean(state?.responses.some((response) =>
+      responseRoutesToAgent(response, targetAgentId) &&
+      response.items.length > 1
+    ));
   });
 
   if (agentAwaitingSelection) {
     const response = states[agentAwaitingSelection.id].responses.find(
-      (candidate) => candidate.items.length > 1
+      (candidate) => responseRoutesToAgent(candidate, targetAgentId) &&
+        candidate.items.length > 1
     )!;
     return response.isMultiSelectionAllowed === true
       ? `Sélectionnez un ou plusieurs résultats de « ${agentAwaitingSelection.name} ».`
       : `Sélectionnez un résultat de « ${agentAwaitingSelection.name} ».`;
   }
 
-  if (upstreamAgents.some(
+  if (applicableUpstreamAgents.some(
     (agent) => states[agent.id]?.responses.some(
-      (response) => response.items.length === 0
+      (response) => responseRoutesToAgent(response, targetAgentId) &&
+        response.items.length === 0
     )
   )) {
     return "Aucun agent précédent exécuté n'a produit de résultat transmissible.";
   }
 
-  if (upstreamAgents.length === 1) {
-    return `Exécutez d'abord « ${upstreamAgents[0].name} ».`;
+  return "Les résultats de tous les agents précédents ne sont pas encore prêts.";
+}
+
+function getAgentProgressState(
+  agent: AgentDefinition,
+  workflowAgents: AgentDefinition[],
+  states: AgentResultStates,
+  visitingAgentIds = new Set<string>()
+): "completed" | "pending" | "skipped" {
+  if (agent.executionStatus === "running") {
+    return "pending";
   }
 
-  return `Exécutez au moins l'un des agents précédents : ${upstreamAgents
-    .map((agent) => `« ${agent.name} »`)
-    .join(" ou ")}.`;
+  if ((states[agent.id]?.responses.length ?? 0) > 0) {
+    return "completed";
+  }
+
+  const upstreamAgents = workflowAgents.filter((candidate) =>
+    candidate.nextAgentIds.includes(agent.id)
+  );
+
+  if (upstreamAgents.length === 0 || visitingAgentIds.has(agent.id)) {
+    return "pending";
+  }
+
+  const nextVisitingAgentIds = new Set(visitingAgentIds);
+  nextVisitingAgentIds.add(agent.id);
+  const upstreamStates = upstreamAgents.map((upstreamAgent) => ({
+    agent: upstreamAgent,
+    progress: getAgentProgressState(
+      upstreamAgent,
+      workflowAgents,
+      states,
+      nextVisitingAgentIds
+    )
+  }));
+
+  if (upstreamStates.some(({ progress }) => progress === "pending")) {
+    return "pending";
+  }
+
+  return upstreamStates.some(({ agent: upstreamAgent, progress }) =>
+    progress === "completed" &&
+    (states[upstreamAgent.id]?.responses ?? []).some((response) =>
+      responseRoutesToAgent(response, agent.id)
+    )
+  )
+    ? "pending"
+    : "skipped";
+}
+
+function getApplicableUpstreamAgents(
+  upstreamAgents: AgentDefinition[],
+  targetAgentId: string,
+  states: AgentResultStates
+): AgentDefinition[] {
+  return upstreamAgents.filter((agent) =>
+    (states[agent.id]?.responses ?? []).some((response) =>
+      responseRoutesToAgent(response, targetAgentId)
+    )
+  );
 }
 
 function getUpstreamAgentResult(
   agent: AgentDefinition,
+  targetAgentId: string,
   states: AgentResultStates
 ): UpstreamAgentResult | null {
   const state = states[agent.id];
   const responses = state?.responses ?? [];
+  const routedResponses = responses.filter((response) =>
+    responseRoutesToAgent(response, targetAgentId)
+  );
 
   if (
-    responses.length === 0 ||
-    responses.some((response) => response.items.length === 0)
+    routedResponses.length === 0 ||
+    routedResponses.some((response) => response.items.length === 0)
   ) {
     return null;
   }
@@ -299,7 +449,10 @@ function getUpstreamAgentResult(
   let itemOffset = 0;
 
   for (const response of responses) {
-    if (response.items.length > 1) {
+    if (
+      responseRoutesToAgent(response, targetAgentId) &&
+      response.items.length > 1
+    ) {
       const selectedIndexes = state.selectedItemIndexes.filter(
         (itemIndex) =>
           itemIndex >= itemOffset &&
@@ -320,7 +473,7 @@ function getUpstreamAgentResult(
     itemOffset += response.items.length;
   }
 
-  if (responses.every((response) => response.items.length === 1)) {
+  if (routedResponses.every((response) => response.items.length === 1)) {
     return { agentId: agent.id, selectedItemIndexes: [] };
   }
 
@@ -328,6 +481,14 @@ function getUpstreamAgentResult(
     agentId: agent.id,
     selectedItemIndexes: [...state.selectedItemIndexes]
   };
+}
+
+function responseRoutesToAgent(
+  response: AgentResponsePayload,
+  targetAgentId: string
+): boolean {
+  return response.nextAgentIds === null ||
+    response.nextAgentIds.includes(targetAgentId);
 }
 
 function getPlannedThreadCount(
@@ -344,7 +505,10 @@ function getPlannedThreadCount(
   for (const upstreamAgent of upstreamAgents) {
     const state = states[upstreamAgent.id];
 
-    if (!state || !getUpstreamAgentResult(upstreamAgent, states)) {
+    if (
+      !state ||
+      !getUpstreamAgentResult(upstreamAgent, agent.id, states)
+    ) {
       return 1;
     }
 
@@ -352,6 +516,11 @@ function getPlannedThreadCount(
     let upstreamThreadCount = 0;
 
     for (const response of state.responses) {
+      if (!responseRoutesToAgent(response, agent.id)) {
+        itemIndexOffset += response.items.length;
+        continue;
+      }
+
       const selectedItemCount = response.items.length === 1
         ? 1
         : state.selectedItemIndexes.filter((itemIndex) =>
@@ -407,6 +576,7 @@ function getWorkflowLevels(agents: AgentDefinition[]): AgentDefinition[][] {
 
 interface AgentCardProps {
   agent: AgentDefinition;
+  stepLabel: string;
   handoffEnabled: boolean;
   shouldAutoRun: boolean;
   plannedThreadCount: number;
@@ -442,7 +612,7 @@ function HandoffToggle({
   variant = "agent",
   onChange
 }: HandoffToggleProps) {
-  const stateLabel = checked ? "HANDS-OFF" : "HANDS-ON";
+  const stateLabel = checked ? "Automatique" : "Manuel";
 
   return (
     <button
@@ -453,7 +623,7 @@ function HandoffToggle({
       role="switch"
       aria-checked={checked}
       aria-label={`${stateLabel}. ${description}`}
-      title={`État actuel : ${stateLabel}. ${description}`}
+      title={`Mode actuel : ${stateLabel}. ${description}`}
       onClick={() => onChange(!checked)}
     >
       <span className="handoff-toggle__label">
@@ -623,6 +793,7 @@ function AgentInstanceCard({
         <button
           className="agent-card__run-button"
           type="button"
+          aria-busy={isRunning}
           onClick={() => void handleRun()}
           disabled={isRunning || disabled}
           title={isFrozen
@@ -649,6 +820,7 @@ function AgentInstanceCard({
 
 function AgentCard({
   agent,
+  stepLabel,
   handoffEnabled,
   shouldAutoRun,
   plannedThreadCount,
@@ -803,6 +975,7 @@ function AgentCard({
         : undefined
       }
     >
+      <span className="agent-card__step">{stepLabel}</span>
       <header className="agent-card__header">
         <Bot aria-hidden="true" size={22} strokeWidth={1.7} />
         <div className="agent-card__identity">
@@ -811,7 +984,10 @@ function AgentCard({
         <div className="agent-card__header-actions">
           <HandoffToggle
             checked={handoffEnabled}
-            description={`${handoffEnabled ? "Désactiver" : "Activer"} le mode HANDS-OFF pour ${agent.name}`}
+            description={handoffEnabled
+              ? `Repasser ${agent.name} en exécution manuelle`
+              : `Lancer automatiquement ${agent.name} dès que les résultats requis sont prêts`
+            }
             onChange={(enabled) => onHandoffEnabledChange(agent.id, enabled)}
           />
           {agent.model && (
@@ -919,6 +1095,7 @@ function AgentCard({
             <button
               className="agent-card__run-button"
               type="button"
+              aria-busy={isRunning}
               onClick={() => void handleRun(
                 handoffEnabled ? "" : additionalInstructions.trim()
               )}
@@ -964,6 +1141,8 @@ export function AgentProjectWorkspace({
   onRunStateChange
 }: AgentProjectWorkspaceProps) {
   const tabsId = useId();
+  const instructionsTabRef = useRef<HTMLButtonElement>(null);
+  const agentsTabRef = useRef<HTMLButtonElement>(null);
   const [activeTab, setActiveTab] = useState<"instructions" | "agents">(
     "agents"
   );
@@ -977,19 +1156,51 @@ export function AgentProjectWorkspace({
   const [launchedAgentIds, setLaunchedAgentIds] = useState<Set<string>>(
     () => new Set()
   );
-  const [handoffEnabledAgentIds, setHandoffEnabledAgentIds] = useState<Set<string>>(
-    () => new Set()
-  );
-  const handoffEnabledAgentIdsByProject = useRef<Record<string, Set<string>>>({});
+  const [handoffEnabledAgentIdsByProject, setHandoffEnabledAgentIdsByProject] =
+    useState<HandoffEnabledAgentIdsByProject>(loadHandoffPreferences);
+  const handoffEnabledAgentIds = content
+    ? handoffEnabledAgentIdsByProject[content.projectId] ?? EMPTY_AGENT_ID_SET
+    : EMPTY_AGENT_ID_SET;
+
+  useEffect(() => {
+    saveHandoffPreferences(handoffEnabledAgentIdsByProject);
+  }, [handoffEnabledAgentIdsByProject]);
 
   useEffect(() => {
     setActiveTab("agents");
-    setHandoffEnabledAgentIds(new Set(
-      content
-        ? handoffEnabledAgentIdsByProject.current[content.projectId] ?? []
-        : []
-    ));
   }, [content?.projectId]);
+
+  useEffect(() => {
+    if (!content) {
+      return;
+    }
+
+    const availableAgentIds = new Set(content.agents.map((agent) => agent.id));
+
+    setHandoffEnabledAgentIdsByProject((currentPreferences) => {
+      const storedAgentIds = currentPreferences[content.projectId];
+
+      if (!storedAgentIds) {
+        return currentPreferences;
+      }
+
+      const validAgentIds = new Set(
+        [...storedAgentIds].filter((agentId) => availableAgentIds.has(agentId))
+      );
+
+      if (
+        validAgentIds.size === storedAgentIds.size &&
+        [...validAgentIds].every((agentId) => storedAgentIds.has(agentId))
+      ) {
+        return currentPreferences;
+      }
+
+      return {
+        ...currentPreferences,
+        [content.projectId]: validAgentIds
+      };
+    });
+  }, [content?.agents, content?.projectId]);
 
   useEffect(() => {
     if (!content) {
@@ -1076,13 +1287,10 @@ export function AgentProjectWorkspace({
       return;
     }
 
-    const enabledAgentIds = handoffEnabledAgentIdsByProject.current[
-      content.projectId
-    ] ?? new Set<string>();
     const upstreamAgentIds = new Set<string>();
 
     for (const agent of content.agents) {
-      if (!enabledAgentIds.has(agent.id)) {
+      if (!handoffEnabledAgentIds.has(agent.id)) {
         continue;
       }
 
@@ -1156,18 +1364,47 @@ export function AgentProjectWorkspace({
     (agent) => handoffEnabledAgentIds.has(agent.id)
   );
 
+  function handleTabKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>
+  ): void {
+    let nextTab: "instructions" | "agents" | null = null;
+
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      nextTab = activeTab === "instructions" ? "agents" : "instructions";
+    } else if (event.key === "Home") {
+      nextTab = "instructions";
+    } else if (event.key === "End") {
+      nextTab = "agents";
+    }
+
+    if (!nextTab) {
+      return;
+    }
+
+    event.preventDefault();
+    setActiveTab(nextTab);
+    (nextTab === "instructions"
+      ? instructionsTabRef
+      : agentsTabRef
+    ).current?.focus();
+  }
+
   function handleGlobalHandoffChange(enabled: boolean): void {
     const nextAgentIds = enabled
       ? new Set(workflowAgents.map((agent) => agent.id))
       : new Set<string>();
 
-    handoffEnabledAgentIdsByProject.current[projectId] = nextAgentIds;
-    setHandoffEnabledAgentIds(nextAgentIds);
+    setHandoffEnabledAgentIdsByProject((currentPreferences) => ({
+      ...currentPreferences,
+      [projectId]: nextAgentIds
+    }));
   }
 
   function handleAgentHandoffChange(agentId: string, enabled: boolean): void {
-    setHandoffEnabledAgentIds((currentAgentIds) => {
-      const nextAgentIds = new Set(currentAgentIds);
+    setHandoffEnabledAgentIdsByProject((currentPreferences) => {
+      const nextAgentIds = new Set(
+        currentPreferences[projectId] ?? EMPTY_AGENT_ID_SET
+      );
 
       if (enabled) {
         nextAgentIds.add(agentId);
@@ -1175,8 +1412,10 @@ export function AgentProjectWorkspace({
         nextAgentIds.delete(agentId);
       }
 
-      handoffEnabledAgentIdsByProject.current[projectId] = nextAgentIds;
-      return nextAgentIds;
+      return {
+        ...currentPreferences,
+        [projectId]: nextAgentIds
+      };
     });
   }
 
@@ -1304,11 +1543,24 @@ export function AgentProjectWorkspace({
       (candidate) => candidate.nextAgentIds.includes(agent.id)
     );
 
-    if (getPrerequisiteMessage(upstreamAgents, agentResultStates)) {
+    if (getPrerequisiteMessage(
+      upstreamAgents,
+      agent.id,
+      agentResultStates,
+      workflowAgents
+    )) {
       return 1;
     }
 
-    return getPlannedThreadCount(agent, upstreamAgents, agentResultStates);
+    return getPlannedThreadCount(
+      agent,
+      getApplicableUpstreamAgents(
+        upstreamAgents,
+        agent.id,
+        agentResultStates
+      ),
+      agentResultStates
+    );
   }
 
   return (
@@ -1323,11 +1575,14 @@ export function AgentProjectWorkspace({
                 activeTab === "instructions" ? " agent-project__tab--active" : ""
               }`}
               id={instructionsTabId}
+              ref={instructionsTabRef}
               type="button"
               role="tab"
               aria-controls={instructionsPanelId}
               aria-selected={activeTab === "instructions"}
+              tabIndex={activeTab === "instructions" ? 0 : -1}
               onClick={() => setActiveTab("instructions")}
+              onKeyDown={handleTabKeyDown}
             >
               Instructions projet
             </button>
@@ -1336,21 +1591,24 @@ export function AgentProjectWorkspace({
                 activeTab === "agents" ? " agent-project__tab--active" : ""
               }`}
               id={agentsTabId}
+              ref={agentsTabRef}
               type="button"
               role="tab"
               aria-controls={agentsPanelId}
               aria-selected={activeTab === "agents"}
+              tabIndex={activeTab === "agents" ? 0 : -1}
               onClick={() => setActiveTab("agents")}
+              onKeyDown={handleTabKeyDown}
             >
               {agentsTabLabel}
             </button>
           </div>
-          {content.agents.length > 0 && (
+          {activeTab === "agents" && content.agents.length > 0 && (
             <HandoffToggle
               checked={isGlobalHandoffEnabled}
               description={isGlobalHandoffEnabled
-                ? "Désactiver le mode HANDS-OFF pour tous les agents"
-                : "Activer le mode HANDS-OFF pour tous les agents"
+                ? "Repasser tous les agents en exécution manuelle"
+                : "Enchaîner automatiquement les agents dès que leurs prérequis sont remplis"
               }
               variant="global"
               onChange={handleGlobalHandoffChange}
@@ -1413,13 +1671,22 @@ export function AgentProjectWorkspace({
                         );
                         const prerequisiteMessage = getPrerequisiteMessage(
                           upstreamAgents,
-                          agentResultStates
+                          agent.id,
+                          agentResultStates,
+                          workflowAgents
                         );
+                        const applicableUpstreamAgents =
+                          getApplicableUpstreamAgents(
+                            upstreamAgents,
+                            agent.id,
+                            agentResultStates
+                          );
                         const upstreamAgentResults = prerequisiteMessage
                           ? undefined
-                          : upstreamAgents
+                          : applicableUpstreamAgents
                             .map((upstreamAgent) => getUpstreamAgentResult(
                               upstreamAgent,
+                              agent.id,
                               agentResultStates
                             ))
                             .filter((result): result is UpstreamAgentResult =>
@@ -1433,6 +1700,7 @@ export function AgentProjectWorkspace({
                           >
                             <AgentCard
                               agent={agent}
+                              stepLabel={`Étape ${levelIndex + 1} sur ${workflowLevels.length}`}
                               handoffEnabled={handoffEnabledAgentIds.has(agent.id)}
                               shouldAutoRun={
                                 handoffEnabledAgentIds.has(agent.id) &&
@@ -1442,7 +1710,7 @@ export function AgentProjectWorkspace({
                               }
                               plannedThreadCount={getPlannedThreadCount(
                                 agent,
-                                upstreamAgents,
+                                applicableUpstreamAgents,
                                 agentResultStates
                               )}
                               upstreamAgentResults={upstreamAgentResults}

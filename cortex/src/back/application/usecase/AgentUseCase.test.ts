@@ -209,13 +209,15 @@ function createAgentAnswer(
   items: string[],
   isMultiSelectionAllowed: boolean | null,
   isMultiSelectionThreaded: boolean | null = null,
-  notes = "NE_PAS_TRANSMETTRE"
+  notes: string | null = "NE_PAS_TRANSMETTRE",
+  nextAgentIds?: string[]
 ): string {
   return JSON.stringify({
     status: "success",
     items: items.map((content) => ({ content })),
     isMultiSelectionAllowed,
     isMultiSelectionThreaded,
+    ...(nextAgentIds === undefined ? {} : { nextAgentIds }),
     notes
   });
 }
@@ -380,6 +382,77 @@ test("réserve l'orchestration des agents suivants à Cortex", async () => {
   assert.match(calls[0].prompt, /Cortex orchestre exclusivement le workflow/);
   assert.match(calls[0].prompt, /ne délègue aucune tâche à un sous-agent/i);
   assert.match(calls[0].prompt, /retourne les éléments à leur transmettre/);
+});
+
+test("transmet un résultat uniquement aux branches sélectionnées", async () => {
+  const implementationId = ".claude/agents/implementation.md";
+  const analysisId = ".claude/agents/analysis.md";
+  const reviewId = ".claude/agents/review.md";
+  const workflowAnswer = JSON.stringify({
+    agents: [
+      {
+        id: implementationId,
+        nextAgentIds: [analysisId, reviewId],
+        inputMode: "separate"
+      },
+      {
+        id: analysisId,
+        nextAgentIds: [],
+        inputMode: "separate"
+      },
+      {
+        id: reviewId,
+        nextAgentIds: [],
+        inputMode: "separate"
+      }
+    ]
+  });
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: workflowAnswer },
+    {
+      answer: createAgentAnswer(
+        ["RÉSULTAT_CONDITIONNEL"],
+        null,
+        null,
+        null,
+        [analysisId]
+      ),
+      sessionId: "source-session"
+    },
+    {
+      answer: createAgentAnswer(["ANALYSE"], null),
+      sessionId: "analysis-session"
+    }
+  ], 3);
+  const project = await useCase.loadProject("project-id");
+  const sourceAgent = project.agents.find((agent) => agent.id === implementationId)!;
+  const selectedAgent = project.agents.find((agent) => agent.id === analysisId)!;
+  const skippedAgent = project.agents.find((agent) => agent.id === reviewId)!;
+
+  await useCase.runAgent("project-id", { agentId: sourceAgent.id });
+
+  assert.match(calls[1].prompt, new RegExp(analysisId.replaceAll(".", "\\.")));
+  assert.match(calls[1].prompt, new RegExp(reviewId.replaceAll(".", "\\.")));
+  await assert.rejects(
+    useCase.runAgent("project-id", {
+      agentId: skippedAgent.id,
+      upstreamAgentResults: [{
+        agentId: sourceAgent.id,
+        selectedItemIndexes: []
+      }]
+    }),
+    /n'a sélectionné la branche/
+  );
+  await useCase.runAgent("project-id", {
+    agentId: selectedAgent.id,
+    upstreamAgentResults: [{
+      agentId: sourceAgent.id,
+      selectedItemIndexes: []
+    }]
+  });
+
+  assert.equal(calls.length, 3);
+  assert.match(calls[2].prompt, /RÉSULTAT_CONDITIONNEL/);
 });
 
 test("transmet automatiquement l'unique item sans les notes", async () => {
@@ -647,7 +720,7 @@ test("agrège les instances parallèles pour un agent de convergence", async () 
   assert.match(calls[4].prompt, /ARTICLE_B/);
 });
 
-test("poursuit après l'exécution d'au moins une branche", async () => {
+test("attend toutes les branches sélectionnées avant la convergence", async () => {
   const workflowAnswer = JSON.stringify({
     agents: [
       {
@@ -678,12 +751,25 @@ test("poursuit après l'exécution d'au moins une branche", async () => {
   const { useCase, calls } = createSequentialUseCase([
     { answer: workflowAnswer },
     {
-      answer: createAgentAnswer(["PLAN_PARTAGÉ"], null),
+      answer: createAgentAnswer(
+        ["PLAN_PARTAGÉ"],
+        null,
+        null,
+        "NE_PAS_TRANSMETTRE",
+        [
+          ".claude/agents/implementation.md",
+          ".claude/agents/review.md"
+        ]
+      ),
       sessionId: "analysis-session"
     },
     {
       answer: createAgentAnswer(["Implémentation"], null),
       sessionId: "implementation-session"
+    },
+    {
+      answer: createAgentAnswer(["Revue"], null),
+      sessionId: "review-session"
     },
     {
       answer: createAgentAnswer(["Synthèse"], null),
@@ -708,7 +794,7 @@ test("poursuit après l'exécution d'au moins une branche", async () => {
       agentId: synthesisAgent.id,
       upstreamAgentResults: []
     }),
-    /au moins un agent prérequis/
+    /Tous les agents prérequis/
   );
 
   await useCase.runAgent("project-id", { agentId: analysisAgent.id });
@@ -721,6 +807,102 @@ test("poursuit après l'exécution d'au moins une branche", async () => {
     agentId: implementationAgent.id,
     upstreamAgentResults
   });
+
+  await assert.rejects(
+    useCase.runAgent("project-id", {
+      agentId: synthesisAgent.id,
+      upstreamAgentResults: [{
+        agentId: implementationAgent.id,
+        selectedItemIndexes: []
+      }]
+    }),
+    /Tous les agents prérequis/
+  );
+
+  await useCase.runAgent("project-id", {
+    agentId: reviewAgent.id,
+    upstreamAgentResults
+  });
+  await useCase.runAgent("project-id", {
+    agentId: synthesisAgent.id,
+    upstreamAgentResults: [
+      {
+        agentId: implementationAgent.id,
+        selectedItemIndexes: []
+      },
+      {
+        agentId: reviewAgent.id,
+        selectedItemIndexes: []
+      }
+    ]
+  });
+
+  assert.match(calls[2].prompt, /PLAN_PARTAGÉ/);
+  assert.match(calls[3].prompt, /PLAN_PARTAGÉ/);
+  assert.match(calls[4].prompt, /Implémentation/);
+  assert.match(calls[4].prompt, /Revue/);
+});
+
+test("ignore une branche conditionnelle non sélectionnée à la convergence", async () => {
+  const workflowAnswer = JSON.stringify({
+    agents: [
+      {
+        id: ".claude/agents/analysis.md",
+        nextAgentIds: [
+          ".claude/agents/implementation.md",
+          ".claude/agents/review.md"
+        ],
+        inputMode: "separate"
+      },
+      {
+        id: ".claude/agents/implementation.md",
+        nextAgentIds: [".claude/agents/synthesis.md"],
+        inputMode: "separate"
+      },
+      {
+        id: ".claude/agents/review.md",
+        nextAgentIds: [".claude/agents/synthesis.md"],
+        inputMode: "separate"
+      },
+      {
+        id: ".claude/agents/synthesis.md",
+        nextAgentIds: [],
+        inputMode: "aggregate"
+      }
+    ]
+  });
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: workflowAnswer },
+    {
+      answer: createAgentAnswer(
+        ["PLAN_CIBLÉ"],
+        null,
+        null,
+        null,
+        [".claude/agents/implementation.md"]
+      ),
+      sessionId: "analysis-session"
+    },
+    {
+      answer: createAgentAnswer(["Implémentation"], null),
+      sessionId: "implementation-session"
+    },
+    {
+      answer: createAgentAnswer(["Synthèse"], null),
+      sessionId: "synthesis-session"
+    }
+  ], 4);
+  const project = await useCase.loadProject("project-id");
+  const [analysisAgent, implementationAgent, , synthesisAgent] = project.agents;
+
+  await useCase.runAgent("project-id", { agentId: analysisAgent.id });
+  await useCase.runAgent("project-id", {
+    agentId: implementationAgent.id,
+    upstreamAgentResults: [{
+      agentId: analysisAgent.id,
+      selectedItemIndexes: []
+    }]
+  });
   await useCase.runAgent("project-id", {
     agentId: synthesisAgent.id,
     upstreamAgentResults: [{
@@ -729,9 +911,8 @@ test("poursuit après l'exécution d'au moins une branche", async () => {
     }]
   });
 
-  assert.match(calls[2].prompt, /PLAN_PARTAGÉ/);
+  assert.equal(calls.length, 4);
   assert.match(calls[3].prompt, /Implémentation/);
-  assert.doesNotMatch(calls[3].prompt, /Revue/);
 });
 
 test("conserve des exécutions indépendantes lors de la navigation entre projets", async () => {
