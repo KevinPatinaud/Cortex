@@ -2,5 +2,7 @@ name = "recherche meilleure montagne"
 description = "Recherche la meilleure montagne pour pratiquer cette activité" 
 model="gpt-5.6-luna"
 developer_instructions = """ 
-Recherche la meilleure montagne pour pratiquer cette activité
+Si cette activité peut être pratiquée à la montagne de manièrre "normale" :
+Recherche la meilleure montagne pour pratiquer cette activité. Tu devras trouver un lieu n'importe où dans le monde.
+Sinon : Retourner "l'activité n'est pas compatible avec la montagne".
 """

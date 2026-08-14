@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Le Journal — 14 août 2026</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #667085;
+      --paper: #fffdf8;
+      --line: #d9d4c8;
+      --accent: #9f1d20;
+      --soft: #f3eee5;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #e8e3d9;
+      font-family: Georgia, "Times New Roman", serif;
+      line-height: 1.65;
+    }
+    .page {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 28px 34px 60px;
+      background: var(--paper);
+      min-height: 100vh;
+      box-shadow: 0 0 28px rgba(23, 32, 42, .10);
+    }
+    header { border-bottom: 4px solid var(--ink); margin-bottom: 34px; }
+    .kicker {
+      color: var(--accent);
+      font: 700 .78rem/1.2 Arial, sans-serif;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 7px 0 0;
+      font-size: clamp(2.7rem, 7vw, 5.4rem);
+      line-height: .95;
+      letter-spacing: -.055em;
+    }
+    .edition {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 13px 0 16px;
+      color: var(--muted);
+      font: .78rem/1.4 Arial, sans-serif;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .lead {
+      border-left: 5px solid var(--accent);
+      padding: 2px 0 2px 18px;
+      margin-bottom: 32px;
+      font-size: 1.12rem;
+    }
+    .articles { display: grid; gap: 34px; }
+    article { border-top: 1px solid var(--line); padding-top: 24px; }
+    .number {
+      color: var(--accent);
+      font: 700 .82rem/1 Arial, sans-serif;
+      letter-spacing: .12em;
+    }
+    h2 { margin: 7px 0 8px; font-size: clamp(1.65rem, 3vw, 2.35rem); line-height: 1.12; }
+    .dek { margin: 0 0 18px; color: #3d4650; font-size: 1.08rem; }
+    h3 { margin: 23px 0 5px; font-size: 1.18rem; }
+    p { margin: 0 0 12px; }
+    .source {
+      margin-top: 18px;
+      padding: 12px 15px;
+      background: var(--soft);
+      color: #4f5965;
+      font: .88rem/1.5 Arial, sans-serif;
+    }
+    a { color: var(--accent); }
+    footer {
+      margin-top: 42px;
+      padding-top: 15px;
+      border-top: 4px solid var(--ink);
+      color: var(--muted);
+      font: .78rem/1.5 Arial, sans-serif;
+    }
+    @media (max-width: 600px) {
+      .page { padding: 22px 20px 44px; }
+      .edition { display: block; }
+      .edition span { display: block; margin-top: 5px; }
+    }
+    @media print {
+      body { background: white; }
+      .page { box-shadow: none; max-width: none; }
+      article { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div class="kicker">Projet journalistique</div>
+      <h1>Le Journal</h1>
+      <div class="edition">
+        <span>Édition du 14 août 2026</span>
+        <span>Généré le 14/08/2026 à 07:46:17</span>
+      </div>
+    </header>
+
+    <p class="lead">Quatre sujets au cœur de l’actualité française : les arbitrages du budget 2027, les tensions liées à la chaleur et à l’eau, une enquête autour de la ligne Lyon-Turin et le risque d’ingérences informationnelles dans la présidentielle.</p>
+
+    <section class="articles" aria-label="Articles du journal">
+      <article>
+        <div class="number">01 — POLITIQUE</div>
+        <h2>Budget 2027 : le gouvernement français vise un déficit de 4,9 % et cherche un compromis avec les socialistes</h2>
+        <p class="dek">Le gouvernement français entend réduire modestement le déficit public en 2027, avec un objectif fixé à 4,9 %. Pour parvenir à ce résultat, l’exécutif devra trouver un compromis avec les socialistes, au terme d’arbitrages budgétaires qui s’annoncent politiquement sensibles.</p>
+
+        <h3>Un objectif de réduction mesurée</h3>
+        <p>La cible de 4,9 % traduit la volonté du gouvernement d’améliorer la situation budgétaire sans afficher une trajectoire de réduction trop brutale. Cette approche suppose de combiner maîtrise des dépenses et choix politiques suffisamment acceptables pour obtenir un soutien parlementaire.</p>
+
+        <h3>Les arbitrages au cœur des négociations</h3>
+        <p>La préparation du budget 2027 devrait donc se jouer autour des mesures permettant de réduire le déficit tout en limitant leur coût politique. Le gouvernement devra déterminer quelles économies retenir, quelles priorités préserver et jusqu’où faire évoluer ses propositions pour convaincre les socialistes.</p>
+        <p>Ces arbitrages ne seront pas seulement techniques. Ils définiront aussi l’équilibre politique du budget et la capacité de l’exécutif à rassembler au-delà de sa majorité. Un accord avec les socialistes offrirait une issue négociée, mais pourrait également contraindre le gouvernement à modifier certains choix initiaux.</p>
+
+        <h3>Le risque d’une confrontation politique</h3>
+        <p>À défaut de compromis, l’adoption du budget pourrait devenir une épreuve majeure pour le gouvernement. Les discussions avec les socialistes seront déterminantes : elles peuvent déboucher sur un accord, mais aussi révéler des désaccords suffisamment profonds pour rendre le vote incertain.</p>
+        <p>Dans ce contexte, le recours éventuel à l’article 49.3 apparaît comme une option politique à haut risque. Il permettrait à l’exécutif de faire avancer le texte sans dépendre entièrement d’un vote favorable, mais exposerait aussi le gouvernement à une contestation accrue et renforcerait la dimension conflictuelle du débat budgétaire.</p>
+
+        <h3>Un budget aux conséquences politiques importantes</h3>
+        <p>L’objectif de déficit de 4,9 % place ainsi le gouvernement face à un double impératif : présenter une trajectoire budgétaire crédible et préserver les conditions politiques de son adoption. La réussite de cette stratégie dépendra moins du seul chiffre annoncé que de la capacité de l’exécutif à construire un compromis.</p>
+        <p>Le budget 2027 pourrait finalement devenir un test de méthode pour le gouvernement. Une entente avec les socialistes permettrait de privilégier la négociation. À l’inverse, l’utilisation du 49.3 signalerait l’échec d’un accord et ouvrirait une séquence politique plus tendue.</p>
+
+        <div class="source">Source : Le Monde, « French PM aims for modest deficit reduction in 2027 with target of 4.9 % », 13 août 2026 — <a href="https://www.lemonde.fr/en/politics/article/2026/08/13/french-pm-aims-for-modest-deficit-reduction-in-2027-with-target-of-4-9_6756470_5.html" target="_blank" rel="noopener">lire la source</a></div>
+      </article>
+
+      <article>
+        <div class="number">02 — ENVIRONNEMENT</div>
+        <h2>Chaleur, sécheresse et incendies : la France face à un été sous tension</h2>
+        <p class="dek">Après un mois de juillet marqué par des records de chaleur et de sécheresse, la France s’apprête à affronter une nouvelle vague de chaleur appelée à s’intensifier. Dans plusieurs territoires, les restrictions d’eau se multiplient tandis que le risque d’incendie augmente fortement. Cette situation met sous pression l’agriculture, les cours d’eau, le secteur de l’énergie et la santé publique.</p>
+
+        <h3>Une ressource en eau devenue critique</h3>
+        <p>La succession de températures élevées et de périodes sèches réduit les réserves disponibles. Les restrictions d’eau traduisent une tension croissante sur la ressource et imposent de limiter certains usages. L’enjeu concerne à la fois les besoins des populations, l’activité économique et la préservation des milieux naturels.</p>
+        <p>Les cours d’eau sont directement exposés à cette situation. La baisse des débits fragilise les écosystèmes aquatiques et réduit les marges de manœuvre pour répondre aux besoins humains. Le problème n’est donc plus seulement celui d’un épisode météorologique exceptionnel : il devient une question durable de gestion de l’eau.</p>
+
+        <h3>L’agriculture sous pression</h3>
+        <p>Pour les exploitations agricoles, le manque d’eau complique l’irrigation et menace les rendements. Les restrictions obligent à arbitrer les usages au moment même où les cultures sont confrontées à une forte évaporation et à des températures extrêmes. La sécheresse accroît aussi la vulnérabilité des sols et des végétaux.</p>
+        <p>Cette situation rappelle la dépendance de la production agricole à une ressource de plus en plus incertaine. Elle pourrait accélérer les réflexions sur les pratiques agricoles, la gestion des réserves et le choix de cultures mieux adaptées aux épisodes de chaleur et de sécheresse.</p>
+
+        <h3>Un risque d’incendie en forte hausse</h3>
+        <p>La combinaison de la chaleur, de la sécheresse et de la végétation asséchée crée des conditions particulièrement favorables aux incendies. L’augmentation du risque impose une vigilance renforcée et peut conduire à limiter l’accès à certaines zones ou certaines activités.</p>
+        <p>Au-delà des dommages directs, les incendies aggravent les conséquences environnementales de la sécheresse. Ils détruisent des espaces naturels déjà fragilisés et peuvent perturber durablement les territoires concernés.</p>
+
+        <h3>Des tensions possibles pour l’énergie</h3>
+        <p>Les fortes chaleurs pèsent également sur le système énergétique. La demande peut augmenter sous l’effet des besoins de refroidissement, tandis que la disponibilité de l’eau devient un facteur de vigilance pour certaines infrastructures. Dans ce contexte, la gestion de l’électricité doit composer avec une consommation accrue et des contraintes environnementales renforcées.</p>
+
+        <h3>La chaleur, un enjeu de santé publique</h3>
+        <p>Enfin, la nouvelle vague de chaleur expose davantage les personnes vulnérables. La durée et l’intensité des températures élevées peuvent accroître la fatigue, les malaises et les risques liés à la déshydratation. La prévention, l’accès à l’eau et la protection des populations fragiles deviennent essentiels.</p>
+
+        <h3>Un épisode révélateur</h3>
+        <p>Les records enregistrés en juillet et la nouvelle vague annoncée montrent l’ampleur des tensions auxquelles la France doit désormais se préparer. Agriculture, cours d’eau, énergie, santé et prévention des incendies sont liés par une même contrainte : la raréfaction de l’eau dans un contexte de chaleur persistante.</p>
+        <p>La réponse ne peut donc pas reposer uniquement sur des mesures d’urgence. Elle implique aussi une réflexion de long terme sur le partage de l’eau, l’adaptation des activités et la protection des populations et des territoires.</p>
+
+        <div class="source">Sources : Le Monde, « Heatwave expected to intensify in the coming days as France faces one of its longest ever recorded » (8 août 2026) ; Le Monde, « July breaks drought and heat records: the issue of water is becoming absolutely critical » (5 août 2026).</div>
+      </article>
+
+      <article>
+        <div class="number">03 — JUSTICE</div>
+        <h2>Projet présumé de sabotage de la ligne Lyon-Turin : huit personnes placées sous contrôle judiciaire</h2>
+        <p class="dek">Huit personnes soupçonnées d’être liées à un projet d’extrême gauche visant la ligne ferroviaire Lyon-Turin ont été placées sous contrôle judiciaire. Cette mesure intervient dans le cadre d’une enquête portant sur un projet présumé de sabotage de cette infrastructure franco-italienne.</p>
+
+        <p>À ce stade, les informations transmises établissent uniquement l’existence de soupçons visant ces huit personnes et leur placement sous contrôle judiciaire. Elles ne permettent pas de préciser leur identité, la nature exacte des faits qui leur sont reprochés, les éléments matériels recueillis par les enquêteurs ni les qualifications pénales retenues.</p>
+        <p>La prudence s’impose donc dans la présentation de l’affaire. Les personnes concernées sont soupçonnées d’être liées à un projet, mais ces accusations ne constituent pas des condamnations. Leur placement sous contrôle judiciaire est une mesure décidée dans le cadre de la procédure et ne préjuge pas de leur culpabilité. Seule une décision de justice définitive pourrait établir leur responsabilité pénale.</p>
+        <p>Le dossier présente une dimension franco-italienne en raison de la ligne Lyon-Turin, mais les résultats transmis ne fournissent aucun élément sur les réactions des autorités françaises ou italiennes, ni sur la coordination éventuelle entre les deux pays. Ils ne détaillent pas davantage les garanties judiciaires applicables aux personnes mises en cause.</p>
+        <p>L’enquête devra désormais déterminer la réalité du projet présumé, le rôle éventuel de chacune des personnes concernées et l’existence d’éléments suffisamment solides pour justifier d’éventuelles poursuites. En attendant, les faits établis doivent être distingués des hypothèses de l’enquête : huit personnes sont soupçonnées et placées sous contrôle judiciaire ; aucune condamnation n’est mentionnée dans les informations disponibles.</p>
+
+        <div class="source">Source indiquée : Le Monde, 13 août 2026.</div>
+      </article>
+
+      <article>
+        <div class="number">04 — DÉMOCRATIE</div>
+        <h2>Ingérences russes : la présidentielle française face au risque informationnel</h2>
+        <p class="dek">L’expulsion d’une propagandiste russe et plusieurs accusations de désinformation replacent les ingérences étrangères au cœur du débat sur la sécurité informationnelle en amont de l’élection présidentielle française.</p>
+
+        <p>D’après les éléments transmis, l’expulsion constitue l’un des faits centraux de cette séquence. Elle intervient dans un contexte où des acteurs liés à la propagande russe sont accusés de chercher à influencer le débat public français. Parallèlement, plusieurs accusations de désinformation ont été formulées, alimentant les interrogations sur l’origine des contenus diffusés, leurs relais et leurs objectifs politiques.</p>
+        <p>Ces affaires posent une double difficulté. Les autorités doivent protéger le débat démocratique contre les opérations d’influence étrangères, tout en évitant que la lutte contre la désinformation ne se transforme en restriction injustifiée de la liberté d’expression. La distinction entre une opinion politique, une erreur, une manipulation coordonnée et une opération de propagande doit donc reposer sur des faits vérifiables et une attribution étayée.</p>
+        <p>Pour les candidats à la présidentielle, le sujet devient également une question de sécurité politique. Toute campagne peut être fragilisée par la circulation de faux contenus, l’amplification artificielle de controverses ou l’exploitation de divisions déjà présentes dans la société. La rapidité de diffusion de ces messages complique leur correction : un démenti peut intervenir après que la rumeur a déjà atteint une large audience.</p>
+        <p>La protection démocratique repose dès lors sur plusieurs exigences : documenter publiquement les ingérences établies, expliquer les méthodes utilisées, renforcer la vérification des informations et permettre aux citoyens d’identifier les sources et les relais d’un contenu. Les médias, les plateformes numériques, les autorités publiques et les équipes de campagne ont chacun un rôle à jouer, sans se substituer aux procédures indépendantes de vérification.</p>
+        <p>La transparence est essentielle. Lorsqu’une accusation est portée, le public doit pouvoir distinguer ce qui est établi, ce qui est en cours d’examen et ce qui relève encore de l’hypothèse. Cette discipline est d’autant plus importante que les accusations d’ingérence peuvent elles-mêmes devenir des instruments de confrontation politique.</p>
+        <p>L’expulsion de la propagandiste russe et les accusations de désinformation ne constituent donc pas seulement des épisodes isolés. Elles relancent une question plus large : comment préserver l’autonomie du débat électoral tout en garantissant les libertés publiques ? À l’approche de la présidentielle, la réponse dépendra autant de la capacité à détecter les manipulations que de celle à maintenir la confiance dans l’information et dans les institutions.</p>
+
+        <div class="source">Source transmise : Le Monde, « Russian interference becomes campaign issue for French presidential candidates », 8 août 2026 — <a href="https://www.lemonde.fr/en/politics/article/2026/08/08/russian-interference-becomes-campaign-issue-for-french-presidential-candidates_6756285_5.html" target="_blank" rel="noopener">lire la source</a></div>
+      </article>
+    </section>
+
+    <footer>
+      Édition générée à partir des résultats transmis par les écrivains. Aucune donnée extérieure n’a été ajoutée.
+    </footer>
+  </main>
+</body>
+</html>

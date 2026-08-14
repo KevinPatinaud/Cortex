@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Le Journal — 13 août 2026</title>
+  <style>
+    :root {
+      --ink: #17202a;
+      --muted: #68727d;
+      --paper: #f7f4ee;
+      --card: #fffdf8;
+      --line: #d9d2c5;
+      --accent: #a52e2e;
+      --accent-dark: #702020;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: Georgia, "Times New Roman", serif;
+      line-height: 1.7;
+    }
+    .page {
+      width: min(1080px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 34px 0 60px;
+    }
+    .masthead {
+      border-top: 8px solid var(--accent);
+      border-bottom: 3px double var(--ink);
+      padding: 18px 0 14px;
+      margin-bottom: 28px;
+    }
+    .eyebrow {
+      margin: 0 0 4px;
+      color: var(--accent);
+      font: 700 0.78rem/1.2 Arial, sans-serif;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+    h1 {
+      margin: 0;
+      font-size: clamp(2.7rem, 7vw, 5.7rem);
+      line-height: 0.95;
+      letter-spacing: -0.055em;
+      font-weight: 700;
+    }
+    .date {
+      margin: 15px 0 0;
+      color: var(--muted);
+      font: 0.85rem/1.4 Arial, sans-serif;
+      letter-spacing: 0.03em;
+    }
+    .lead {
+      max-width: 760px;
+      margin: 0 0 30px;
+      font-size: 1.25rem;
+      line-height: 1.5;
+    }
+    .articles {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 22px;
+    }
+    article {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-top: 5px solid var(--accent);
+      padding: 25px 27px 24px;
+      box-shadow: 0 5px 18px rgba(47, 36, 22, 0.05);
+    }
+    article:first-child { grid-column: 1 / -1; }
+    .kicker {
+      margin: 0 0 7px;
+      color: var(--accent);
+      font: 700 0.76rem/1.2 Arial, sans-serif;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+    h2 {
+      margin: 0 0 16px;
+      color: var(--accent-dark);
+      font-size: clamp(1.55rem, 3vw, 2.25rem);
+      line-height: 1.08;
+      letter-spacing: -0.025em;
+    }
+    p { margin: 0 0 13px; }
+    p:last-child { margin-bottom: 0; }
+    a { color: var(--accent-dark); }
+    .source {
+      margin-top: 18px;
+      padding-top: 13px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+    footer {
+      margin-top: 30px;
+      padding-top: 15px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font: 0.78rem/1.5 Arial, sans-serif;
+    }
+    @media (max-width: 760px) {
+      .page { width: min(100% - 22px, 680px); padding-top: 22px; }
+      .articles { grid-template-columns: 1fr; }
+      article:first-child { grid-column: auto; }
+      article { padding: 21px 20px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="masthead">
+      <p class="eyebrow">Édition du jour</p>
+      <h1>Le Journal</h1>
+      <p class="date">13 août 2026 · Généré le 13 août 2026 à 22:25:14 · Édition 20260813-222514</p>
+    </header>
+
+    <p class="lead">Quatre regards sur l’actualité : la chaleur qui éprouve l’Europe, la guerre en Ukraine, une enquête autour de la ligne Lyon-Turin et la nouvelle équipe des Bleus.</p>
+
+    <section class="articles" aria-label="Articles du journal">
+      <article>
+        <p class="kicker">Climat · Europe</p>
+        <h2>Vague de chaleur en Europe occidentale : l’été face à ses propres excès</h2>
+        <p>Le Royaume-Uni a enregistré de nouveaux records de température tandis que la France a connu des pointes proches de 41 °C. Cette vague de chaleur, qui frappe plusieurs pays d’Europe occidentale, transforme l’image d’un été synonyme d’insouciance en une période de risques croissants pour les populations et les territoires.</p>
+        <p>Au Royaume-Uni, les records signalés témoignent d’une chaleur devenue suffisamment exceptionnelle pour marquer les esprits. En France, les températures relevées près de 41 °C illustrent l’intensité de l’épisode. Ces niveaux de chaleur ne constituent pas seulement une gêne ponctuelle : ils pèsent sur la vie quotidienne, fragilisent les personnes vulnérables et compliquent la gestion des urgences.</p>
+        <p>Les incendies ajoutent une dimension particulièrement visible à la crise. La chaleur et la sécheresse favorisent la propagation des feux, qui menacent les espaces naturels, les habitations et les infrastructures. Ils imposent aussi des évacuations et mobilisent durablement les services de secours. Au-delà des dégâts immédiats, les fumées dégradent la qualité de l’air et aggravent les difficultés rencontrées par les personnes souffrant de problèmes respiratoires.</p>
+        <p>Les conséquences sanitaires sont au cœur des préoccupations. Une chaleur extrême peut provoquer une déshydratation, une fatigue importante et des malaises. Elle affecte plus durement les personnes âgées, les enfants et celles qui souffrent déjà de problèmes de santé. Lorsque les températures restent élevées, l’organisme peine à récupérer, notamment pendant la nuit, ce qui accroît la vulnérabilité face aux effets de la chaleur.</p>
+        <p>Cette situation remet également en question le rapport culturel à l’été. Comme le souligne Le Monde, les vagues de chaleur qui écrasent la saison française de l’insouciance obligent à s’interroger sur ce qu’il restera de cette relation familière et agréable aux beaux jours. La chaleur estivale, longtemps associée aux vacances et au plaisir, devient désormais indissociable des alertes, des incendies et des mesures de protection.</p>
+        <p>L’épisode observé en Europe occidentale rappelle ainsi que les records de température ne sont pas de simples chiffres. Ils se traduisent par des risques concrets pour la santé, une pression accrue sur les secours et des territoires plus exposés aux incendies. Face à ces événements, la vigilance et la protection des personnes les plus fragiles deviennent essentielles.</p>
+        <p class="source">Sources : <a href="https://apnews.com/article/1efa65679bd29770e3b7ea4a9ca839a4">Associated Press</a> ; <a href="https://www.lemonde.fr/en/environment/article/2026/08/13/what-will-we-have-left-if-we-stop-loving-summer-heatwaves-crush-france-s-season-of-insouciance_6756479_114.html">Le Monde</a>.</p>
+      </article>
+
+      <article>
+        <p class="kicker">International · Défense</p>
+        <h2>Guerre en Ukraine : l’intensification des frappes russes alimente la vulnérabilité européenne</h2>
+        <p>L’intensification des frappes russes contre l’Ukraine ravive les inquiétudes des alliés de Kyiv. À mesure que la pression militaire s’accroît sur le territoire ukrainien, le conflit apparaît de plus en plus comme une crise de sécurité qui dépasse les frontières du pays agressé.</p>
+        <p>Dans son analyse publiée le 13 août 2026, Le Monde met en parallèle deux évolutions : la poursuite des frappes russes en Ukraine et la multiplication d’actions hybrides attribuées à Moscou en Europe. Cette combinaison nourrit un sentiment d’incertitude chez les partenaires de Kyiv, confrontés à une menace dont les formes se diversifient.</p>
+        <p>Les frappes russes constituent d’abord une pression directe sur l’Ukraine. Leur intensification vise à maintenir une forte contrainte militaire et politique sur Kyiv, tout en rappelant aux alliés européens que le conflit reste actif et imprévisible. Pour l’Ukraine, cette dynamique accroît la nécessité d’un soutien durable. Pour ses partenaires, elle souligne la difficulté de contenir une guerre susceptible de produire des répercussions bien au-delà du front.</p>
+        <p>Parallèlement, les actions hybrides attribuées à Moscou élargissent le champ de confrontation. Elles ne reposent pas uniquement sur l’usage de la force militaire : elles contribuent aussi à installer le doute, à tester la capacité de réaction des Européens et à exploiter les fragilités de leurs sociétés et de leurs institutions. Cette dimension rend la menace plus difficile à identifier et à traiter, car elle se situe à la frontière entre confrontation ouverte, pression politique et déstabilisation.</p>
+        <p>Pour les alliés de Kyiv, cette évolution complique les choix stratégiques. Ils doivent continuer à soutenir l’Ukraine sans provoquer une extension incontrôlée du conflit, tout en renforçant leur vigilance face aux risques pesant sur l’Europe. L’incertitude porte autant sur l’ampleur des actions attribuées à Moscou que sur la manière d’y répondre collectivement.</p>
+        <p>La situation met ainsi en évidence une vulnérabilité européenne croissante. L’enjeu ne se limite plus à la capacité de défendre l’Ukraine : il concerne également la résilience des pays alliés face à des pressions simultanées, militaires et hybrides. Dans ce contexte, la guerre en Ukraine apparaît comme un test durable pour la solidarité européenne et pour la crédibilité des engagements pris en faveur de Kyiv.</p>
+        <p class="source">Source : Le Monde, « With Russia’s strikes in Ukraine and hybrid war in Europe, Kyiv’s allies face heightened uncertainty », 13 août 2026.</p>
+      </article>
+
+      <article>
+        <p class="kicker">France · Justice</p>
+        <h2>Projet d’action contre la ligne Lyon-Turin : huit personnes arrêtées</h2>
+        <p>Huit personnes ont été arrêtées dans le cadre d’une enquête portant sur un projet présumé d’action contre la ligne ferroviaire Lyon-Turin. D’après les informations transmises par l’agent « repporter », les personnes interpellées seraient soupçonnées d’être liées à un projet d’extrême gauche.</p>
+        <p>L’affaire intervient dans un contexte de contestation des grandes infrastructures de transport, dont la ligne Lyon-Turin constitue l’un des projets les plus sensibles. Ce chantier cristallise depuis plusieurs années des oppositions liées à ses conséquences environnementales, à son coût et à ses effets sur les territoires concernés. La contestation d’un projet d’infrastructure peut toutefois prendre des formes très diverses, allant de la mobilisation publique à des actions susceptibles de relever de poursuites pénales.</p>
+        <p>Les arrestations placent désormais l’enquête au centre de l’attention. Les autorités cherchent notamment à établir la nature exacte du projet évoqué, le degré d’implication de chacune des personnes arrêtées et l’existence éventuelle d’une organisation coordonnée. À ce stade, les éléments détaillés de l’enquête ne sont pas précisés dans les informations disponibles.</p>
+        <p>Cette affaire pose également la question de l’équilibre entre le suivi des mouvances radicales et le respect des libertés publiques. L’étiquette d’extrême gauche et les soupçons formulés par les enquêteurs devront être distingués des faits établis par la justice. Les arrestations ne préjugent donc pas de la responsabilité pénale des personnes concernées.</p>
+        <p>Au-delà du dossier judiciaire, l’épisode rappelle la tension qui entoure les infrastructures contestées. La ligne Lyon-Turin demeure un symbole des débats sur les choix d’aménagement, la transition écologique et les moyens d’action acceptables dans une démocratie. Les suites de l’enquête permettront de déterminer si le projet présumé correspondait à une menace concrète et quelles responsabilités peuvent être retenues.</p>
+      </article>
+
+      <article>
+        <p class="kicker">Sport · Équipe de France</p>
+        <h2>Le nouveau staff des Bleus se précise avec l’arrivée de Fabien Barthez</h2>
+        <p>Fabien Barthez rejoint l’équipe de Zinédine Zidane en qualité d’entraîneur des gardiens. Cette arrivée constitue l’un des premiers éléments marquants du nouveau staff de l’équipe de France, alors que la nomination récente du sélectionneur ouvre une nouvelle séquence pour les Bleus.</p>
+        <p>L’ancien gardien vient renforcer l’encadrement technique autour de Zinédine Zidane. Sa mission sera consacrée au travail des gardiens, un secteur essentiel dans la préparation et la performance de la sélection. Son expérience apporte ainsi une dimension particulière à un staff appelé à construire ses méthodes et ses priorités avant les prochaines échéances internationales.</p>
+        <p>Cette nomination intervient dans un contexte d’attentes élevées. Après la désignation récente de Zinédine Zidane, la composition de son équipe devient un premier indicateur de l’orientation donnée au projet. L’intégration de Fabien Barthez souligne l’importance accordée à l’accompagnement des gardiens et à la transmission de l’expérience au sein du groupe France.</p>
+        <p>Le nouveau staff devra désormais trouver rapidement ses repères. La coordination entre le sélectionneur, l’entraîneur des gardiens et l’ensemble de l’encadrement sera déterminante pour préparer les prochaines échéances internationales dans les meilleures conditions. Les choix de Zinédine Zidane, comme la capacité de son équipe à installer un cadre clair et cohérent, seront particulièrement observés.</p>
+        <p>Avec Fabien Barthez auprès de Zinédine Zidane, les Bleus disposent donc d’un premier renfort identifié pour cette nouvelle étape. Reste désormais à transformer cette association en une dynamique collective et à répondre aux attentes qui accompagnent le renouvellement du staff de l’équipe de France.</p>
+        <p class="source">Source : Le Monde, « Fabien Barthez joins Zidane’s France staff as goalkeeping coach », 13 août 2026.</p>
+      </article>
+    </section>
+
+    <footer>Page générée à partir des résultats transmis par les agents écrivains.</footer>
+  </main>
+</body>
+</html>
