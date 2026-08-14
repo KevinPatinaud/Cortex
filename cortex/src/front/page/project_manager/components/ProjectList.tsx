@@ -11,6 +11,7 @@ interface ProjectListProps {
   resettingProjectId: string | null;
   loadingProjectId: string | null;
   selectedProjectId: string | null;
+  isInteractionLocked: boolean;
   onSelect: (project: Project) => void;
   onResetWorkflow: (project: Project) => void;
   onDelete: (project: Project) => void;
@@ -29,6 +30,7 @@ export function ProjectList({
   resettingProjectId,
   loadingProjectId,
   selectedProjectId,
+  isInteractionLocked,
   onSelect,
   onResetWorkflow,
   onDelete
@@ -69,7 +71,7 @@ export function ProjectList({
               aria-busy={isProjectLoading}
               aria-pressed={isSelected}
               onClick={() => onSelect(project)}
-              disabled={loadingProjectId !== null}
+              disabled={loadingProjectId !== null || isInteractionLocked}
             >
               <Folder aria-hidden="true" size={18} strokeWidth={1.8} />
               <span className="project-list__details">
@@ -105,7 +107,7 @@ export function ProjectList({
               aria-label={`Réinitialiser le workflow de ${projectName}`}
               title={`Réinitialiser le workflow de ${projectName}`}
               onClick={() => onResetWorkflow(project)}
-              disabled={resettingProjectId === project.id}
+              disabled={resettingProjectId === project.id || isInteractionLocked}
             >
               <RotateCcw aria-hidden="true" size={16} />
             </button>
@@ -115,7 +117,7 @@ export function ProjectList({
               aria-label={`Supprimer ${projectName}`}
               title={`Supprimer ${projectName}`}
               onClick={() => onDelete(project)}
-              disabled={deletingProjectId === project.id}
+              disabled={deletingProjectId === project.id || isInteractionLocked}
             >
               <Trash2 aria-hidden="true" size={16} />
             </button>

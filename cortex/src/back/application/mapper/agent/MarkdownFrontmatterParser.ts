@@ -72,9 +72,20 @@ function removeWrappingQuotes(value: string): string {
   const lastCharacter = value[value.length - 1];
 
   if (
-    (firstCharacter === "\"" && lastCharacter === "\"") ||
-    (firstCharacter === "'" && lastCharacter === "'")
+    firstCharacter === "\"" && lastCharacter === "\""
   ) {
+    try {
+      const decodedValue: unknown = JSON.parse(value);
+
+      if (typeof decodedValue === "string") {
+        return decodedValue;
+      }
+    } catch {
+      return value.slice(1, -1);
+    }
+  }
+
+  if (firstCharacter === "'" && lastCharacter === "'") {
     return value.slice(1, -1);
   }
 

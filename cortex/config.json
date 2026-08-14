@@ -19,6 +19,10 @@
     {
       "id": "c13f0824-82eb-4b65-9238-555d7009ab5c",
       "directoryPath": "C:\\dev\\Cortex\\My Agents Projects\\5 - Repporter"
+    },
+    {
+      "id": "4c285d0f-ac4d-44dd-8969-18b0680bd72c",
+      "directoryPath": "C:\\dev\\Cortex\\My Agents Projects\\Cycle de la vie"
     }
   ],
   "agentOrders": {
@@ -142,6 +146,30 @@
           "id": ".codex/agents/publieur.toml",
           "nextAgentIds": [],
           "inputMode": "aggregate"
+        }
+      ]
+    },
+    "4c285d0f-ac4d-44dd-8969-18b0680bd72c": {
+      "hash": "b82c021df25d05c7f79b3caef6dd5372c569f8d9b7ce32b8d008ba9e1f01761c",
+      "agents": [
+        {
+          "id": ".codex/agents/choix-plante.toml",
+          "nextAgentIds": [
+            ".codex/agents/choix-herbivore.toml"
+          ],
+          "inputMode": "separate"
+        },
+        {
+          "id": ".codex/agents/choix-herbivore.toml",
+          "nextAgentIds": [
+            ".codex/agents/choix-carnivore.toml"
+          ],
+          "inputMode": "separate"
+        },
+        {
+          "id": ".codex/agents/choix-carnivore.toml",
+          "nextAgentIds": [],
+          "inputMode": "separate"
         }
       ]
     }

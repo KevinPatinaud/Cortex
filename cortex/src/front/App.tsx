@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AgentProjectWorkspace } from "./page/agent/components/AgentProjectWorkspace.tsx";
+import { AgentProjectEditor } from "./page/agent/components/AgentProjectEditor.tsx";
 import { ProjectDirectoryManager } from "./page/project_manager/components/ProjectDirectoryManager.tsx";
 import type { ProjectActivityStatus } from "./page/project_manager/components/ProjectList.tsx";
 import type { AgentProject } from "./services/agentApi.ts";
@@ -12,6 +13,7 @@ interface ProjectSelection {
 
 export function App() {
   const [selection, setSelection] = useState<ProjectSelection | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
   const [projectActivity, setProjectActivity] = useState<
     Record<string, ProjectActivityStatus>
   >({});
@@ -31,9 +33,12 @@ export function App() {
   return (
     <main>
       <ProjectDirectoryManager
+        activeProject={selection?.project ?? null}
+        isEditing={isEditing}
         projectActivity={projectActivity}
-        onProjectLoaded={(project, content) => {
+        onProjectLoaded={(project, content, openEditor = false) => {
           setSelection({ project, content });
+          setIsEditing(openEditor);
           if (content.agents.some(
             (agent) => agent.executionStatus === "running"
           )) {
@@ -47,6 +52,7 @@ export function App() {
         }}
         onProjectCleared={(projectId) => {
           clearProjectActivity(projectId);
+          setIsEditing(false);
           setSelection((currentSelection) =>
             currentSelection?.project.id === projectId
               ? null
@@ -54,34 +60,56 @@ export function App() {
           );
         }}
       />
-      <AgentProjectWorkspace
-        project={selection?.project ?? null}
-        content={selection?.content ?? null}
-        onContentRefresh={(content) => {
-          setSelection((currentSelection) => currentSelection &&
-              currentSelection.project.id === content.projectId
-            ? { ...currentSelection, content }
-            : currentSelection
-          );
-        }}
-        onRunStateChange={(projectId, status) => {
-          setProjectActivity((currentActivity) => {
-            if (status === "completed" && selection?.project.id === projectId) {
-              const nextActivity = { ...currentActivity };
-              delete nextActivity[projectId];
-              return nextActivity;
-            }
+      {isEditing && selection ? (
+        <AgentProjectEditor
+          project={selection.project}
+          content={selection.content}
+          onClose={() => setIsEditing(false)}
+          onSaved={(content) => {
+            setSelection((currentSelection) => currentSelection &&
+                currentSelection.project.id === content.projectId
+              ? {
+                  project: {
+                    ...currentSelection.project,
+                    directoryPath: content.directoryPath
+                  },
+                  content
+                }
+              : currentSelection
+            );
+          }}
+        />
+      ) : (
+        <AgentProjectWorkspace
+          project={selection?.project ?? null}
+          content={selection?.content ?? null}
+          onEdit={() => setIsEditing(true)}
+          onContentRefresh={(content) => {
+            setSelection((currentSelection) => currentSelection &&
+                currentSelection.project.id === content.projectId
+              ? { ...currentSelection, content }
+              : currentSelection
+            );
+          }}
+          onRunStateChange={(projectId, status) => {
+            setProjectActivity((currentActivity) => {
+              if (status === "completed" && selection?.project.id === projectId) {
+                const nextActivity = { ...currentActivity };
+                delete nextActivity[projectId];
+                return nextActivity;
+              }
 
-            if (status === "idle") {
-              const nextActivity = { ...currentActivity };
-              delete nextActivity[projectId];
-              return nextActivity;
-            }
+              if (status === "idle") {
+                const nextActivity = { ...currentActivity };
+                delete nextActivity[projectId];
+                return nextActivity;
+              }
 
-            return { ...currentActivity, [projectId]: status };
-          });
-        }}
-      />
+              return { ...currentActivity, [projectId]: status };
+            });
+          }}
+        />
+      )}
     </main>
   );
 }

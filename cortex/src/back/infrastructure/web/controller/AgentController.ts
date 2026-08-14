@@ -4,6 +4,7 @@ import type {
   AgentUseCase,
   RunAgentInput
 } from "../../../application/usecase/AgentUseCase.ts";
+import type { EditAgentProjectInput } from "../../../application/usecase/ProjectUseCase.ts";
 import {
   agentErrorMappings,
   toAgentProjectResponse,
@@ -55,6 +56,20 @@ export function createAgentController(agentUseCase: AgentUseCase): Router {
     asyncRoute(async (_request, response) => {
       response.json(toAgentStatusResponse(await agentUseCase.getStatus()));
     }, agentErrorMappings.status)
+  );
+
+  router.put(
+    "/projects/:projectId",
+    asyncRoute<EditAgentProjectInput, { projectId: string }>(async (
+      request,
+      response
+    ) => {
+      const project = await agentUseCase.saveProject(
+        request.params.projectId,
+        request.body
+      );
+      response.json(toAgentProjectResponse(project));
+    }, agentErrorMappings.saveProject)
   );
 
   router.get(

@@ -12,6 +12,7 @@ import { toClaudeAgentDefinitions } from "../mapper/agent/ClaudeAgentMapper.ts";
 import { toCodexAgentDefinitions } from "../mapper/agent/CodexAgentMapper.ts";
 import { toCopilotAgentDefinitions } from "../mapper/agent/CopilotAgentMapper.ts";
 import type {
+  EditAgentProjectInput,
   ProjectContentOutput,
   ProjectUseCase
 } from "./ProjectUseCase.ts";
@@ -74,6 +75,7 @@ export interface ProjectInstructions {
 
 export interface AgentProject {
   projectId: string;
+  directoryPath: string;
   engine: AgentEngine;
   agents: AgentDefinition[];
   instructions: ProjectInstructions;
@@ -482,6 +484,35 @@ export class AgentUseCase {
     }
   }
 
+  async saveProject(
+    projectId: string,
+    input: EditAgentProjectInput | null | undefined
+  ): Promise<AgentProject> {
+    const normalizedProjectId = projectId.trim();
+
+    if (!normalizedProjectId) {
+      throw new ValidationError("Le projet à modifier est obligatoire.");
+    }
+
+    const hasRunningAgent = [...this.agentExecutions.entries()].some(
+      ([key, execution]) => key.startsWith(`${normalizedProjectId}:`) &&
+        execution.status === "running"
+    );
+
+    if (hasRunningAgent) {
+      throw new ValidationError(
+        "Le projet ne peut pas être modifié pendant une exécution."
+      );
+    }
+
+    await this.projectUseCase.saveAgentProject(normalizedProjectId, input);
+    this.agentWorkflows.delete(normalizedProjectId);
+    this.deleteProjectExecutions(normalizedProjectId);
+    this.loadedProjects.delete(normalizedProjectId);
+
+    return this.loadProject(normalizedProjectId);
+  }
+
   async loadProject(projectId: string): Promise<AgentProject> {
     const projectContent = await this.projectUseCase.getProjectContent(projectId);
     const detectedConfigurations = agentProjectConfigurations.filter(
@@ -548,6 +579,7 @@ export class AgentUseCase {
 
     const project: AgentProject = {
       projectId: projectContent.id,
+      directoryPath: projectContent.directoryPath,
       engine: configuration.engine,
       agents,
       instructions

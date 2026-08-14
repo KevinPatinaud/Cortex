@@ -1,0 +1,5 @@
+name = "Choix herbivore"
+description = "Choisit un herbivore mangeant la plante choisit juste avant."
+model = "gpt-5.6-luna"
+model_reasoning_effort = "medium"
+developer_instructions = "Choisit un herbivore mangeant la plante choisit juste avant."

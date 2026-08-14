@@ -31,6 +31,11 @@ export const agentErrorMappings = {
     fallbackMessage: "Impossible de charger le projet.",
     logMessage: "Impossible de charger le projet :"
   },
+  saveProject: {
+    fallbackStatus: 500,
+    fallbackMessage: "Impossible d'enregistrer le projet.",
+    logMessage: "Impossible d'enregistrer le projet :"
+  },
   runAgent: {
     fallbackStatus: 503,
     fallbackMessage: "Impossible d'exécuter l'agent.",
@@ -52,6 +57,7 @@ export interface AgentStatusResponse {
 
 export interface AgentProjectResponse {
   projectId: string;
+  directoryPath: string;
   engine: AgentProject["engine"];
   agents: AgentProject["agents"];
   instructions: AgentProject["instructions"];
@@ -79,6 +85,7 @@ export function toAgentProjectResponse(
 ): AgentProjectResponse {
   return {
     projectId: project.projectId,
+    directoryPath: project.directoryPath,
     engine: project.engine,
     agents: project.agents,
     instructions: project.instructions

@@ -1,5 +1,8 @@
 import { Router } from "express";
-import type { ProjectUseCase } from "../../../application/usecase/ProjectUseCase.ts";
+import type {
+  CreateProjectInput,
+  ProjectUseCase
+} from "../../../application/usecase/ProjectUseCase.ts";
 import {
   projectErrorMappings,
   toProjectDeletedResponse,
@@ -15,6 +18,18 @@ interface ProjectPathRequestBody {
 
 export function createProjectController(projectUseCase: ProjectUseCase): Router {
   const router = Router();
+
+  router.post(
+    "/create",
+    asyncRoute<CreateProjectInput>(async (request, response) => {
+      const result = await projectUseCase.createProject(request.body);
+      response.status(201).json({
+        message: "Le projet a été créé.",
+        project: result.project,
+        projects: result.projects
+      });
+    }, projectErrorMappings.create)
+  );
 
   router.post(
     "/save",

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
-import { ArrowDown, Bot, ChevronDown, FastForward, GitBranch, LoaderCircle, Pause, RotateCcw, Send } from "lucide-react";
+import { ArrowDown, Bot, ChevronDown, FastForward, GitBranch, LoaderCircle, Pause, Pencil, RotateCcw, Send } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -20,6 +20,7 @@ import {
 interface AgentProjectWorkspaceProps {
   project: Project | null;
   content: AgentProject | null;
+  onEdit: () => void;
   onContentRefresh: (content: AgentProject) => void;
   onRunStateChange: (
     projectId: string,
@@ -990,10 +991,20 @@ function AgentCard({
             }
             onChange={(enabled) => onHandoffEnabledChange(agent.id, enabled)}
           />
-          {agent.model && (
+          {(agent.model || agent.reasoningEffort) && (
             <dl className="agent-card__model">
-              <dt>Modèle</dt>
-              <dd>{agent.model}</dd>
+              {agent.model && (
+                <div>
+                  <dt>Modèle</dt>
+                  <dd>{agent.model}</dd>
+                </div>
+              )}
+              {agent.reasoningEffort && (
+                <div>
+                  <dt>Raisonnement</dt>
+                  <dd>{agent.reasoningEffort}</dd>
+                </div>
+              )}
             </dl>
           )}
         </div>
@@ -1007,14 +1018,6 @@ function AgentCard({
         </summary>
         <pre>{agent.prompt || "Aucune instruction."}</pre>
       </details>
-      {agent.reasoningEffort && (
-        <dl className="agent-card__configuration">
-          <div>
-            <dt>Effort de raisonnement</dt>
-            <dd>{agent.reasoningEffort}</dd>
-          </div>
-        </dl>
-      )}
       <div className="agent-card__run-feedback" aria-live="polite">
         {prerequisiteMessage && (
           <p className="agent-card__run-prerequisite">
@@ -1137,6 +1140,7 @@ function AgentCard({
 export function AgentProjectWorkspace({
   project,
   content,
+  onEdit,
   onContentRefresh,
   onRunStateChange
 }: AgentProjectWorkspaceProps) {
@@ -1566,8 +1570,12 @@ export function AgentProjectWorkspace({
   return (
     <section className="workspace-content workspace-content--project">
       <header className="agent-project__header">
-        <p className="eyebrow">Projet {content.engine}</p>
-        <h1>{projectName}</h1>
+        <div className="agent-project__title-row">
+          <div>
+            <p className="eyebrow">Projet {content.engine}</p>
+            <h1>{projectName}</h1>
+          </div>
+        </div>
         <div className="agent-project__tabs-row">
           <div className="agent-project__tabs" role="tablist" aria-label="Contenu du projet">
             <button
@@ -1603,17 +1611,31 @@ export function AgentProjectWorkspace({
               {agentsTabLabel}
             </button>
           </div>
-          {activeTab === "agents" && content.agents.length > 0 && (
-            <HandoffToggle
-              checked={isGlobalHandoffEnabled}
-              description={isGlobalHandoffEnabled
-                ? "Repasser tous les agents en exécution manuelle"
-                : "Enchaîner automatiquement les agents dès que leurs prérequis sont remplis"
-              }
-              variant="global"
-              onChange={handleGlobalHandoffChange}
-            />
-          )}
+          <div className="agent-project__tab-actions">
+            {activeTab === "agents" && content.agents.length > 0 && (
+              <HandoffToggle
+                checked={isGlobalHandoffEnabled}
+                description={isGlobalHandoffEnabled
+                  ? "Repasser tous les agents en exécution manuelle"
+                  : "Enchaîner automatiquement les agents dès que leurs prérequis sont remplis"
+                }
+                variant="global"
+                onChange={handleGlobalHandoffChange}
+              />
+            )}
+            <button
+              className="agent-project__edit-button"
+              type="button"
+              onClick={onEdit}
+              disabled={content.agents.some((agent) => agent.executionStatus === "running")}
+              title={content.agents.some((agent) => agent.executionStatus === "running")
+                ? "L’édition sera disponible à la fin de l’exécution"
+                : "Modifier le projet et ses agents"}
+            >
+              <Pencil aria-hidden="true" size={15} />
+              Modifier le projet
+            </button>
+          </div>
         </div>
       </header>
 

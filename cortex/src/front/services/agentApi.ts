@@ -39,6 +39,7 @@ export interface ProjectInstructions {
 
 export interface AgentProject {
   projectId: string;
+  directoryPath: string;
   engine: AgentEngine;
   agents: AgentDefinition[];
   instructions: ProjectInstructions;
@@ -63,6 +64,22 @@ export interface UpstreamAgentResult {
 export interface AgentConfiguration {
   autopilot: boolean;
   allowAll: boolean;
+}
+
+export interface EditableAgentDefinition {
+  id?: string;
+  name: string;
+  description: string;
+  prompt: string;
+  model?: string;
+  reasoningEffort?: string;
+}
+
+export interface EditableAgentProject {
+  name: string;
+  engine: AgentEngine;
+  instructions: string;
+  agents: EditableAgentDefinition[];
 }
 
 export async function getAgentStatus(): Promise<AgentStatus> {
@@ -118,6 +135,27 @@ export async function loadAgentProject(
 
   if (!response.ok) {
     throw new Error(data.error || "Impossible de charger le projet.");
+  }
+
+  return data;
+}
+
+export async function saveAgentProject(
+  projectId: string,
+  draft: EditableAgentProject
+): Promise<AgentProject> {
+  const response = await fetch(
+    `/api/agents/projects/${encodeURIComponent(projectId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(draft)
+    }
+  );
+  const data = await response.json() as AgentProject & ApiErrorResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || "Impossible d'enregistrer le projet.");
   }
 
   return data;

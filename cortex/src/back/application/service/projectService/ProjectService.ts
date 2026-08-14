@@ -1,6 +1,15 @@
 
 import { randomUUID } from "node:crypto";
-import { readdir, readFile, readlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  readlink,
+  rename,
+  stat,
+  unlink,
+  writeFile
+} from "node:fs/promises";
 import path from "node:path";
 import { NotFoundError } from "../../error/NotFoundError.ts";
 
@@ -33,6 +42,63 @@ export interface DeleteProjectResult {
   projects: Project[];
   deleted: boolean;
 }
+
+export type ProjectAgentEngine = "codex" | "claude" | "copilot";
+
+export interface EditableProjectAgent {
+  id?: string;
+  name: string;
+  description: string;
+  prompt: string;
+  model?: string;
+  reasoningEffort?: string;
+}
+
+export interface EditableAgentProject {
+  name: string;
+  engine: ProjectAgentEngine;
+  instructions: string;
+  agents: EditableProjectAgent[];
+}
+
+export interface CreateProjectOptions {
+  parentDirectory: string;
+  name: string;
+  engine: ProjectAgentEngine;
+  instructions: string;
+}
+
+export interface CreateProjectResult {
+  project: Project;
+  projects: Project[];
+}
+
+interface AgentFileConfiguration {
+  rootDirectory: ".codex" | ".claude" | ".github";
+  instructionsFileName: "AGENTS.md" | "CLAUDE.md";
+  extension: ".toml" | ".md" | ".agent.md";
+}
+
+const agentFileConfigurations: Record<
+  ProjectAgentEngine,
+  AgentFileConfiguration
+> = {
+  codex: {
+    rootDirectory: ".codex",
+    instructionsFileName: "AGENTS.md",
+    extension: ".toml"
+  },
+  claude: {
+    rootDirectory: ".claude",
+    instructionsFileName: "CLAUDE.md",
+    extension: ".md"
+  },
+  copilot: {
+    rootDirectory: ".github",
+    instructionsFileName: "AGENTS.md",
+    extension: ".agent.md"
+  }
+};
 
 export interface ProjectContent {
   id: string;
@@ -80,6 +146,151 @@ export class ProjectService {
   private projectsLoading: Promise<Project[]> | null = null;
 
   constructor(private readonly configurationFile: string) {}
+
+  async createProject(
+    options: CreateProjectOptions
+  ): Promise<CreateProjectResult> {
+    const parentDirectory = path.resolve(options.parentDirectory);
+    const parentStats = await stat(parentDirectory).catch(() => null);
+
+    if (!parentStats?.isDirectory()) {
+      throw new TypeError("Le dossier parent est introuvable.");
+    }
+
+    const projectDirectory = path.join(parentDirectory, options.name);
+
+    if (await this.pathExists(projectDirectory)) {
+      throw new TypeError(
+        "Un fichier ou un dossier porte déjà ce nom à cet emplacement."
+      );
+    }
+
+    const fileConfiguration = agentFileConfigurations[options.engine];
+    await mkdir(projectDirectory);
+    await mkdir(
+      path.join(
+        projectDirectory,
+        fileConfiguration.rootDirectory,
+        "agents"
+      ),
+      { recursive: true }
+    );
+    await writeFile(
+      path.join(projectDirectory, fileConfiguration.instructionsFileName),
+      options.instructions,
+      "utf8"
+    );
+
+    const projects = await this.saveProject(projectDirectory);
+    const project = projects.find((candidate) =>
+      this.pathsAreEqual(candidate.directoryPath, projectDirectory)
+    );
+
+    if (!project) {
+      throw new Error("Le nouveau projet n'a pas pu être enregistré.");
+    }
+
+    return { project, projects };
+  }
+
+  async saveAgentProject(
+    projectId: string,
+    draft: EditableAgentProject
+  ): Promise<Project> {
+    const projects = await this.getProjects();
+    const project = projects.find(
+      (candidate) => candidate.id === projectId
+    );
+
+    if (!project) {
+      throw new NotFoundError("Le projet est introuvable.");
+    }
+
+    const nextDirectoryPath = path.join(
+      path.dirname(project.directoryPath),
+      draft.name
+    );
+    const isRenamed = project.directoryPath !== nextDirectoryPath;
+
+    if (
+      isRenamed &&
+      !this.pathsAreEqual(project.directoryPath, nextDirectoryPath) &&
+      await this.pathExists(nextDirectoryPath)
+    ) {
+      throw new TypeError(
+        "Un fichier ou un dossier porte dÃ©jÃ  ce nom Ã  cet emplacement."
+      );
+    }
+
+    const configuration = agentFileConfigurations[draft.engine];
+    const configurationDirectory = path.join(
+      project.directoryPath,
+      configuration.rootDirectory
+    );
+
+    if (!await this.pathExists(configurationDirectory)) {
+      throw new TypeError(
+        "Le moteur du brouillon ne correspond pas à la configuration du projet."
+      );
+    }
+
+    const agentsDirectory = path.join(configurationDirectory, "agents");
+    await mkdir(agentsDirectory, { recursive: true });
+
+    const currentAgentFileNames = (await readdir(agentsDirectory, {
+      withFileTypes: true
+    }))
+      .filter((entry) => entry.isFile() &&
+        this.isAgentFileName(entry.name, configuration.extension))
+      .map((entry) => entry.name);
+    const retainedFileNames = new Set<string>();
+
+    for (const agent of draft.agents) {
+      const existingFileName = agent.id
+        ? this.getExistingAgentFileName(
+          agent.id,
+          configuration,
+          currentAgentFileNames
+        )
+        : null;
+      const fileName = existingFileName ?? this.createAgentFileName(
+        agent.name,
+        configuration.extension,
+        new Set([...currentAgentFileNames, ...retainedFileNames])
+      );
+
+      if (retainedFileNames.has(fileName)) {
+        throw new TypeError("Deux agents ne peuvent pas utiliser le même fichier.");
+      }
+
+      retainedFileNames.add(fileName);
+      await writeFile(
+        path.join(agentsDirectory, fileName),
+        this.serializeAgent(draft.engine, agent),
+        "utf8"
+      );
+    }
+
+    for (const fileName of currentAgentFileNames) {
+      if (!retainedFileNames.has(fileName)) {
+        await unlink(path.join(agentsDirectory, fileName));
+      }
+    }
+
+    await writeFile(
+      path.join(project.directoryPath, configuration.instructionsFileName),
+      draft.instructions,
+      "utf8"
+    );
+
+    if (isRenamed) {
+      await rename(project.directoryPath, nextDirectoryPath);
+      project.directoryPath = nextDirectoryPath;
+      await this.persistProjects(projects);
+    }
+
+    return { ...project };
+  }
 
   async saveProject(directoryPath: string): Promise<Project[]> {
     if (!directoryPath.trim()) {
@@ -423,6 +634,102 @@ export class ProjectService {
         nextAgentIds: [...agent.nextAgentIds]
       }))
     };
+  }
+
+  private pathExists(filePath: string): Promise<boolean> {
+    return stat(filePath).then(() => true, (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") {
+        return false;
+      }
+
+      throw error;
+    });
+  }
+
+  private isAgentFileName(
+    fileName: string,
+    extension: AgentFileConfiguration["extension"]
+  ): boolean {
+    return fileName.toLowerCase().endsWith(extension);
+  }
+
+  private getExistingAgentFileName(
+    agentId: string,
+    configuration: AgentFileConfiguration,
+    currentAgentFileNames: string[]
+  ): string {
+    const portableId = agentId.replace(/\\/g, "/");
+    const expectedPrefix = `${configuration.rootDirectory}/agents/`;
+
+    if (!portableId.startsWith(expectedPrefix)) {
+      throw new TypeError("L'identifiant d'un agent existant est invalide.");
+    }
+
+    const fileName = portableId.slice(expectedPrefix.length);
+
+    if (
+      !fileName ||
+      fileName.includes("/") ||
+      !this.isAgentFileName(fileName, configuration.extension) ||
+      !currentAgentFileNames.includes(fileName)
+    ) {
+      throw new TypeError("Le fichier d'un agent existant est introuvable.");
+    }
+
+    return fileName;
+  }
+
+  private createAgentFileName(
+    name: string,
+    extension: AgentFileConfiguration["extension"],
+    unavailableFileNames: Set<string>
+  ): string {
+    const baseName = name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "agent";
+    let suffix = 1;
+    let fileName = `${baseName}${extension}`;
+
+    while (unavailableFileNames.has(fileName)) {
+      suffix += 1;
+      fileName = `${baseName}-${suffix}${extension}`;
+    }
+
+    return fileName;
+  }
+
+  private serializeAgent(
+    engine: ProjectAgentEngine,
+    agent: EditableProjectAgent
+  ): string {
+    if (engine === "codex") {
+      return [
+        `name = ${JSON.stringify(agent.name)}`,
+        `description = ${JSON.stringify(agent.description)}`,
+        ...(agent.model ? [`model = ${JSON.stringify(agent.model)}`] : []),
+        ...(agent.reasoningEffort
+          ? [`model_reasoning_effort = ${JSON.stringify(agent.reasoningEffort)}`]
+          : []),
+        `developer_instructions = ${JSON.stringify(agent.prompt)}`,
+        ""
+      ].join("\n");
+    }
+
+    return [
+      "---",
+      `name: ${JSON.stringify(agent.name)}`,
+      `description: ${JSON.stringify(agent.description)}`,
+      ...(agent.model ? [`model: ${JSON.stringify(agent.model)}`] : []),
+      ...(agent.reasoningEffort
+        ? [`${engine === "claude" ? "effort" : "reasoning-effort"}: ${JSON.stringify(agent.reasoningEffort)}`]
+        : []),
+      "---",
+      agent.prompt.trim(),
+      ""
+    ].join("\n");
   }
 
   private createUniqueId(usedIds: Set<string>): string {

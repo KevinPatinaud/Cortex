@@ -2,6 +2,11 @@ import type { ProjectOutput } from "../../../application/usecase/ProjectUseCase.
 import type { ErrorMappingOptions } from "./HttpErrorMapper.ts";
 
 export const projectErrorMappings = {
+  create: {
+    fallbackStatus: 500,
+    fallbackMessage: "Impossible de créer le projet.",
+    logMessage: "Impossible de créer le projet :"
+  },
   save: {
     fallbackStatus: 500,
     fallbackMessage: "Impossible d'enregistrer le répertoire.",

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronDown, FilePlus2 } from "lucide-react";
+import { ChevronDown, FolderInput, Plus } from "lucide-react";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
 import {
   getActualLoadedAgentProject,
@@ -8,21 +8,30 @@ import {
   type AgentProject
 } from "../../../services/agentApi.ts";
 import {
+  createProject,
   deleteProjectDirectory,
   getSavedProjects,
+  type CreateProjectInput,
   type Project,
   saveProjectDirectory,
   selectProjectInstructionsFile
 } from "../../../services/projectApi.ts";
 import { ConfirmationDialog } from "./ConfirmationDialog.tsx";
+import { ProjectCreationDialog } from "./ProjectCreationDialog.tsx";
 import {
   ProjectList,
   type ProjectActivityStatus
 } from "./ProjectList.tsx";
 
 interface ProjectDirectoryManagerProps {
+  activeProject: Project | null;
+  isEditing: boolean;
   projectActivity: Record<string, ProjectActivityStatus>;
-  onProjectLoaded: (project: Project, content: AgentProject) => void;
+  onProjectLoaded: (
+    project: Project,
+    content: AgentProject,
+    openEditor?: boolean
+  ) => void;
   onProjectCleared: (projectId: string) => void;
 }
 
@@ -41,6 +50,8 @@ function getProjectName(project: Project): string {
 }
 
 export function ProjectDirectoryManager({
+  activeProject,
+  isEditing,
   projectActivity,
   onProjectLoaded,
   onProjectCleared
@@ -54,10 +65,22 @@ export function ProjectDirectoryManager({
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isCreationDialogOpen, setIsCreationDialogOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<ProjectConfirmation | null>(
     null
   );
+
+  useEffect(() => {
+    if (!activeProject) {
+      return;
+    }
+
+    setProjects((currentProjects) => currentProjects.map((project) =>
+      project.id === activeProject.id ? activeProject : project
+    ));
+  }, [activeProject]);
 
   useEffect(() => {
     let isMounted = true;
@@ -206,6 +229,31 @@ export function ProjectDirectoryManager({
     }
   }
 
+  async function handleProjectCreation(
+    input: CreateProjectInput
+  ): Promise<{ project: Project; content: AgentProject } | null> {
+    setIsCreating(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const result = await createProject(input);
+      const content = await loadAgentProject(result.project.id);
+      setProjects(result.projects);
+      setSelectedProjectId(result.project.id);
+      setIsProjectMenuOpen(false);
+      setIsCreationDialogOpen(false);
+      setSaveMessage("Le projet est prêt. Créez maintenant votre premier agent.");
+      onProjectLoaded(result.project, content, true);
+      return { project: result.project, content };
+    } catch (requestError) {
+      setError(getErrorMessage(requestError));
+      return null;
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
   const selectedProject = projects.find(
     (project) => project.id === selectedProjectId
   );
@@ -245,7 +293,8 @@ export function ProjectDirectoryManager({
           </div>
           {selectedProject && (
             <p className="project-sidebar__current-project">
-              Projet actif <strong>{getProjectName(selectedProject)}</strong>
+              {isEditing ? "Édition en cours" : "Projet actif"}
+              <strong>{getProjectName(selectedProject)}</strong>
             </p>
           )}
         </header>
@@ -259,6 +308,7 @@ export function ProjectDirectoryManager({
             resettingProjectId={resettingProjectId}
             loadingProjectId={loadingProjectId}
             selectedProjectId={selectedProjectId}
+            isInteractionLocked={isEditing}
             onSelect={(project) => void handleProjectSelection(project)}
             onResetWorkflow={(project) => openConfirmation("reset", project)}
             onDelete={(project) => openConfirmation("delete", project)}
@@ -275,15 +325,45 @@ export function ProjectDirectoryManager({
           <button
             className="project-sidebar__add-button"
             type="button"
-            onClick={handleInstructionsFileSelection}
-            disabled={isSelecting}
+            onClick={() => {
+              setError("");
+              setSaveMessage("");
+              setIsCreationDialogOpen(true);
+            }}
+            disabled={isSelecting || isCreating || isEditing}
           >
-            <FilePlus2 aria-hidden="true" size={18} />
-            {isSelecting ? "Ouverture..." : "Ajouter un projet"}
+            <Plus aria-hidden="true" size={18} />
+            Nouveau projet
+          </button>
+          <button
+            className="project-sidebar__import-button"
+            type="button"
+            onClick={handleInstructionsFileSelection}
+            disabled={isSelecting || isCreating || isEditing}
+          >
+            <FolderInput aria-hidden="true" size={16} />
+            {isSelecting ? "Ouverture..." : "Importer un projet existant"}
           </button>
           <AgentEngineStatus />
         </footer>
       </aside>
+
+      {isCreationDialogOpen && (
+        <ProjectCreationDialog
+          defaultParentDirectory={
+            projects[0]?.directoryPath.replace(/[\\/][^\\/]+$/, "") ?? ""
+          }
+          isPending={isCreating}
+          error={error || undefined}
+          onCancel={() => {
+            if (!isCreating) {
+              setError("");
+              setIsCreationDialogOpen(false);
+            }
+          }}
+          onCreate={handleProjectCreation}
+        />
+      )}
 
       {confirmation?.action === "reset" && (
         <ConfirmationDialog

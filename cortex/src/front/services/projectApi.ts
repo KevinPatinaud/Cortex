@@ -17,6 +17,17 @@ export interface DeleteProjectResponse {
   projects: Project[];
 }
 
+export interface CreateProjectInput {
+  parentDirectory: string;
+  name: string;
+  engine: "codex" | "claude" | "copilot";
+  instructions: string;
+}
+
+export interface CreateProjectResponse extends SaveProjectResponse {
+  project: Project;
+}
+
 interface DirectorySelectionResponse {
   directoryPath: string | null;
 }
@@ -34,6 +45,23 @@ export async function getSavedProjects(): Promise<Project[]> {
   }
 
   return data.projects;
+}
+
+export async function createProject(
+  input: CreateProjectInput
+): Promise<CreateProjectResponse> {
+  const response = await fetch("/api/projects/create", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const data = await response.json() as CreateProjectResponse & ApiErrorResponse;
+
+  if (!response.ok) {
+    throw new Error(data.error || "Impossible de créer le projet.");
+  }
+
+  return data;
 }
 
 export async function saveProjectDirectory(
