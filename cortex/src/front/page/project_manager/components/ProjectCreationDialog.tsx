@@ -12,7 +12,10 @@ import type {
   CreateProjectInput,
   Project
 } from "../../../services/projectApi.ts";
-import type { AgentProject } from "../../../services/agentApi.ts";
+import {
+  getAgentStatus,
+  type AgentProject
+} from "../../../services/agentApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
 
 interface ProjectCreationDialogProps {
@@ -53,7 +56,8 @@ export function ProjectCreationDialog({
   const [parentDirectory, setParentDirectory] = useState(
     defaultParentDirectory
   );
-  const [engine, setEngine] = useState<CreateProjectInput["engine"]>("codex");
+  const [engine, setEngine] = useState<CreateProjectInput["engine"] | null>(null);
+  const [isDetectingEngine, setIsDetectingEngine] = useState(true);
   const [instructions, setInstructions] = useState(() =>
     t("creation.defaultInstructions")
   );
@@ -77,7 +81,35 @@ export function ProjectCreationDialog({
     };
   }, []);
 
-  const selectedEngine = engines.find((candidate) => candidate.id === engine)!;
+  useEffect(() => {
+    let isMounted = true;
+
+    async function detectInstalledEngine(): Promise<void> {
+      try {
+        const status = await getAgentStatus();
+
+        if (isMounted) {
+          setEngine(status.engine ?? "codex");
+        }
+      } catch {
+        if (isMounted) {
+          setEngine("codex");
+        }
+      } finally {
+        if (isMounted) {
+          setIsDetectingEngine(false);
+        }
+      }
+    }
+
+    void detectInstalledEngine();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const selectedEngine = engines.find((candidate) => candidate.id === engine);
   const previewName = name.trim() || t("creation.defaultName");
 
   return (
@@ -98,7 +130,9 @@ export function ProjectCreationDialog({
         className="project-creation-dialog__form"
         onSubmit={(event) => {
           event.preventDefault();
-          void onCreate({ parentDirectory, name, engine, instructions });
+          if (engine) {
+            void onCreate({ parentDirectory, name, engine, instructions });
+          }
         }}
       >
         <header className="project-creation-dialog__header">
@@ -149,7 +183,10 @@ export function ProjectCreationDialog({
               <small>{t("creation.parentHelp")}</small>
             </label>
 
-            <fieldset className="engine-selector" disabled={isPending}>
+            <fieldset
+              className="engine-selector"
+              disabled={isPending || isDetectingEngine}
+            >
               <legend>{t("creation.engine")}</legend>
               <div className="engine-selector__options">
                 {engines.map((candidate) => (
@@ -201,7 +238,7 @@ export function ProjectCreationDialog({
               </li>
               <li>
                 <Folder aria-hidden="true" size={15} />
-                {selectedEngine.root}/agents
+                {selectedEngine?.root ?? ".codex"}/agents
               </li>
             </ul>
             <p>
@@ -221,7 +258,7 @@ export function ProjectCreationDialog({
           <button
             className="project-creation-dialog__submit"
             type="submit"
-            disabled={isPending}
+            disabled={isPending || isDetectingEngine || !engine}
           >
             {isPending ? (
               <LoaderCircle aria-hidden="true" className="spin" size={16} />

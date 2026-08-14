@@ -2,6 +2,7 @@ import { Router } from "express";
 import type {
   AgentConfigurationInput,
   AgentUseCase,
+  ImproveAgentInput,
   RunAgentInput
 } from "../../../application/usecase/AgentUseCase.ts";
 import type { EditAgentProjectInput } from "../../../application/usecase/ProjectUseCase.ts";
@@ -27,6 +28,19 @@ export function createAgentController(agentUseCase: AgentUseCase): Router {
       const project = await agentUseCase.loadProject(request.params.projectId);
       response.json(toAgentProjectResponse(project));
     }, agentErrorMappings.loadProject)
+  );
+
+  router.post(
+    "/projects/:projectId/agents/improve",
+    asyncRoute<ImproveAgentInput, { projectId: string }>(async (
+      request,
+      response
+    ) => {
+      response.json(await agentUseCase.improveAgent(
+        request.params.projectId,
+        request.body
+      ));
+    }, agentErrorMappings.improveAgent)
   );
 
   router.post(

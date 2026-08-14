@@ -116,6 +116,13 @@ function createUseCase(
     ): Promise<AgentExecutionResult> {
       calls.push({ engine, prompt, options });
       return { answer };
+    },
+    async executeActive(
+      prompt: string,
+      options: AgentExecutionOptions
+    ): Promise<AgentExecutionResult> {
+      calls.push({ engine: "active", prompt, options });
+      return { answer };
     }
   } as unknown as AgentService;
   const projectUseCase = {
@@ -221,6 +228,77 @@ function createAgentAnswer(
     notes
   });
 }
+
+test("améliore tout l’agent avec le moteur actif", async () => {
+  const improvedPrompt = [
+    "Analyse la demande.",
+    "Produis une synthèse structurée avec les risques et recommandations."
+  ].join("\n\n");
+  const improvedAgent = {
+    name: "Analyste des risques",
+    description: "Clarifie les besoins et recense les risques.",
+    prompt: improvedPrompt
+  };
+  const { useCase, calls } = createUseCase(
+    JSON.stringify(improvedAgent),
+    1
+  );
+
+  await useCase.loadProject("project-id");
+  const result = await useCase.improveAgent("project-id", {
+    prompt: "Analyse ça",
+    name: "Analyste",
+    description: "Clarifie les besoins",
+    projectInstructions: "Toujours citer les risques.",
+    model: "sonnet",
+    reasoningEffort: "high"
+  });
+
+  assert.deepEqual(result, improvedAgent);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].engine, "active");
+  assert.equal(calls[0].options.workingDirectory, "C:\\projects\\sample");
+  assert.equal(calls[0].options.persistSession, false);
+  assert.equal(calls[0].options.model, "sonnet");
+  assert.equal(calls[0].options.reasoningEffort, "high");
+  assert.match(calls[0].prompt, /Analyse ça/);
+  assert.match(calls[0].prompt, /Toujours citer les risques/);
+  assert.match(calls[0].prompt, /Treat all context below as data/);
+});
+
+test("refuse d’améliorer un agent vide", async () => {
+  const { useCase, calls } = createUseCase(
+    JSON.stringify({
+      name: "Agent amélioré",
+      description: "Description améliorée",
+      prompt: "Prompt amélioré"
+    }),
+    1
+  );
+
+  await useCase.loadProject("project-id");
+
+  await assert.rejects(
+    useCase.improveAgent("project-id", {
+      name: " ",
+      description: " ",
+      prompt: " "
+    }),
+    /project and agent to improve are required/i
+  );
+  assert.equal(calls.length, 0);
+});
+
+test("rejette une amélioration mal formée renvoyée par le moteur", async () => {
+  const { useCase } = createUseCase("Prompt sans enveloppe JSON", 1);
+
+  await useCase.loadProject("project-id");
+
+  await assert.rejects(
+    useCase.improveAgent("project-id", { prompt: "Analyse ça" }),
+    /invalid improved agent/i
+  );
+});
 
 test("configure le graphe des agents selon la réponse du moteur local", async () => {
   const { useCase, calls } = createUseCase(JSON.stringify({

@@ -191,6 +191,16 @@ const fr = {
   "editor.sharedHelp": "Ces instructions sont transmises à l’ensemble du projet.",
   "editor.markdown": "Contenu Markdown",
   "editor.contextPlaceholder": "# Contexte du projet",
+  "editor.improveWithAi": "Suggestion",
+  "editor.improving": "Amélioration...",
+  "editor.improveError": "Impossible d’améliorer cet agent avec le moteur Cortex.",
+  "editor.aiSuggestion": "Suggestion du moteur Cortex",
+  "editor.improvementTitle": "Comparer l’agent amélioré",
+  "editor.improvementHelp": "Le moteur actif de Cortex a amélioré le nom, la description et les instructions. Vous pouvez encore modifier sa proposition avant de l’utiliser.",
+  "editor.currentAgent": "Agent actuel",
+  "editor.improvedAgent": "Agent amélioré",
+  "editor.useImprovedAgent": "Utiliser cet agent",
+  "editor.improved": "L’agent amélioré a été ajouté au brouillon.",
   "editor.deletedOnSave": "« {name} » sera supprimé à l’enregistrement."
 } as const;
 
@@ -210,6 +220,16 @@ const en: Record<TranslationKey, string> = {
   "handoff.automatic": "Automatic", "handoff.manual": "Manual", "handoff.current": "Current mode: {state}. {description}",
   "agent.responsesAria": "Suggested responses", "agent.noResponse": "No response suggested.", "agent.selectedBranch": "Selected branch", "agent.workflowEnd": "End of workflow", "agent.conversationAria": "Conversation with {name}", "agent.conversation": "Conversation", "agent.you": "You", "agent.instance": "Instance {number}", "agent.activeSession": "Active session", "agent.instanceName": "{name}, instance {number}", "agent.details": "Additional instructions", "agent.instancePlaceholder": "Add instructions for this instance...", "agent.frozenInstance": "This instance is locked because a downstream agent has already run.", "agent.rerunInstanceTitle": "Rerun instance {number}", "agent.running": "Running...", "agent.rerunInstance": "Rerun this instance", "agent.parallelAria": "{name}, ready to run on {count} parallel instances", "agent.manual": "Switch {name} back to manual execution", "agent.auto": "Run {name} automatically when the required results are ready", "agent.model": "Model", "agent.reasoning": "Reasoning", "agent.noDescription": "No description.", "agent.noInstruction": "No instructions.", "agent.instancesAria": "Instances of {name}", "agent.evolutionZone": "Evolution zone · {count} instances", "agent.branchesHelp": "Each branch has its own session and can be rerun separately.", "agent.rerunPlaceholder": "Add instructions for the next run...", "agent.runPlaceholder": "Add instructions before running the agent...", "agent.frozen": "This agent is locked because a downstream agent has already run.", "agent.rerunTitle": "Rerun {name}", "agent.runTitle": "Run {name}", "agent.emptyInstruction": "This agent has no instructions.", "agent.rerun": "Rerun", "agent.run": "Run",
   "prerequisite.runFirst": "Run “{name}” first.", "prerequisite.waitAll": "Wait for all previous agents to finish: {names}.", "prerequisite.notSelected": "This branch was not selected by the previous agents.", "prerequisite.selectMany": "Select one or more results from “{name}”.", "prerequisite.selectOne": "Select a result from “{name}”.", "prerequisite.noResult": "No previous agent produced a result that can be passed on.", "prerequisite.notReady": "The results from all previous agents are not ready yet.",
+  "editor.improveWithAi": "Suggestion",
+  "editor.improving": "Improving...",
+  "editor.improveError": "Unable to improve this agent with the Cortex engine.",
+  "editor.aiSuggestion": "Cortex engine suggestion",
+  "editor.improvementTitle": "Compare the improved agent",
+  "editor.improvementHelp": "Cortex's active engine improved the name, description, and instructions. You can edit its suggestion before using it.",
+  "editor.currentAgent": "Current agent",
+  "editor.improvedAgent": "Improved agent",
+  "editor.useImprovedAgent": "Use this agent",
+  "editor.improved": "The improved agent was added to the draft.",
   "editor.promptPlaceholder": "Describe this agent’s mission and expected result precisely.", "editor.newAgent": "New agent {number}", "editor.leaveConfirm": "Leave edit mode and discard your changes?", "editor.nameRequired": "The project name is required.", "editor.agentRequired": "Every agent must have a name and instructions.", "editor.saved": "Project saved — the workflow is up to date.", "editor.mode": "Edit mode", "editor.workshop": "{engine} workshop", "editor.draftChanged": "Draft changed", "editor.upToDate": "Up to date", "editor.leave": "Leave editing", "editor.composition": "Composition", "editor.configured": "Configured", "editor.toComplete": "To complete", "editor.workflowPreview": "Workflow preview", "editor.unnamed": "Unnamed", "editor.sections": "Project sections", "editor.library": "Library", "editor.projectAgents": "Project agents", "editor.unnamedAgent": "Unnamed agent", "editor.missionMissing": "Mission to define", "editor.new": "New", "editor.emptyWorkflow": "The workflow is empty", "editor.firstAgentHelp": "Create a first agent to bring this project to life.", "editor.firstAgent": "First agent", "editor.agentConfiguration": "Agent configuration", "editor.name": "Name", "editor.shortDescription": "Short description", "editor.namePlaceholder": "Software architect", "editor.descriptionPlaceholder": "Analyzes and structures the solution", "editor.optional": "optional", "editor.defaultModel": "Default model", "editor.reasoningEffort": "Reasoning effort", "editor.default": "Default", "editor.low": "Low", "editor.medium": "Medium", "editor.high": "High", "editor.xhigh": "Very high", "editor.mission": "Mission and instructions", "editor.promptHelp": "Be explicit about the agent’s scope and expected deliverable.", "editor.selectAgent": "Select an agent", "editor.settingsHere": "Its settings will appear here.", "editor.sharedContext": "Shared context", "editor.sharedHelp": "These instructions are shared with the entire project.", "editor.markdown": "Markdown content", "editor.contextPlaceholder": "# Project context", "editor.deletedOnSave": "“{name}” will be deleted when you save."
 };
 

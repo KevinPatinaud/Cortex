@@ -91,3 +91,41 @@ test("injecte la même configuration dans tous les providers", async () => {
     });
   });
 });
+
+test("exécute les tâches internes avec le moteur actif", async () => {
+  await withConfigurationFile({}, async (configurationService) => {
+    const calls: string[] = [];
+    const unavailableProvider: AgentProvider = {
+      engine: "claude",
+      label: "Claude",
+      async isAvailable() {
+        return false;
+      },
+      async ask() {
+        throw new Error("Ce provider ne doit pas être utilisé.");
+      }
+    };
+    const activeProvider: AgentProvider = {
+      engine: "codex",
+      label: "Codex",
+      async isAvailable() {
+        return true;
+      },
+      async ask(prompt) {
+        calls.push(prompt);
+        return { answer: "ok" };
+      }
+    };
+    const service = new AgentService(
+      [unavailableProvider, activeProvider],
+      configurationService
+    );
+
+    const result = await service.executeActive("Améliore ce prompt", {
+      persistSession: false
+    });
+
+    assert.equal(result.answer, "ok");
+    assert.deepEqual(calls, ["Améliore ce prompt"]);
+  });
+});

@@ -80,6 +80,21 @@ export interface EditableAgentProject {
   agents: EditableAgentDefinition[];
 }
 
+export interface ImproveAgentInput {
+  prompt: string;
+  name: string;
+  description: string;
+  projectInstructions: string;
+  model?: string;
+  reasoningEffort?: string;
+}
+
+export interface ImprovedAgent {
+  name: string;
+  description: string;
+  prompt: string;
+}
+
 export function getAgentStatus(): Promise<AgentStatus> {
   return requestJson("/api/agents/status");
 }
@@ -127,6 +142,20 @@ export function saveAgentProject(
 
 export function getActualLoadedAgentProject(): Promise<AgentProject | null> {
   return requestJson("/api/agents/projects/actual");
+}
+
+export async function improveAgent(
+  projectId: string,
+  input: ImproveAgentInput
+): Promise<ImprovedAgent> {
+  return requestJson<ImprovedAgent>(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/agents/improve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    }
+  );
 }
 
 export async function runAgent(

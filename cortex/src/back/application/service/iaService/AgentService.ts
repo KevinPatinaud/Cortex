@@ -71,6 +71,23 @@ export class AgentService {
     return provider.ask(prompt, { ...options, configuration });
   }
 
+  async executeActive(
+    prompt: string,
+    options: AgentExecutionOptions
+  ): Promise<AgentExecutionResult> {
+    const provider = await this.getActiveProvider();
+
+    if (!provider) {
+      throw new Error(
+        "No AI engine is configured. Install and connect Codex, Claude, or Copilot."
+      );
+    }
+
+    const configuration = await this.configurationService.getConfiguration();
+
+    return provider.ask(prompt, { ...options, configuration });
+  }
+
   private async getActiveProvider(): Promise<AgentProvider | null> {
     if (this.activeProvider) {
       return this.activeProvider;

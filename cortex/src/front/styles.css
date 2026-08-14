@@ -2590,6 +2590,30 @@ main {
   font-weight: 680;
 }
 
+.agent-inspector__improve {
+  display: inline-flex;
+  min-height: 2.25rem;
+  margin-left: auto;
+  padding: 0.5rem 0.7rem;
+  align-items: center;
+  gap: 0.38rem;
+  border: 1px solid rgb(37 99 235 / 24%);
+  border-radius: 8px;
+  background: linear-gradient(135deg, #edf4ff, #effcff);
+  color: #2864bd;
+  font-size: 0.63rem;
+  font-weight: 700;
+}
+
+.agent-inspector__improve:hover:not(:disabled) {
+  border-color: rgb(37 99 235 / 42%);
+  background: linear-gradient(135deg, #e3efff, #e7faff);
+}
+
+.agent-inspector__improve + .agent-inspector__delete {
+  margin-left: 0;
+}
+
 .agent-inspector__form {
   display: grid;
   padding: 1.2rem;
@@ -2608,6 +2632,166 @@ main {
 
 .agent-inspector .editor-field--prompt textarea {
   min-height: 14rem;
+}
+
+.agent-improvement__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 22;
+  display: grid;
+  padding: 1.5rem;
+  place-items: center;
+  overflow-y: auto;
+  background: rgb(8 27 53 / 60%);
+  backdrop-filter: blur(5px);
+}
+
+.agent-improvement {
+  width: min(66rem, 100%);
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  border: 1px solid rgb(146 178 221 / 55%);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 30px 90px rgb(7 29 62 / 32%);
+}
+
+.agent-improvement > header {
+  display: flex;
+  padding: 1.15rem 1.3rem;
+  align-items: center;
+  gap: 0.85rem;
+  border-bottom: 1px solid rgb(73 113 174 / 14%);
+  background:
+    radial-gradient(circle at 80% 0%, rgb(49 199 230 / 13%), transparent 17rem),
+    #f6faff;
+}
+
+.agent-improvement__icon {
+  display: grid;
+  width: 2.8rem;
+  height: 2.8rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(37 99 235 / 20%);
+  border-radius: 12px;
+  background: #eaf2ff;
+  color: #2563eb;
+}
+
+.agent-improvement > header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.agent-improvement > header > div > span {
+  color: #6f8db7;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.55rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.agent-improvement h2 {
+  margin: 0.16rem 0 0;
+  color: #17365d;
+  font-size: 1.1rem;
+}
+
+.agent-improvement header p {
+  margin: 0.24rem 0 0;
+  color: #7188a8;
+  font-size: 0.67rem;
+  line-height: 1.5;
+}
+
+.agent-improvement__close {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #6f87a7;
+}
+
+.agent-improvement__close:hover {
+  background: #eaf2ff;
+  color: #285f9f;
+}
+
+.agent-improvement__comparison {
+  display: grid;
+  padding: 1.15rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.agent-improvement__version {
+  display: grid;
+  min-width: 0;
+  padding: 0.9rem;
+  gap: 0.75rem;
+  border: 1px solid rgb(73 113 174 / 15%);
+  border-radius: 12px;
+  background: #f8faff;
+}
+
+.agent-improvement__version--improved {
+  border-color: rgb(37 99 235 / 24%);
+  background: #fbfdff;
+}
+
+.agent-improvement__version h3 {
+  margin: 0 0 0.1rem;
+  color: #36577f;
+  font-size: 0.74rem;
+}
+
+.agent-improvement__version textarea {
+  min-height: 16rem;
+}
+
+.agent-improvement__version input[readonly],
+.agent-improvement__version textarea[readonly] {
+  background: #f5f7fb;
+  color: #61738c;
+}
+
+.agent-improvement > footer {
+  display: flex;
+  padding: 0.85rem 1.15rem 1.05rem;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  border-top: 1px solid rgb(73 113 174 / 12%);
+}
+
+.agent-improvement > footer button {
+  display: inline-flex;
+  min-height: 2.35rem;
+  padding: 0.55rem 0.85rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border: 1px solid rgb(73 113 174 / 20%);
+  border-radius: 9px;
+  background: #fff;
+  color: #4d6687;
+  font-size: 0.66rem;
+  font-weight: 700;
+}
+
+.agent-improvement > footer .agent-improvement__apply {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.agent-improvement > footer .agent-improvement__apply:hover:not(:disabled) {
+  background: #1d55cb;
 }
 
 .instructions-editor {
@@ -3390,6 +3574,36 @@ dialog input {
 
   .agent-inspector__delete {
     margin-left: 3.45rem;
+  }
+
+  .agent-inspector__improve {
+    margin-left: 3.45rem;
+  }
+
+  .agent-inspector__improve + .agent-inspector__delete {
+    margin-left: 0;
+  }
+
+  .agent-improvement__backdrop {
+    padding: 0.75rem;
+  }
+
+  .agent-improvement {
+    max-height: calc(100vh - 1.5rem);
+  }
+
+  .agent-improvement > header {
+    padding: 1rem;
+    align-items: flex-start;
+  }
+
+  .agent-improvement__comparison {
+    padding: 0.85rem;
+    grid-template-columns: 1fr;
+  }
+
+  .agent-improvement__version textarea {
+    min-height: 12rem;
   }
 
   .project-creation-dialog__layout {

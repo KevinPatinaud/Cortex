@@ -10,11 +10,13 @@ import {
   RotateCcw,
   Save,
   Settings2,
+  Sparkles,
   Trash2,
   Undo2,
   X
 } from "lucide-react";
 import {
+  improveAgent,
   saveAgentProject,
   type AgentProject,
   type EditableAgentDefinition
@@ -44,6 +46,18 @@ interface DeletedAgent {
 }
 
 type EditorSection = "agents" | "instructions";
+
+interface AgentContent {
+  name: string;
+  description: string;
+  prompt: string;
+}
+
+interface AgentImprovementPreview {
+  agentId: string;
+  original: AgentContent;
+  improved: AgentContent;
+}
 
 const modelSuggestions = {
   codex: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
@@ -113,6 +127,9 @@ export function AgentProjectEditor({
   );
   const [deletedAgent, setDeletedAgent] = useState<DeletedAgent | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isImprovingAgent, setIsImprovingAgent] = useState(false);
+  const [agentImprovement, setAgentImprovement] =
+    useState<AgentImprovementPreview | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [error, setError] = useState("");
@@ -137,6 +154,21 @@ export function AgentProjectEditor({
       nextAgents
     );
   }, [content, project]);
+
+  useEffect(() => {
+    if (!agentImprovement) {
+      return;
+    }
+
+    function closeOnEscape(event: KeyboardEvent): void {
+      if (event.key === "Escape") {
+        setAgentImprovement(null);
+      }
+    }
+
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [agentImprovement]);
 
   const selectedAgent = agents.find(
     (agent) => agent.clientId === selectedAgentId
@@ -207,6 +239,71 @@ export function AgentProjectEditor({
     });
     setSelectedAgentId(deletedAgent.agent.clientId);
     setDeletedAgent(null);
+  }
+
+  async function handleImproveAgent(): Promise<void> {
+    if (!selectedAgent) {
+      return;
+    }
+
+    const agentToImprove = selectedAgent;
+    setIsImprovingAgent(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const improved = await improveAgent(content.projectId, {
+        prompt: agentToImprove.prompt,
+        name: agentToImprove.name,
+        description: agentToImprove.description,
+        projectInstructions: instructions,
+        ...(agentToImprove.model?.trim()
+          ? { model: agentToImprove.model.trim() }
+          : {}),
+        ...(agentToImprove.reasoningEffort?.trim()
+          ? { reasoningEffort: agentToImprove.reasoningEffort.trim() }
+          : {})
+      });
+
+      setAgentImprovement({
+        agentId: agentToImprove.clientId,
+        original: {
+          name: agentToImprove.name,
+          description: agentToImprove.description,
+          prompt: agentToImprove.prompt
+        },
+        improved
+      });
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, t("editor.improveError")));
+    } finally {
+      setIsImprovingAgent(false);
+    }
+  }
+
+  function applyAgentImprovement(): void {
+    if (
+      !agentImprovement?.improved.name.trim() ||
+      !agentImprovement.improved.prompt.trim()
+    ) {
+      return;
+    }
+
+    const improvement = agentImprovement;
+    setAgents((currentAgents) => currentAgents.map((agent) =>
+      agent.clientId === improvement.agentId
+        ? {
+          ...agent,
+          name: improvement.improved.name.trim(),
+          description: improvement.improved.description.trim(),
+          prompt: improvement.improved.prompt.trim()
+        }
+        : agent
+    ));
+    setSelectedAgentId(improvement.agentId);
+    setSection("agents");
+    setAgentImprovement(null);
+    setSaveMessage(t("editor.improved"));
   }
 
   function requestClose(): void {
@@ -405,7 +502,11 @@ export function AgentProjectEditor({
                 <span>{t("editor.library")}</span>
                 <strong>{t("editor.projectAgents")}</strong>
               </div>
-              <button type="button" onClick={addAgent} disabled={isSaving}>
+              <button
+                type="button"
+                onClick={addAgent}
+                disabled={isSaving}
+              >
                 <Plus aria-hidden="true" size={16} />
                 {t("common.add")}
               </button>
@@ -455,10 +556,25 @@ export function AgentProjectEditor({
                     <h2>{selectedAgent.name || t("editor.unnamedAgent")}</h2>
                   </div>
                   <button
+                    className="agent-inspector__improve"
+                    type="button"
+                    onClick={() => void handleImproveAgent()}
+                    disabled={isSaving || isImprovingAgent}
+                  >
+                    {isImprovingAgent ? (
+                      <LoaderCircle aria-hidden="true" className="spin" size={15} />
+                    ) : (
+                      <Sparkles aria-hidden="true" size={15} />
+                    )}
+                    {isImprovingAgent
+                      ? t("editor.improving")
+                      : t("editor.improveWithAi")}
+                  </button>
+                  <button
                     className="agent-inspector__delete"
                     type="button"
                     onClick={removeSelectedAgent}
-                    disabled={isSaving}
+                    disabled={isSaving || isImprovingAgent}
                   >
                     <Trash2 aria-hidden="true" size={16} />
                     {t("common.delete")}
@@ -473,7 +589,7 @@ export function AgentProjectEditor({
                         value={selectedAgent.name}
                         onChange={(event) => updateSelectedAgent({ name: event.target.value })}
                         placeholder={t("editor.namePlaceholder")}
-                        disabled={isSaving}
+                        disabled={isSaving || isImprovingAgent}
                       />
                     </label>
                     <label className="editor-field">
@@ -482,7 +598,7 @@ export function AgentProjectEditor({
                         value={selectedAgent.description}
                         onChange={(event) => updateSelectedAgent({ description: event.target.value })}
                         placeholder={t("editor.descriptionPlaceholder")}
-                        disabled={isSaving}
+                        disabled={isSaving || isImprovingAgent}
                       />
                     </label>
                   </div>
@@ -495,7 +611,7 @@ export function AgentProjectEditor({
                         onChange={(event) => updateSelectedAgent({ model: event.target.value })}
                         placeholder={t("editor.defaultModel")}
                         list="cortex-model-suggestions"
-                        disabled={isSaving}
+                        disabled={isSaving || isImprovingAgent}
                       />
                       {suggestions.length > 0 && (
                         <datalist id="cortex-model-suggestions">
@@ -508,7 +624,7 @@ export function AgentProjectEditor({
                       <select
                         value={selectedAgent.reasoningEffort ?? ""}
                         onChange={(event) => updateSelectedAgent({ reasoningEffort: event.target.value })}
-                        disabled={isSaving}
+                        disabled={isSaving || isImprovingAgent}
                       >
                         <option value="">{t("editor.default")}</option>
                         <option value="low">{t("editor.low")}</option>
@@ -526,7 +642,7 @@ export function AgentProjectEditor({
                       onChange={(event) => updateSelectedAgent({ prompt: event.target.value })}
                       placeholder={t("editor.promptPlaceholder")}
                       rows={12}
-                      disabled={isSaving}
+                      disabled={isSaving || isImprovingAgent}
                     />
                     <small>
                       {t("editor.promptHelp")}
@@ -609,6 +725,130 @@ export function AgentProjectEditor({
           }}
           onConfirm={() => void handleDeleteProject()}
         />
+      )}
+
+      {agentImprovement && (
+        <div
+          className="agent-improvement__backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setAgentImprovement(null);
+            }
+          }}
+        >
+          <section
+            className="agent-improvement"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="agent-improvement-title"
+          >
+            <header>
+              <span className="agent-improvement__icon" aria-hidden="true">
+                <Sparkles size={21} />
+              </span>
+              <div>
+                <span>{t("editor.aiSuggestion")}</span>
+                <h2 id="agent-improvement-title">
+                  {t("editor.improvementTitle")}
+                </h2>
+                <p>{t("editor.improvementHelp")}</p>
+              </div>
+              <button
+                className="agent-improvement__close"
+                type="button"
+                aria-label={t("common.close")}
+                onClick={() => setAgentImprovement(null)}
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </header>
+
+            <div className="agent-improvement__comparison">
+              <section className="agent-improvement__version">
+                <h3>{t("editor.currentAgent")}</h3>
+                <label className="editor-field">
+                  <span>{t("editor.name")}</span>
+                  <input value={agentImprovement.original.name} readOnly />
+                </label>
+                <label className="editor-field">
+                  <span>{t("editor.shortDescription")}</span>
+                  <input value={agentImprovement.original.description} readOnly />
+                </label>
+                <label className="editor-field">
+                  <span>{t("editor.mission")}</span>
+                  <textarea
+                    value={agentImprovement.original.prompt}
+                    rows={11}
+                    readOnly
+                  />
+                </label>
+              </section>
+
+              <section className="agent-improvement__version agent-improvement__version--improved">
+                <h3>{t("editor.improvedAgent")}</h3>
+                <label className="editor-field">
+                  <span>{t("editor.name")}</span>
+                  <input
+                    value={agentImprovement.improved.name}
+                    onChange={(event) => setAgentImprovement({
+                      ...agentImprovement,
+                      improved: {
+                        ...agentImprovement.improved,
+                        name: event.target.value
+                      }
+                    })}
+                  />
+                </label>
+                <label className="editor-field">
+                  <span>{t("editor.shortDescription")}</span>
+                  <input
+                    value={agentImprovement.improved.description}
+                    onChange={(event) => setAgentImprovement({
+                      ...agentImprovement,
+                      improved: {
+                        ...agentImprovement.improved,
+                        description: event.target.value
+                      }
+                    })}
+                  />
+                </label>
+                <label className="editor-field">
+                  <span>{t("editor.mission")}</span>
+                  <textarea
+                    value={agentImprovement.improved.prompt}
+                    onChange={(event) => setAgentImprovement({
+                      ...agentImprovement,
+                      improved: {
+                        ...agentImprovement.improved,
+                        prompt: event.target.value
+                      }
+                    })}
+                    rows={11}
+                  />
+                </label>
+              </section>
+            </div>
+
+            <footer>
+              <button type="button" onClick={() => setAgentImprovement(null)}>
+                {t("common.cancel")}
+              </button>
+              <button
+                className="agent-improvement__apply"
+                type="button"
+                onClick={applyAgentImprovement}
+                disabled={
+                  !agentImprovement.improved.name.trim() ||
+                  !agentImprovement.improved.prompt.trim()
+                }
+              >
+                <Check aria-hidden="true" size={15} />
+                {t("editor.useImprovedAgent")}
+              </button>
+            </footer>
+          </section>
+        </div>
       )}
     </section>
   );
