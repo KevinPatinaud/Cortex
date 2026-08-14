@@ -26,6 +26,15 @@ npm run dev:web
 
 Vite serves the frontend and proxies `/api` to the Express server.
 
+## Scheduled workflows
+
+From a project's **Workflow** tab, select **Schedule** to configure a standard
+five-field cron expression (`minute hour day-of-month month day-of-week`). The
+schedule uses the server's local timezone and remains active when the browser is
+closed, as long as the Cortex server is running. Each occurrence starts a fresh
+workflow and automatically passes the selected branch results to downstream
+agents. An occurrence is skipped when the same project is already running.
+
 ## Quality checks
 
 ```bash

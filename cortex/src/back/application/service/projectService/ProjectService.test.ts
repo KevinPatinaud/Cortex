@@ -163,3 +163,30 @@ test("sérialise les agents Claude au format Markdown", async () => {
     assert.match(content, /Analyse le dossier\.\nPuis synthétise\./);
   });
 });
+
+test("persiste la planification cron d'un workflow", async () => {
+  await withProjectService(async (service, parentDirectory) => {
+    const { project } = await service.createProject({
+      parentDirectory,
+      name: "Scheduled",
+      engine: "codex",
+      instructions: "Contexte"
+    });
+
+    await service.saveWorkflowScheduleConfiguration(project.id, {
+      cron: "0 7 * * 1-5",
+      enabled: true
+    });
+
+    assert.deepEqual(
+      await service.getWorkflowScheduleConfiguration(project.id),
+      { cron: "0 7 * * 1-5", enabled: true }
+    );
+
+    await service.deleteProject(project.directoryPath);
+    assert.equal(
+      await service.getWorkflowScheduleConfiguration(project.id),
+      null
+    );
+  });
+});

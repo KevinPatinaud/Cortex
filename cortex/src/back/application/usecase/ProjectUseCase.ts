@@ -6,7 +6,8 @@ import type {
   ProjectAgentEngine,
   Project,
   ProjectContent,
-  ProjectService
+  ProjectService,
+  WorkflowScheduleConfiguration
 } from "../service/projectService/ProjectService.ts";
 import { NotFoundError } from "../error/NotFoundError.ts";
 import { ValidationError } from "../error/ValidationError.ts";
@@ -165,6 +166,22 @@ export class ProjectUseCase {
     return this.projectService.saveAgentWorkflowConfiguration(
       projectId,
       workflow
+    );
+  }
+
+  getWorkflowScheduleConfiguration(
+    projectId: string
+  ): Promise<WorkflowScheduleConfiguration | null> {
+    return this.projectService.getWorkflowScheduleConfiguration(projectId);
+  }
+
+  saveWorkflowScheduleConfiguration(
+    projectId: string,
+    schedule: WorkflowScheduleConfiguration
+  ): Promise<void> {
+    return this.projectService.saveWorkflowScheduleConfiguration(
+      projectId,
+      schedule
     );
   }
 

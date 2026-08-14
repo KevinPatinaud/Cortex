@@ -52,6 +52,16 @@ export const agentErrorMappings = {
     fallbackStatus: 500,
     fallbackMessage: "Unable to reset the workflow.",
     logMessage: "Unable to reset the workflow:"
+  },
+  getWorkflowSchedule: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to load the workflow schedule.",
+    logMessage: "Unable to load the workflow schedule:"
+  },
+  saveWorkflowSchedule: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to save the workflow schedule.",
+    logMessage: "Unable to save the workflow schedule:"
   }
 } satisfies Record<string, ErrorMappingOptions>;
 

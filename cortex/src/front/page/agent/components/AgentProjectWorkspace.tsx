@@ -5,18 +5,20 @@ import {
   useState,
   type KeyboardEvent
 } from "react";
-import { ArrowDown, Bot, ChevronDown, FastForward, GitBranch, LoaderCircle, Pause, Pencil, RotateCcw, Send } from "lucide-react";
+import { ArrowDown, Bot, CalendarClock, ChevronDown, FastForward, GitBranch, LoaderCircle, Pause, Pencil, RotateCcw, Send } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   loadAgentProject,
+  getWorkflowSchedule,
   resetAgentProjectWorkflow,
   runAgent,
   type AgentConversationMessage,
   type AgentConversationThread,
   type AgentDefinition,
   type AgentProject,
-  type UpstreamAgentResult
+  type UpstreamAgentResult,
+  type WorkflowSchedule
 } from "../../../services/agentApi.ts";
 import type { Project } from "../../../services/projectApi.ts";
 import {
@@ -30,6 +32,7 @@ import {
 } from "../../../../shared/AgentWorkflowGraph.ts";
 import { useTranslation, type Translate } from "../../../i18n.tsx";
 import { ConfirmationDialog } from "../../project_manager/components/ConfirmationDialog.tsx";
+import { WorkflowScheduleDialog } from "./WorkflowScheduleDialog.tsx";
 
 interface AgentProjectWorkspaceProps {
   project: Project | null;
@@ -1284,6 +1287,9 @@ export function AgentProjectWorkspace({
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [resetError, setResetError] = useState("");
+  const [workflowSchedule, setWorkflowSchedule] =
+    useState<WorkflowSchedule | null>(null);
+  const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
   const [handoffEnabledAgentIdsByProject, setHandoffEnabledAgentIdsByProject] =
     useState<HandoffEnabledAgentIdsByProject>(loadHandoffPreferences);
   const handoffEnabledAgentIds = content
@@ -1297,8 +1303,50 @@ export function AgentProjectWorkspace({
   useEffect(() => {
     setActiveTab("agents");
     setIsResetDialogOpen(false);
+    setIsScheduleDialogOpen(false);
+    setWorkflowSchedule(null);
     setResetError("");
   }, [content?.projectId]);
+
+  useEffect(() => {
+    if (!content) {
+      return;
+    }
+
+    let isActive = true;
+    let isRefreshing = false;
+
+    const refreshSchedule = async (): Promise<void> => {
+      if (isRefreshing) return;
+      isRefreshing = true;
+
+      try {
+        const schedule = await getWorkflowSchedule(content.projectId);
+
+        if (isActive) {
+          setWorkflowSchedule(schedule);
+
+          if (schedule.running) {
+            onContentRefresh(await loadAgentProject(content.projectId));
+          }
+        }
+      } catch {
+        // The scheduler remains unavailable without blocking manual execution.
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
+    void refreshSchedule();
+    const refreshTimer = window.setInterval(() => {
+      void refreshSchedule();
+    }, 15_000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(refreshTimer);
+    };
+  }, [content?.projectId, onContentRefresh]);
 
   useEffect(() => {
     if (!content) {
@@ -1884,6 +1932,28 @@ export function AgentProjectWorkspace({
                 onChange={handleGlobalHandoffChange}
               />
             )}
+            {activeTab === "agents" && content.agents.length > 0 && (
+              <button
+                className={`agent-project__schedule-button${
+                  workflowSchedule?.enabled
+                    ? " agent-project__schedule-button--active"
+                    : ""
+                }`}
+                type="button"
+                onClick={() => setIsScheduleDialogOpen(true)}
+                disabled={!workflowSchedule}
+                title={workflowSchedule?.enabled
+                  ? t("schedule.edit")
+                  : t("schedule.configure")}
+              >
+                <CalendarClock aria-hidden="true" size={15} />
+                {workflowSchedule?.running
+                  ? t("schedule.running")
+                  : workflowSchedule?.enabled
+                    ? t("schedule.scheduled")
+                  : t("schedule.button")}
+              </button>
+            )}
             {activeTab === "agents" && (
               <button
                 className="agent-project__reset-button"
@@ -2225,6 +2295,18 @@ export function AgentProjectWorkspace({
             }
           }}
           onConfirm={() => void handleResetWorkflow()}
+        />
+      )}
+      {isScheduleDialogOpen && workflowSchedule && (
+        <WorkflowScheduleDialog
+          projectId={projectId}
+          projectName={projectName}
+          schedule={workflowSchedule}
+          onCancel={() => setIsScheduleDialogOpen(false)}
+          onSaved={(schedule) => {
+            setWorkflowSchedule(schedule);
+            setIsScheduleDialogOpen(false);
+          }}
         />
       )}
     </section>

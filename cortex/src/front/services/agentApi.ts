@@ -64,6 +64,17 @@ export interface AgentConfiguration {
   allowAll: boolean;
 }
 
+export interface WorkflowSchedule {
+  cron: string;
+  enabled: boolean;
+  timezone: string;
+  nextRunAt: string | null;
+  running: boolean;
+  lastRunAt: string | null;
+  lastRunStatus: "succeeded" | "failed" | "skipped" | null;
+  lastRunError: string | null;
+}
+
 export interface EditableAgentDefinition {
   id?: string;
   name: string;
@@ -197,5 +208,27 @@ export async function resetAgentProjectWorkflow(
   await requestJson<{ message: string }>(
     `/api/agents/projects/${encodeURIComponent(projectId)}/workflow/reset`,
     { method: "POST" }
+  );
+}
+
+export function getWorkflowSchedule(
+  projectId: string
+): Promise<WorkflowSchedule> {
+  return requestJson(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/workflow/schedule`
+  );
+}
+
+export function saveWorkflowSchedule(
+  projectId: string,
+  schedule: Pick<WorkflowSchedule, "cron" | "enabled">
+): Promise<WorkflowSchedule> {
+  return requestJson(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/workflow/schedule`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(schedule)
+    }
   );
 }

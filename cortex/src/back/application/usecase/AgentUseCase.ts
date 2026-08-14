@@ -108,6 +108,11 @@ export interface AgentRunOutput {
   threads: AgentConversationThread[];
 }
 
+export interface WorkflowRunOutput {
+  executedAgentIds: string[];
+  skippedAgentIds: string[];
+}
+
 interface AgentWorkflowThreadState {
   id: string;
   sessionId: string;
@@ -236,6 +241,7 @@ export class AgentUseCase {
   private actualLoadedProject: AgentProject | null = null;
   private randomDrawSequence = 0;
   private readonly loadedProjects = new Map<string, LoadedAgentProject>();
+  private readonly runningWorkflows = new Set<string>();
   private readonly agentExecutions = new Map<string, AgentExecutionState>();
   private readonly agentWorkflows = new Map<
     string,
@@ -528,6 +534,61 @@ export class AgentUseCase {
     };
   }
 
+  async runWorkflow(projectId: string): Promise<WorkflowRunOutput> {
+    const normalizedProjectId = projectId.trim();
+
+    if (!normalizedProjectId) {
+      throw new ValidationError("The project to run is required.");
+    }
+
+    if (this.isProjectRunning(normalizedProjectId)) {
+      throw new ValidationError("The workflow is already running.");
+    }
+
+    this.runningWorkflows.add(normalizedProjectId);
+
+    try {
+      const project = await this.loadProject(normalizedProjectId, false);
+      this.clearWorkflowState(normalizedProjectId);
+      const executedAgentIds: string[] = [];
+      const skippedAgentIds: string[] = [];
+
+      for (const agent of project.agents) {
+        if (
+          this.getAgentProgressState(normalizedProjectId, project, agent) ===
+            "skipped"
+        ) {
+          skippedAgentIds.push(agent.id);
+          continue;
+        }
+
+        await this.runAgent(normalizedProjectId, {
+          agentId: agent.id,
+          upstreamAgentResults: this.getAutomaticUpstreamAgentResults(
+            normalizedProjectId,
+            project,
+            agent
+          )
+        });
+        executedAgentIds.push(agent.id);
+      }
+
+      return { executedAgentIds, skippedAgentIds };
+    } finally {
+      this.runningWorkflows.delete(normalizedProjectId);
+    }
+  }
+
+  isProjectRunning(projectId: string): boolean {
+    const normalizedProjectId = projectId.trim();
+
+    return this.runningWorkflows.has(normalizedProjectId) ||
+      [...this.agentExecutions.entries()].some(
+      ([key, execution]) => key.startsWith(`${normalizedProjectId}:`) &&
+        execution.status === "running"
+    );
+  }
+
   resetWorkflow(projectId: string): void {
     const normalizedProjectId = projectId.trim();
 
@@ -535,27 +596,13 @@ export class AgentUseCase {
       throw new ValidationError("The project to reset is required.");
     }
 
-    const hasRunningAgent = [...this.agentExecutions.entries()].some(
-      ([key, execution]) => key.startsWith(`${normalizedProjectId}:`) &&
-        execution.status === "running"
-    );
-
-    if (hasRunningAgent) {
+    if (this.isProjectRunning(normalizedProjectId)) {
       throw new ValidationError(
         "The workflow cannot be reset while an agent is running."
       );
     }
 
-    this.agentWorkflows.delete(normalizedProjectId);
-    this.deleteProjectExecutions(normalizedProjectId);
-
-    if (this.actualLoadedProject?.projectId === normalizedProjectId) {
-      for (const agent of this.actualLoadedProject.agents) {
-        agent.hasSession = false;
-        agent.conversation = [];
-        agent.threads = [];
-      }
-    }
+    this.clearWorkflowState(normalizedProjectId);
   }
 
   async saveProject(
@@ -568,12 +615,7 @@ export class AgentUseCase {
       throw new ValidationError("The project to edit is required.");
     }
 
-    const hasRunningAgent = [...this.agentExecutions.entries()].some(
-      ([key, execution]) => key.startsWith(`${normalizedProjectId}:`) &&
-        execution.status === "running"
-    );
-
-    if (hasRunningAgent) {
+    if (this.isProjectRunning(normalizedProjectId)) {
       throw new ValidationError(
         "The project cannot be edited while an agent is running."
       );
@@ -587,7 +629,10 @@ export class AgentUseCase {
     return this.loadProject(normalizedProjectId);
   }
 
-  async loadProject(projectId: string): Promise<AgentProject> {
+  async loadProject(
+    projectId: string,
+    setAsActualProject = true
+  ): Promise<AgentProject> {
     const projectContent = await this.projectUseCase.getProjectContent(projectId);
     const detectedConfigurations = agentProjectConfigurations.filter(
       (configuration) => Boolean(
@@ -663,7 +708,9 @@ export class AgentUseCase {
       project,
       directoryPath: projectContent.directoryPath
     });
-    this.actualLoadedProject = project;
+    if (setAsActualProject) {
+      this.actualLoadedProject = project;
+    }
 
     return project;
   }
@@ -986,6 +1033,50 @@ ${JSON.stringify(context, null, 2)}`;
 
     return keys.length === expectedKeys.length &&
       expectedKeys.every((key) => Object.hasOwn(value, key));
+  }
+
+  private getAutomaticUpstreamAgentResults(
+    projectId: string,
+    project: AgentProject,
+    agent: AgentDefinition
+  ): UpstreamAgentResultInput[] | undefined {
+    const applicableUpstreamAgents = project.agents.filter(
+      (upstreamAgent) =>
+        upstreamAgent.nextAgentIds.includes(agent.id) &&
+        this.getAgentProgressState(projectId, project, upstreamAgent) ===
+          "completed" &&
+        this.getParsedAgentResponses(projectId, upstreamAgent.id).some(
+          (response) => this.responseRoutesToAgent(response, agent.id)
+        )
+    );
+
+    if (applicableUpstreamAgents.length === 0) {
+      return undefined;
+    }
+
+    return applicableUpstreamAgents.map((upstreamAgent) => {
+      const selectedItemIndexes: number[] = [];
+      let itemOffset = 0;
+
+      for (const response of this.getParsedAgentResponses(
+        projectId,
+        upstreamAgent.id
+      )) {
+        if (response.items.length > 1) {
+          if (response.isMultiSelectionAllowed === true) {
+            selectedItemIndexes.push(...response.items.map(
+              (_item, itemIndex) => itemOffset + itemIndex
+            ));
+          } else {
+            selectedItemIndexes.push(itemOffset);
+          }
+        }
+
+        itemOffset += response.items.length;
+      }
+
+      return { agentId: upstreamAgent.id, selectedItemIndexes };
+    });
   }
 
   private resolveUpstreamItemGroups(
@@ -1546,6 +1637,24 @@ Use only these results as input data.`;
       if (key.startsWith(`${projectId}:`)) {
         this.agentExecutions.delete(key);
       }
+    }
+  }
+
+  private clearWorkflowState(projectId: string): void {
+    this.agentWorkflows.delete(projectId);
+    this.deleteProjectExecutions(projectId);
+    const loadedProject = this.loadedProjects.get(projectId)?.project;
+
+    if (!loadedProject) {
+      return;
+    }
+
+    for (const agent of loadedProject.agents) {
+      agent.hasSession = false;
+      agent.executionStatus = "idle";
+      delete agent.executionError;
+      agent.conversation = [];
+      agent.threads = [];
     }
   }
 

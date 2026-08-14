@@ -12,6 +12,7 @@ import { DirectoryPickerService } from "../../../application/service/projectServ
 import { ProjectService } from "../../../application/service/projectService/ProjectService.ts";
 import { AgentUseCase } from "../../../application/usecase/AgentUseCase.ts";
 import { ProjectUseCase } from "../../../application/usecase/ProjectUseCase.ts";
+import { WorkflowScheduler } from "../../../application/service/workflowScheduler/WorkflowScheduler.ts";
 import { httpErrorMiddleware } from "../middleware/HttpErrorMiddleware.ts";
 import { createAgentController } from "./AgentController.ts";
 import { createProjectController } from "./ProjectController.ts";
@@ -40,6 +41,7 @@ const projectUseCase = new ProjectUseCase(
   directoryPickerService
 );
 const agentUseCase = new AgentUseCase(agentService, projectUseCase);
+const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase);
 
 app.disable("x-powered-by");
 app.use((_request, response, next) => {
@@ -71,7 +73,10 @@ app.use(
   "/api/projects",
   createProjectController(projectUseCase)
 );
-app.use("/api/agents", createAgentController(agentUseCase));
+app.use(
+  "/api/agents",
+  createAgentController(agentUseCase, workflowScheduler)
+);
 app.use("/api", (_request, response) => {
   response.status(404).json({ error: "API route not found." });
 });
@@ -90,6 +95,9 @@ app.listen(port, host, () => {
     : host;
   const applicationUrl = `http://${browserHost}:${port}`;
   console.log(`Server available at ${applicationUrl}`);
+  void workflowScheduler.start().catch((error: unknown) => {
+    console.error("Unable to start the workflow scheduler:", error);
+  });
 
   if (shouldOpenBrowser) {
     openDefaultBrowser(applicationUrl);

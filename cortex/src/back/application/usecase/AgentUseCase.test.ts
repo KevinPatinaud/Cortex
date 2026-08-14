@@ -1271,3 +1271,28 @@ test("refuse de réinitialiser un workflow pendant son exécution", async () => 
   });
   await runningExecution;
 });
+
+test("exécute automatiquement un workflow complet avec tous les résultats", async () => {
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: createWorkflowAnswer() },
+    {
+      answer: createAgentAnswer(["Option A", "Option B"], true),
+      sessionId: "session-source"
+    },
+    {
+      answer: createAgentAnswer(["Synthèse"], false, null, null, []),
+      sessionId: "session-target"
+    }
+  ]);
+
+  const result = await useCase.runWorkflow("project-id");
+
+  assert.deepEqual(result.executedAgentIds, [
+    ".claude/agents/implementation.md",
+    ".claude/agents/analysis.md"
+  ]);
+  assert.deepEqual(result.skippedAgentIds, []);
+  assert.equal(calls.length, 3);
+  assert.match(calls[2].prompt, /Option A/);
+  assert.match(calls[2].prompt, /Option B/);
+});

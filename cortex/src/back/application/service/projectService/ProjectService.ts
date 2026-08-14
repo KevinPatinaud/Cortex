@@ -17,6 +17,7 @@ interface ProjectConfiguration {
   projects?: unknown;
   directoryPath?: unknown;
   agentWorkflows?: unknown;
+  workflowSchedules?: unknown;
 }
 
 interface StoredProject {
@@ -31,6 +32,11 @@ export interface AgentWorkflowConfiguration {
     nextAgentIds: string[];
     inputMode: "separate" | "aggregate";
   }>;
+}
+
+export interface WorkflowScheduleConfiguration {
+  cron: string;
+  enabled: boolean;
 }
 
 export interface Project {
@@ -389,6 +395,46 @@ export class ProjectService {
     });
   }
 
+  async getWorkflowScheduleConfiguration(
+    projectId: string
+  ): Promise<WorkflowScheduleConfiguration | null> {
+    const configuration = await this.readConfiguration();
+    const storedSchedules = this.isRecord(configuration.workflowSchedules)
+      ? configuration.workflowSchedules
+      : null;
+    const schedule = storedSchedules?.[projectId];
+
+    return this.isWorkflowScheduleConfiguration(schedule)
+      ? { ...schedule }
+      : null;
+  }
+
+  async saveWorkflowScheduleConfiguration(
+    projectId: string,
+    schedule: WorkflowScheduleConfiguration
+  ): Promise<void> {
+    const projectExists = (await this.getProjects()).some(
+      (project) => project.id === projectId
+    );
+
+    if (!projectExists) {
+      throw new NotFoundError("The project could not be found.");
+    }
+
+    const configuration = await this.readConfiguration();
+    const storedSchedules = this.isRecord(configuration.workflowSchedules)
+      ? configuration.workflowSchedules
+      : {};
+
+    await this.writeConfiguration({
+      ...configuration,
+      workflowSchedules: {
+        ...storedSchedules,
+        [projectId]: { ...schedule }
+      }
+    });
+  }
+
   async deleteProject(directoryPath: string): Promise<DeleteProjectResult> {
     if (!directoryPath.trim()) {
       throw new TypeError("The directory path is required.");
@@ -399,10 +445,15 @@ export class ProjectService {
     const remainingProjects = projects.filter(
       (project) => !this.pathsAreEqual(project.directoryPath, normalizedPath)
     );
+    const deletedProjectIds = projects
+      .filter((project) =>
+        this.pathsAreEqual(project.directoryPath, normalizedPath)
+      )
+      .map((project) => project.id);
     const deleted = remainingProjects.length !== projects.length;
 
     if (deleted) {
-      await this.persistProjects(remainingProjects);
+      await this.persistProjects(remainingProjects, deletedProjectIds);
     }
 
     return {
@@ -591,10 +642,31 @@ export class ProjectService {
     };
   }
 
-  private async persistProjects(projects: Project[]): Promise<void> {
+  private async persistProjects(
+    projects: Project[],
+    deletedProjectIds: string[] = []
+  ): Promise<void> {
     const configuration = await this.readConfiguration();
+    const nextConfiguration: ProjectConfiguration = {
+      ...configuration,
+      projects
+    };
 
-    await this.writeConfiguration({ ...configuration, projects });
+    for (const property of ["agentWorkflows", "workflowSchedules"] as const) {
+      if (!this.isRecord(configuration[property])) {
+        continue;
+      }
+
+      const retainedEntries = { ...configuration[property] };
+
+      for (const projectId of deletedProjectIds) {
+        delete retainedEntries[projectId];
+      }
+
+      nextConfiguration[property] = retainedEntries;
+    }
+
+    await this.writeConfiguration(nextConfiguration);
     this.projectsCache = this.cloneProjects(projects);
   }
 
@@ -776,6 +848,14 @@ export class ProjectService {
         agent.nextAgentIds.every((agentId) => typeof agentId === "string") &&
         (agent.inputMode === "separate" || agent.inputMode === "aggregate")
       );
+  }
+
+  private isWorkflowScheduleConfiguration(
+    value: unknown
+  ): value is WorkflowScheduleConfiguration {
+    return this.isRecord(value) &&
+      typeof value.cron === "string" &&
+      typeof value.enabled === "boolean";
   }
 
   private isStoredProject(value: unknown): value is StoredProject {

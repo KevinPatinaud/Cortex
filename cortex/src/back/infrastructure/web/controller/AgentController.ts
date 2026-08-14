@@ -6,6 +6,10 @@ import type {
   RunAgentInput
 } from "../../../application/usecase/AgentUseCase.ts";
 import type { EditAgentProjectInput } from "../../../application/usecase/ProjectUseCase.ts";
+import type {
+  WorkflowScheduleInput,
+  WorkflowScheduler
+} from "../../../application/service/workflowScheduler/WorkflowScheduler.ts";
 import {
   agentErrorMappings,
   toAgentProjectResponse,
@@ -14,7 +18,10 @@ import {
 } from "../mapper/AgentResponseMapper.ts";
 import { asyncRoute } from "../middleware/HttpErrorMiddleware.ts";
 
-export function createAgentController(agentUseCase: AgentUseCase): Router {
+export function createAgentController(
+  agentUseCase: AgentUseCase,
+  workflowScheduler: WorkflowScheduler
+): Router {
   const router = Router();
 
   router.get("/projects/actual", (_request, response) => {
@@ -41,6 +48,28 @@ export function createAgentController(agentUseCase: AgentUseCase): Router {
         request.body
       ));
     }, agentErrorMappings.improveAgent)
+  );
+
+  router.get(
+    "/projects/:projectId/workflow/schedule",
+    asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+      response.json(await workflowScheduler.getSchedule(
+        request.params.projectId
+      ));
+    }, agentErrorMappings.getWorkflowSchedule)
+  );
+
+  router.put(
+    "/projects/:projectId/workflow/schedule",
+    asyncRoute<WorkflowScheduleInput, { projectId: string }>(async (
+      request,
+      response
+    ) => {
+      response.json(await workflowScheduler.saveSchedule(
+        request.params.projectId,
+        request.body
+      ));
+    }, agentErrorMappings.saveWorkflowSchedule)
   );
 
   router.post(
