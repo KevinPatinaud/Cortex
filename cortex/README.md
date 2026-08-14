@@ -1,52 +1,52 @@
 # Cortex
 
-Cortex est une application locale pour créer, visualiser et exécuter des workflows d'agents Codex, Claude ou GitHub Copilot. Le frontend React est servi par une API Express qui lit les configurations d'agents directement dans les projets enregistrés.
+Cortex is a local application for creating, visualizing, and running Codex, Claude, or GitHub Copilot agent workflows. The React frontend is served by an Express API that reads agent configurations directly from saved projects.
 
-## Prérequis
+## Prerequisites
 
-- Node.js 20.19 minimum, ou Node.js 22.12 et versions ultérieures ;
-- npm ;
-- au moins un moteur compatible installé et authentifié (`codex`, `claude` ou GitHub Copilot).
+- Node.js 20.19 or later, or Node.js 22.12 and later;
+- npm;
+- at least one supported engine installed and authenticated (`codex`, `claude`, or GitHub Copilot).
 
-## Démarrage
+## Getting started
 
 ```bash
 npm ci
 npm start
 ```
 
-L'application est alors disponible sur <http://127.0.0.1:3000>. Le fichier local `config.json` est créé au premier enregistrement et n'est pas versionné. `config.example.json` documente sa structure.
+The application is then available at <http://127.0.0.1:3000>. The local `config.json` file is created on the first save and is not committed to version control. Its structure is documented in `config.example.json`.
 
-Pour le développement avec rechargement à chaud, utilisez deux terminaux :
+For development with hot reload, use two terminals:
 
 ```bash
 npm run dev
 npm run dev:web
 ```
 
-Vite sert le frontend et redirige `/api` vers le serveur Express.
+Vite serves the frontend and proxies `/api` to the Express server.
 
-## Qualité
+## Quality checks
 
 ```bash
 npm run check
 ```
 
-Cette commande exécute le typage TypeScript strict, tous les tests Node et le build de production. Elle est également lancée par la CI sur chaque pull request.
+This command runs strict TypeScript type checking, all Node.js tests, and the production build. It is also run by CI for every pull request.
 
-## Configuration serveur
+## Server configuration
 
-| Variable | Valeur par défaut | Description |
+| Variable | Default value | Description |
 | --- | --- | --- |
-| `HOST` | `127.0.0.1` | Interface d'écoute du serveur |
-| `PORT` | `3000` | Port HTTP, entre 1 et 65535 |
+| `HOST` | `127.0.0.1` | Server listening interface |
+| `PORT` | `3000` | HTTP port, between 1 and 65535 |
 
-Le serveur est volontairement local par défaut : les routes permettent de lire et modifier des projets présents sur la machine et ne doivent pas être exposées publiquement sans authentification ni contrôle d'accès supplémentaires.
+The server intentionally listens locally by default: its routes can read and modify projects on the machine and must not be exposed publicly without additional authentication and access controls.
 
-## Structure
+## Project structure
 
-- `src/front` : application React et client API ;
-- `src/back/application` : cas d'usage, services et fournisseurs d'agents ;
-- `src/back/infrastructure` : serveur HTTP Express ;
-- `src/shared` : contrats et algorithmes partagés ;
-- `docs` : campagnes de recette manuelle.
+- `src/front`: React application and API client;
+- `src/back/application`: use cases, services, and agent providers;
+- `src/back/infrastructure`: Express HTTP server;
+- `src/shared`: shared contracts and algorithms;
+- `docs`: manual acceptance test campaigns.
