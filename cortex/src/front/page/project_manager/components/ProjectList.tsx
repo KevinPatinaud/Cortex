@@ -1,5 +1,6 @@
 import { Check, Folder, LoaderCircle, RotateCcw, Trash2 } from "lucide-react";
 import type { Project } from "../../../services/projectApi.ts";
+import { useTranslation } from "../../../i18n.tsx";
 
 export type ProjectActivityStatus = "running" | "completed";
 
@@ -35,10 +36,12 @@ export function ProjectList({
   onResetWorkflow,
   onDelete
 }: ProjectListProps) {
+  const { t } = useTranslation();
+
   if (isLoading) {
     return (
       <p className="project-list__state" aria-busy="true">
-        Chargement des projets...
+        {t("project.loadingList")}
       </p>
     );
   }
@@ -46,7 +49,7 @@ export function ProjectList({
   if (projects.length === 0) {
     return (
       <p className="project-list__state">
-        Aucun projet enregistré pour le moment.
+        {t("project.emptyList")}
       </p>
     );
   }
@@ -85,8 +88,8 @@ export function ProjectList({
                       className={`project-list__activity project-list__activity--${activityStatus}`}
                       role="status"
                       title={activityStatus === "running"
-                        ? "Un agent est en cours d'exécution"
-                        : "Un agent a terminé, résultat à consulter"}
+                        ? t("project.agentRunning")
+                        : t("project.agentCompleted")}
                     >
                       {activityStatus === "running" ? (
                         <LoaderCircle aria-hidden="true" size={12} />
@@ -94,21 +97,21 @@ export function ProjectList({
                         <Check aria-hidden="true" size={12} />
                       )}
                       <span>
-                        {activityStatus === "running" ? "En cours" : "À voir"}
+                        {activityStatus === "running" ? t("project.running") : t("project.review")}
                       </span>
                     </span>
                   )}
                 </span>
                 <small>
-                  {isProjectLoading ? "Chargement..." : project.directoryPath}
+                  {isProjectLoading ? t("common.loading") : project.directoryPath}
                 </small>
               </span>
             </button>
             <button
               className="project-list__reset-button"
               type="button"
-              aria-label={`Réinitialiser le workflow de ${projectName}`}
-              title={`Réinitialiser le workflow de ${projectName}`}
+              aria-label={t("project.resetAria", { name: projectName })}
+              title={t("project.resetAria", { name: projectName })}
               onClick={() => onResetWorkflow(project)}
               disabled={resettingProjectId === project.id || isInteractionLocked}
             >
@@ -117,8 +120,8 @@ export function ProjectList({
             <button
               className="project-list__delete-button"
               type="button"
-              aria-label={`Supprimer ${projectName}`}
-              title={`Supprimer ${projectName}`}
+              aria-label={t("project.deleteAria", { name: projectName })}
+              title={t("project.deleteAria", { name: projectName })}
               onClick={() => onDelete(project)}
               disabled={deletingProjectId === project.id || isInteractionLocked}
             >

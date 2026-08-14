@@ -17,7 +17,8 @@ import { createAgentController } from "./AgentController.ts";
 import { createProjectController } from "./ProjectController.ts";
 
 const app = express();
-const port = 3000;
+const port = readPort(process.env.PORT);
+const host = process.env.HOST?.trim() || "127.0.0.1";
 const directoryName = path.dirname(fileURLToPath(import.meta.url));
 const workspaceDirectory = path.resolve(directoryName, "../../../../..");
 const clientDirectory = path.join(workspaceDirectory, "dist");
@@ -40,12 +41,40 @@ const projectUseCase = new ProjectUseCase(
 );
 const agentUseCase = new AgentUseCase(agentService, projectUseCase);
 
-app.use(express.json());
+app.disable("x-powered-by");
+app.use((_request, response, next) => {
+  response.set({
+    "Content-Security-Policy": [
+      "default-src 'self'",
+      "base-uri 'self'",
+      "connect-src 'self'",
+      "font-src 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'none'",
+      "img-src 'self' data:",
+      "object-src 'none'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'"
+    ].join("; "),
+    "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY"
+  });
+  next();
+});
+app.use(express.json({ limit: "1mb", strict: true }));
+app.get("/api/health", (_request, response) => {
+  response.json({ status: "ok" });
+});
 app.use(
   "/api/projects",
   createProjectController(projectUseCase)
 );
 app.use("/api/agents", createAgentController(agentUseCase));
+app.use("/api", (_request, response) => {
+  response.status(404).json({ error: "API route not found." });
+});
 
 app.use(express.static(clientDirectory));
 
@@ -55,9 +84,12 @@ app.get(/.*/, (_request: Request, response: Response) => {
 
 app.use(httpErrorMiddleware);
 
-app.listen(port, () => {
-  const applicationUrl = `http://localhost:${port}`;
-  console.log(`Serveur disponible sur ${applicationUrl}`);
+app.listen(port, host, () => {
+  const browserHost = host === "0.0.0.0" || host === "::"
+    ? "localhost"
+    : host;
+  const applicationUrl = `http://${browserHost}:${port}`;
+  console.log(`Server available at ${applicationUrl}`);
 
   if (shouldOpenBrowser) {
     openDefaultBrowser(applicationUrl);
@@ -76,7 +108,21 @@ function openDefaultBrowser(url: string): void {
       : spawn("xdg-open", [url], { detached: true, stdio: "ignore" });
 
   browserProcess.once("error", (error) => {
-    console.warn("Impossible d'ouvrir automatiquement le navigateur.", error);
+    console.warn("Unable to open the browser automatically.", error);
   });
   browserProcess.unref();
+}
+
+function readPort(value: string | undefined): number {
+  if (value === undefined || value.trim() === "") {
+    return 3000;
+  }
+
+  const parsedPort = Number(value);
+
+  if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65_535) {
+    throw new Error("The PORT variable must be an integer between 1 and 65535.");
+  }
+
+  return parsedPort;
 }

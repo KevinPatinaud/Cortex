@@ -33,6 +33,6 @@ test("rejette les collisions de noms entre capacités", () => {
 
   assert.throws(
     () => registry.resolve(["github", "jira"]),
-    /search est enregistré plusieurs fois/
+    /Agent tool search is registered more than once/
   );
 });

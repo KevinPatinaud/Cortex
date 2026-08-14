@@ -20,6 +20,7 @@ import {
   type EditableAgentDefinition
 } from "../../../services/agentApi.ts";
 import type { Project } from "../../../services/projectApi.ts";
+import { useTranslation } from "../../../i18n.tsx";
 
 interface AgentProjectEditorProps {
   project: Project;
@@ -44,9 +45,6 @@ const modelSuggestions = {
   claude: ["sonnet", "opus", "haiku"],
   copilot: []
 } as const;
-
-const agentPromptPlaceholder =
-  "Décrivez précisément la mission et le résultat attendu de cet agent.";
 
 function createClientId(): string {
   return typeof crypto.randomUUID === "function"
@@ -85,8 +83,8 @@ function getProjectName(project: Project): string {
     project.directoryPath;
 }
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Une erreur inattendue est survenue.";
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }
 
 export function AgentProjectEditor({
@@ -95,6 +93,7 @@ export function AgentProjectEditor({
   onClose,
   onSaved
 }: AgentProjectEditorProps) {
+  const { t } = useTranslation();
   const [section, setSection] = useState<EditorSection>("agents");
   const [projectName, setProjectName] = useState(() => getProjectName(project));
   const [instructions, setInstructions] = useState(
@@ -155,7 +154,7 @@ export function AgentProjectEditor({
     const clientId = createClientId();
     const newAgent: DraftAgent = {
       clientId,
-      name: `Nouvel agent ${agents.length + 1}`,
+      name: t("editor.newAgent", { number: agents.length + 1 }),
       description: "",
       prompt: ""
     };
@@ -205,7 +204,7 @@ export function AgentProjectEditor({
   function requestClose(): void {
     if (
       isDirty &&
-      !window.confirm("Quitter le mode édition et abandonner les modifications ?")
+      !window.confirm(t("editor.leaveConfirm"))
     ) {
       return;
     }
@@ -215,7 +214,7 @@ export function AgentProjectEditor({
 
   async function handleSave(): Promise<void> {
     if (!projectName.trim()) {
-      setError("Le nom du projet est obligatoire.");
+      setError(t("editor.nameRequired"));
       return;
     }
 
@@ -226,7 +225,7 @@ export function AgentProjectEditor({
     if (invalidAgent) {
       setSection("agents");
       setSelectedAgentId(invalidAgent.clientId);
-      setError("Chaque agent doit avoir un nom et des instructions.");
+      setError(t("editor.agentRequired"));
       return;
     }
 
@@ -251,10 +250,10 @@ export function AgentProjectEditor({
         }))
       });
       setDeletedAgent(null);
-      setSaveMessage("Projet enregistré — le workflow est à jour.");
+      setSaveMessage(t("editor.saved"));
       onSaved(savedContent);
     } catch (requestError) {
-      setError(getErrorMessage(requestError));
+      setError(getErrorMessage(requestError, t("common.unexpectedError")));
     } finally {
       setIsSaving(false);
     }
@@ -268,12 +267,12 @@ export function AgentProjectEditor({
         <div className="project-editor__heading">
           <span className="project-editor__mode-pill">
             <Settings2 aria-hidden="true" size={13} />
-            Mode édition
+            {t("editor.mode")}
           </span>
           <div>
-            <p className="eyebrow">Atelier {content.engine}</p>
+            <p className="eyebrow">{t("editor.workshop", { engine: content.engine })}</p>
             <label className="project-editor__name-field">
-              <span>Nom du projet</span>
+              <span>{t("creation.projectName")}</span>
               <input
                 value={projectName}
                 onChange={(event) => {
@@ -281,7 +280,7 @@ export function AgentProjectEditor({
                   setSaveMessage("");
                 }}
                 disabled={isSaving}
-                aria-label="Nom du projet"
+                aria-label={t("creation.projectName")}
               />
             </label>
           </div>
@@ -289,7 +288,7 @@ export function AgentProjectEditor({
         <div className="project-editor__topbar-actions">
           <span className={`project-editor__draft-status${isDirty ? " project-editor__draft-status--dirty" : ""}`}>
             <i aria-hidden="true" />
-            {isDirty ? "Brouillon modifié" : "À jour"}
+            {isDirty ? t("editor.draftChanged") : t("editor.upToDate")}
           </span>
           <button
             className="project-editor__exit"
@@ -298,7 +297,7 @@ export function AgentProjectEditor({
             disabled={isSaving}
           >
             <X aria-hidden="true" size={16} />
-            Quitter l’édition
+            {t("editor.leave")}
           </button>
           <button
             className="project-editor__save"
@@ -311,29 +310,29 @@ export function AgentProjectEditor({
             ) : (
               <Save aria-hidden="true" size={16} />
             )}
-            {isSaving ? "Enregistrement..." : "Enregistrer"}
+            {isSaving ? t("common.saving") : t("common.save")}
           </button>
         </div>
       </header>
 
       <div className="project-editor__summary">
         <div>
-          <span>Composition</span>
-          <strong>{agents.length} agent{agents.length > 1 ? "s" : ""}</strong>
+          <span>{t("editor.composition")}</span>
+          <strong>{agents.length} {t(agents.length === 1 ? "workspace.agentSingular" : "workspace.agentPlural")}</strong>
         </div>
         <div>
-          <span>Moteur</span>
+          <span>{t("creation.engine")}</span>
           <strong>{content.engine}</strong>
         </div>
         <div>
-          <span>Instructions</span>
-          <strong>{instructions.trim() ? "Configurées" : "À compléter"}</strong>
+          <span>{t("workspace.instructionsTab")}</span>
+          <strong>{instructions.trim() ? t("editor.configured") : t("editor.toComplete")}</strong>
         </div>
-        <div className="project-editor__flow-preview" aria-label="Aperçu du workflow">
+        <div className="project-editor__flow-preview" aria-label={t("editor.workflowPreview")}>
           {agents.slice(0, 5).map((agent, index) => (
             <span key={agent.clientId}>
               <i>{index + 1}</i>
-              {agent.name || "Sans nom"}
+              {agent.name || t("editor.unnamed")}
               {index < Math.min(agents.length, 5) - 1 && (
                 <ArrowRight aria-hidden="true" size={13} />
               )}
@@ -343,7 +342,7 @@ export function AgentProjectEditor({
         </div>
       </div>
 
-      <nav className="project-editor__sections" aria-label="Sections du projet">
+      <nav className="project-editor__sections" aria-label={t("editor.sections")}>
         <button
           className={section === "agents" ? "is-active" : undefined}
           type="button"
@@ -359,7 +358,7 @@ export function AgentProjectEditor({
           onClick={() => setSection("instructions")}
         >
           <FileText aria-hidden="true" size={16} />
-          Instructions projet
+          {t("workspace.instructionsTab")}
         </button>
       </nav>
 
@@ -368,12 +367,12 @@ export function AgentProjectEditor({
           <aside className="agent-library">
             <header>
               <div>
-                <span>Bibliothèque</span>
-                <strong>Agents du projet</strong>
+                <span>{t("editor.library")}</span>
+                <strong>{t("editor.projectAgents")}</strong>
               </div>
               <button type="button" onClick={addAgent} disabled={isSaving}>
                 <Plus aria-hidden="true" size={16} />
-                Ajouter
+                {t("common.add")}
               </button>
             </header>
 
@@ -388,10 +387,10 @@ export function AgentProjectEditor({
                     >
                       <span className="agent-library__index">{String(index + 1).padStart(2, "0")}</span>
                       <span className="agent-library__identity">
-                        <strong>{agent.name || "Agent sans nom"}</strong>
-                        <small>{agent.description || "Mission à préciser"}</small>
+                        <strong>{agent.name || t("editor.unnamedAgent")}</strong>
+                        <small>{agent.description || t("editor.missionMissing")}</small>
                       </span>
-                      {!agent.id && <span className="agent-library__new">Nouveau</span>}
+                      {!agent.id && <span className="agent-library__new">{t("editor.new")}</span>}
                       <ChevronRight aria-hidden="true" size={15} />
                     </button>
                   </li>
@@ -400,10 +399,10 @@ export function AgentProjectEditor({
             ) : (
               <div className="agent-library__empty">
                 <Bot aria-hidden="true" size={25} />
-                <strong>Le workflow est vide</strong>
-                <p>Créez un premier agent pour donner vie à ce projet.</p>
+                <strong>{t("editor.emptyWorkflow")}</strong>
+                <p>{t("editor.firstAgentHelp")}</p>
                 <button type="button" onClick={addAgent}>
-                  <Plus aria-hidden="true" size={15} /> Premier agent
+                  <Plus aria-hidden="true" size={15} /> {t("editor.firstAgent")}
                 </button>
               </div>
             )}
@@ -417,8 +416,8 @@ export function AgentProjectEditor({
                     <Bot size={23} />
                   </span>
                   <div>
-                    <span>Configuration de l’agent</span>
-                    <h2>{selectedAgent.name || "Agent sans nom"}</h2>
+                    <span>{t("editor.agentConfiguration")}</span>
+                    <h2>{selectedAgent.name || t("editor.unnamedAgent")}</h2>
                   </div>
                   <button
                     className="agent-inspector__delete"
@@ -427,27 +426,27 @@ export function AgentProjectEditor({
                     disabled={isSaving}
                   >
                     <Trash2 aria-hidden="true" size={16} />
-                    Supprimer
+                    {t("common.delete")}
                   </button>
                 </header>
 
                 <div className="agent-inspector__form">
                   <div className="agent-inspector__row">
                     <label className="editor-field">
-                      <span>Nom</span>
+                      <span>{t("editor.name")}</span>
                       <input
                         value={selectedAgent.name}
                         onChange={(event) => updateSelectedAgent({ name: event.target.value })}
-                        placeholder="Architecte logiciel"
+                        placeholder={t("editor.namePlaceholder")}
                         disabled={isSaving}
                       />
                     </label>
                     <label className="editor-field">
-                      <span>Description courte</span>
+                      <span>{t("editor.shortDescription")}</span>
                       <input
                         value={selectedAgent.description}
                         onChange={(event) => updateSelectedAgent({ description: event.target.value })}
-                        placeholder="Analyse et structure la solution"
+                        placeholder={t("editor.descriptionPlaceholder")}
                         disabled={isSaving}
                       />
                     </label>
@@ -455,11 +454,11 @@ export function AgentProjectEditor({
 
                   <div className="agent-inspector__row agent-inspector__row--compact">
                     <label className="editor-field">
-                      <span>Modèle <em>optionnel</em></span>
+                      <span>{t("agent.model")} <em>{t("editor.optional")}</em></span>
                       <input
                         value={selectedAgent.model ?? ""}
                         onChange={(event) => updateSelectedAgent({ model: event.target.value })}
-                        placeholder="Modèle par défaut"
+                        placeholder={t("editor.defaultModel")}
                         list="cortex-model-suggestions"
                         disabled={isSaving}
                       />
@@ -470,32 +469,32 @@ export function AgentProjectEditor({
                       )}
                     </label>
                     <label className="editor-field">
-                      <span>Effort de raisonnement <em>optionnel</em></span>
+                      <span>{t("editor.reasoningEffort")} <em>{t("editor.optional")}</em></span>
                       <select
                         value={selectedAgent.reasoningEffort ?? ""}
                         onChange={(event) => updateSelectedAgent({ reasoningEffort: event.target.value })}
                         disabled={isSaving}
                       >
-                        <option value="">Par défaut</option>
-                        <option value="low">Faible</option>
-                        <option value="medium">Moyen</option>
-                        <option value="high">Élevé</option>
-                        <option value="xhigh">Très élevé</option>
+                        <option value="">{t("editor.default")}</option>
+                        <option value="low">{t("editor.low")}</option>
+                        <option value="medium">{t("editor.medium")}</option>
+                        <option value="high">{t("editor.high")}</option>
+                        <option value="xhigh">{t("editor.xhigh")}</option>
                       </select>
                     </label>
                   </div>
 
                   <label className="editor-field editor-field--prompt">
-                    <span>Mission et instructions</span>
+                    <span>{t("editor.mission")}</span>
                     <textarea
                       value={selectedAgent.prompt}
                       onChange={(event) => updateSelectedAgent({ prompt: event.target.value })}
-                      placeholder={agentPromptPlaceholder}
+                      placeholder={t("editor.promptPlaceholder")}
                       rows={12}
                       disabled={isSaving}
                     />
                     <small>
-                      Soyez explicite sur le périmètre de l’agent et le livrable attendu.
+                      {t("editor.promptHelp")}
                     </small>
                   </label>
                 </div>
@@ -503,8 +502,8 @@ export function AgentProjectEditor({
             ) : (
               <div className="agent-inspector__placeholder">
                 <Bot aria-hidden="true" size={30} />
-                <h2>Sélectionnez un agent</h2>
-                <p>Ses paramètres apparaîtront ici.</p>
+                <h2>{t("editor.selectAgent")}</h2>
+                <p>{t("editor.settingsHere")}</p>
               </div>
             )}
           </section>
@@ -516,13 +515,13 @@ export function AgentProjectEditor({
               <FileText size={22} />
             </span>
             <div>
-              <span>Contexte partagé</span>
+              <span>{t("editor.sharedContext")}</span>
               <h2>{content.instructions.fileName}</h2>
-              <p>Ces instructions sont transmises à l’ensemble du projet.</p>
+              <p>{t("editor.sharedHelp")}</p>
             </div>
           </header>
           <label className="editor-field editor-field--prompt">
-            <span>Contenu Markdown</span>
+            <span>{t("editor.markdown")}</span>
             <textarea
               value={instructions}
               onChange={(event) => {
@@ -530,7 +529,7 @@ export function AgentProjectEditor({
                 setSaveMessage("");
               }}
               rows={22}
-              placeholder="# Contexte du projet"
+              placeholder={t("editor.contextPlaceholder")}
               disabled={isSaving}
             />
           </label>
@@ -543,9 +542,9 @@ export function AgentProjectEditor({
             <span>{error}</span>
           ) : deletedAgent ? (
             <>
-              <span>« {deletedAgent.agent.name} » sera supprimé à l’enregistrement.</span>
+              <span>{t("editor.deletedOnSave", { name: deletedAgent.agent.name })}</span>
               <button type="button" onClick={restoreDeletedAgent}>
-                <Undo2 aria-hidden="true" size={14} /> Annuler
+                <Undo2 aria-hidden="true" size={14} /> {t("common.cancel")}
               </button>
             </>
           ) : (

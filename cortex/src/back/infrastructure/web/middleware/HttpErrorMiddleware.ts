@@ -24,8 +24,8 @@ class HttpRouteError {
 
 const defaultErrorMapping: ErrorMappingOptions = {
   fallbackStatus: 500,
-  fallbackMessage: "Une erreur interne est survenue.",
-  logMessage: "Erreur HTTP non gérée :"
+  fallbackMessage: "An internal error occurred.",
+  logMessage: "Unhandled HTTP error:"
 };
 
 export function asyncRoute<

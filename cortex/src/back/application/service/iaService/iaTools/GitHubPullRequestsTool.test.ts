@@ -202,7 +202,7 @@ test("rejette un nom de dépôt invalide avant de lire les identifiants", async 
 
   await assert.rejects(
     listOpenPullRequests("cortex", "  ", dependencies),
-    /Le dépôt GitHub est invalide\./
+    /The GitHub repository is invalid\./
   );
   assert.equal(credentialWasRead, false);
 });
@@ -222,6 +222,6 @@ test("signale les refus de l'API GitHub", async () => {
 
   await assert.rejects(
     listOpenPullRequests("cortex", "application", dependencies),
-    /GitHub a refusé la récupération des PR \(403 Forbidden\)\./
+    /GitHub rejected the PR request \(403 Forbidden\)\./
   );
 });

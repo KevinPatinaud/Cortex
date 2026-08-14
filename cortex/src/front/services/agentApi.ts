@@ -1,3 +1,5 @@
+import { requestJson } from "./apiClient.ts";
+
 export type AgentEngine = "codex" | "claude" | "copilot";
 
 export interface AgentStatus {
@@ -45,10 +47,6 @@ export interface AgentProject {
   instructions: ProjectInstructions;
 }
 
-interface ApiErrorResponse {
-  error?: string;
-}
-
 export interface AgentRunResult {
   answer: string;
   hasSession: boolean;
@@ -82,69 +80,42 @@ export interface EditableAgentProject {
   agents: EditableAgentDefinition[];
 }
 
-export async function getAgentStatus(): Promise<AgentStatus> {
-  const response = await fetch("/api/agents/status");
-  const data = await response.json() as AgentStatus;
-
-  if (!response.ok) {
-    throw new Error(data.error || "Impossible de détecter le moteur IA.");
-  }
-
-  return data;
+export function getAgentStatus(): Promise<AgentStatus> {
+  return requestJson("/api/agents/status");
 }
 
 export async function getAgentConfiguration(): Promise<AgentConfiguration> {
-  const response = await fetch("/api/agents/configuration");
-  const data = await response.json() as AgentConfiguration & ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(
-      data.error || "Impossible de charger la configuration des agents."
-    );
-  }
-
+  const data = await requestJson<AgentConfiguration>(
+    "/api/agents/configuration"
+  );
   return { autopilot: data.autopilot, allowAll: data.allowAll };
 }
 
 export async function saveAgentConfiguration(
   configuration: AgentConfiguration
 ): Promise<AgentConfiguration> {
-  const response = await fetch("/api/agents/configuration", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(configuration)
-  });
-  const data = await response.json() as AgentConfiguration & ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(
-      data.error || "Impossible d'enregistrer la configuration des agents."
-    );
-  }
-
+  const data = await requestJson<AgentConfiguration>(
+    "/api/agents/configuration",
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(configuration)
+    }
+  );
   return { autopilot: data.autopilot, allowAll: data.allowAll };
 }
 
-export async function loadAgentProject(
-  projectId: string
-): Promise<AgentProject> {
-  const response = await fetch(
+export function loadAgentProject(projectId: string): Promise<AgentProject> {
+  return requestJson(
     `/api/agents/projects/${encodeURIComponent(projectId)}`
   );
-  const data = await response.json() as AgentProject & ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(data.error || "Impossible de charger le projet.");
-  }
-
-  return data;
 }
 
-export async function saveAgentProject(
+export function saveAgentProject(
   projectId: string,
   draft: EditableAgentProject
 ): Promise<AgentProject> {
-  const response = await fetch(
+  return requestJson(
     `/api/agents/projects/${encodeURIComponent(projectId)}`,
     {
       method: "PUT",
@@ -152,27 +123,10 @@ export async function saveAgentProject(
       body: JSON.stringify(draft)
     }
   );
-  const data = await response.json() as AgentProject & ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(data.error || "Impossible d'enregistrer le projet.");
-  }
-
-  return data;
 }
 
-export async function getActualLoadedAgentProject(): Promise<AgentProject | null> {
-  const response = await fetch("/api/agents/projects/actual");
-  const data = await response.json() as
-    (AgentProject & ApiErrorResponse) | null;
-
-  if (!response.ok) {
-    throw new Error(
-      data?.error || "Impossible de restaurer le projet actuel."
-    );
-  }
-
-  return data;
+export function getActualLoadedAgentProject(): Promise<AgentProject | null> {
+  return requestJson("/api/agents/projects/actual");
 }
 
 export async function runAgent(
@@ -182,13 +136,11 @@ export async function runAgent(
   upstreamAgentResults?: UpstreamAgentResult[],
   threadId?: string
 ): Promise<AgentRunResult> {
-  const response = await fetch(
+  const data = await requestJson<AgentRunResult>(
     `/api/agents/projects/${encodeURIComponent(projectId)}/agents/run`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         agentId,
         ...(threadId ? { threadId } : {}),
@@ -201,11 +153,6 @@ export async function runAgent(
       })
     }
   );
-  const data = await response.json() as AgentRunResult & ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(data.error || "Impossible d'exécuter l'agent.");
-  }
 
   return {
     answer: data.answer,
@@ -218,13 +165,8 @@ export async function runAgent(
 export async function resetAgentProjectWorkflow(
   projectId: string
 ): Promise<void> {
-  const response = await fetch(
+  await requestJson<{ message: string }>(
     `/api/agents/projects/${encodeURIComponent(projectId)}/workflow/reset`,
     { method: "POST" }
   );
-  const data = await response.json() as ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(data.error || "Impossible de réinitialiser le workflow.");
-  }
 }

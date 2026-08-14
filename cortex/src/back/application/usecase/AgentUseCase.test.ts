@@ -398,7 +398,7 @@ test("configure et ordonne un workflow cyclique", async () => {
     [implementationId, analysisId, reviewId, synthesisId]
   );
   assert.deepEqual(project.agents.at(-1)?.nextAgentIds, [analysisId]);
-  assert.match(calls[0].prompt, /Les cycles sont autorisés/);
+  assert.match(calls[0].prompt, /Cycles are allowed/);
 });
 
 test("démarre un cycle par son entrée puis accepte l'arête de retour", async () => {
@@ -515,9 +515,9 @@ test("réserve l'orchestration des agents suivants à Cortex", async () => {
 
   await useCase.runAgent("project-id", { agentId: project.agents[0].id });
 
-  assert.match(calls[0].prompt, /Cortex orchestre exclusivement le workflow/);
-  assert.match(calls[0].prompt, /ne délègue aucune tâche à un sous-agent/i);
-  assert.match(calls[0].prompt, /retourne les éléments à leur transmettre/);
+  assert.match(calls[0].prompt, /Cortex exclusively orchestrates the workflow/);
+  assert.match(calls[0].prompt, /do not launch, create, or delegate any task/i);
+  assert.match(calls[0].prompt, /return the elements to pass to them/);
   assert.match(
     calls[0].prompt,
     /Project workflow instructions for routing decisions/
@@ -583,7 +583,7 @@ test("transmet un résultat uniquement aux branches sélectionnées", async () =
         selectedItemIndexes: []
       }]
     }),
-    /n'a sélectionné la branche/
+    /No previous agent selected/
   );
   await useCase.runAgent("project-id", {
     agentId: selectedAgent.id,
@@ -936,7 +936,7 @@ test("attend toutes les branches sélectionnées avant la convergence", async ()
       agentId: synthesisAgent.id,
       upstreamAgentResults: []
     }),
-    /Tous les agents prérequis/
+    /All prerequisite agents/
   );
 
   await useCase.runAgent("project-id", { agentId: analysisAgent.id });
@@ -958,7 +958,7 @@ test("attend toutes les branches sélectionnées avant la convergence", async ()
         selectedItemIndexes: []
       }]
     }),
-    /Tous les agents prérequis/
+    /All prerequisite agents/
   );
 
   await useCase.runAgent("project-id", {
@@ -1184,7 +1184,7 @@ test("refuse de réinitialiser un workflow pendant son exécution", async () => 
 
   assert.throws(
     () => useCase.resetWorkflow("project-id"),
-    /pendant une exécution/
+    /cannot be reset while an agent is running/
   );
 
   resolveExecution?.({

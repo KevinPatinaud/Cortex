@@ -4,28 +4,28 @@ import type { ErrorMappingOptions } from "./HttpErrorMapper.ts";
 export const projectErrorMappings = {
   create: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible de créer le projet.",
-    logMessage: "Impossible de créer le projet :"
+    fallbackMessage: "Unable to create the project.",
+    logMessage: "Unable to create the project:"
   },
   save: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible d'enregistrer le répertoire.",
-    logMessage: "Impossible d'enregistrer le répertoire :"
+    fallbackMessage: "Unable to save the directory.",
+    logMessage: "Unable to save the directory:"
   },
   list: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible de lire les répertoires enregistrés.",
-    logMessage: "Impossible de lire les répertoires enregistrés :"
+    fallbackMessage: "Unable to read the saved directories.",
+    logMessage: "Unable to read the saved directories:"
   },
   delete: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible de supprimer le projet.",
-    logMessage: "Impossible de supprimer le projet :"
+    fallbackMessage: "Unable to delete the project.",
+    logMessage: "Unable to delete the project:"
   },
   selectDirectory: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible d'ouvrir le sélecteur de répertoire.",
-    logMessage: "Impossible d'ouvrir le sélecteur de répertoire :"
+    fallbackMessage: "Unable to open the directory picker.",
+    logMessage: "Unable to open the directory picker:"
   }
 } satisfies Record<string, ErrorMappingOptions>;
 
@@ -49,7 +49,7 @@ export function toProjectSavedResponse(
   projects: ProjectOutput[]
 ): ProjectMutationResponse {
   return {
-    message: "Répertoire enregistré.",
+    message: "Directory saved.",
     projects
   };
 }
@@ -58,7 +58,7 @@ export function toProjectDeletedResponse(
   projects: ProjectOutput[]
 ): ProjectMutationResponse {
   return {
-    message: "Projet supprimé.",
+    message: "Project deleted.",
     projects
   };
 }

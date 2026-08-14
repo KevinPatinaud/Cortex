@@ -31,6 +31,14 @@ export function toHttpError(
     return toExpectedError(404, error.message);
   }
 
+  if (isExpressBodyError(error, "entity.parse.failed", 400)) {
+    return toExpectedError(400, "The JSON request body is invalid.");
+  }
+
+  if (isExpressBodyError(error, "entity.too.large", 413)) {
+    return toExpectedError(413, "The request body exceeds the allowed size.");
+  }
+
   const message = options.exposeUnexpectedError && error instanceof Error
     ? error.message
     : options.fallbackMessage;
@@ -40,6 +48,19 @@ export function toHttpError(
     body: options.toFallbackBody?.(message) ?? { error: message },
     shouldLog: true
   };
+}
+
+function isExpressBodyError(
+  error: unknown,
+  type: string,
+  status: number
+): boolean {
+  return typeof error === "object" &&
+    error !== null &&
+    "type" in error &&
+    error.type === type &&
+    "status" in error &&
+    error.status === status;
 }
 
 function toExpectedError(status: number, message: string): MappedHttpError {

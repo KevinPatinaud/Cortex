@@ -24,7 +24,7 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
     asyncRoute<CreateProjectInput>(async (request, response) => {
       const result = await projectUseCase.createProject(request.body);
       response.status(201).json({
-        message: "Le projet a été créé.",
+        message: "The project was created.",
         project: result.project,
         projects: result.projects
       });

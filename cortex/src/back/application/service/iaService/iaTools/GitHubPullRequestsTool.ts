@@ -169,11 +169,11 @@ export async function getPullRequestFiles(
   pullRequestNumber: number,
   dependencies: GitHubPullRequestsDependencies = defaultDependencies
 ): Promise<GitHubPullRequestFile[]> {
-  const normalizedOwner = validateRepositoryPart(owner, "propriétaire");
-  const normalizedRepository = validateRepositoryPart(repository, "dépôt");
+  const normalizedOwner = validateRepositoryPart(owner, "owner");
+  const normalizedRepository = validateRepositoryPart(repository, "repository");
 
   if (!Number.isInteger(pullRequestNumber) || pullRequestNumber < 1) {
-    throw new Error("Le numéro de PR GitHub est invalide.");
+    throw new Error("The GitHub pull request number is invalid.");
   }
 
   const token = await dependencies.readCredential();
@@ -181,7 +181,7 @@ export async function getPullRequestFiles(
     `https://api.github.com/repos/${encodeURIComponent(normalizedOwner)}/${encodeURIComponent(normalizedRepository)}/pulls/${pullRequestNumber}/files?per_page=100`,
     token,
     dependencies,
-    `fichiers de la PR #${pullRequestNumber}`
+    `files for pull request #${pullRequestNumber}`
   );
 
   return files.map((file) => ({
@@ -201,8 +201,8 @@ export async function listOpenPullRequests(
   repository: string,
   dependencies: GitHubPullRequestsDependencies = defaultDependencies
 ): Promise<GitHubPullRequest[]> {
-  const normalizedOwner = validateRepositoryPart(owner, "propriétaire");
-  const normalizedRepository = validateRepositoryPart(repository, "dépôt");
+  const normalizedOwner = validateRepositoryPart(owner, "owner");
+  const normalizedRepository = validateRepositoryPart(repository, "repository");
   const token = await dependencies.readCredential();
   const repositoryUrl = `https://api.github.com/repos/${encodeURIComponent(normalizedOwner)}/${encodeURIComponent(normalizedRepository)}`;
   const pullRequests = await fetchGitHubCollection<GitHubPullRequestResponse>(
@@ -216,16 +216,16 @@ export async function listOpenPullRequests(
     const pullRequestUrl = `${repositoryUrl}/pulls/${pullRequest.number}`;
     const [commits, conversationComments, reviewComments, reviews] = await Promise.all([
       fetchGitHubCollection<GitHubCommitResponse>(
-        `${pullRequestUrl}/commits?per_page=100`, token, dependencies, `commits de la PR #${pullRequest.number}`
+        `${pullRequestUrl}/commits?per_page=100`, token, dependencies, `commits for pull request #${pullRequest.number}`
       ),
       fetchGitHubCollection<GitHubCommentResponse>(
-        `${repositoryUrl}/issues/${pullRequest.number}/comments?per_page=100`, token, dependencies, `commentaires de la PR #${pullRequest.number}`
+        `${repositoryUrl}/issues/${pullRequest.number}/comments?per_page=100`, token, dependencies, `comments for pull request #${pullRequest.number}`
       ),
       fetchGitHubCollection<GitHubReviewCommentResponse>(
-        `${pullRequestUrl}/comments?per_page=100`, token, dependencies, `commentaires de revue de la PR #${pullRequest.number}`
+        `${pullRequestUrl}/comments?per_page=100`, token, dependencies, `review comments for pull request #${pullRequest.number}`
       ),
       fetchGitHubCollection<GitHubReviewResponse>(
-        `${pullRequestUrl}/reviews?per_page=100`, token, dependencies, `validations de la PR #${pullRequest.number}`
+        `${pullRequestUrl}/reviews?per_page=100`, token, dependencies, `reviews for pull request #${pullRequest.number}`
       )
     ]);
 
@@ -293,7 +293,7 @@ async function fetchGitHubCollection<T>(
 
     if (!response.ok) {
       throw new Error(
-        `GitHub a refusé la récupération des ${resourceName} (${response.status} ${response.statusText}).`
+        `GitHub rejected the ${resourceName} request (${response.status} ${response.statusText}).`
       );
     }
 
@@ -347,7 +347,7 @@ function validateRepositoryPart(value: string, fieldName: string): string {
   const normalizedValue = value.trim();
 
   if (!normalizedValue || normalizedValue === "." || normalizedValue === "..") {
-    throw new Error(`Le ${fieldName} GitHub est invalide.`);
+    throw new Error(`The GitHub ${fieldName} is invalid.`);
   }
 
   return normalizedValue;
@@ -373,7 +373,7 @@ function readGitHubCredential(): Promise<string> {
     credentialProcess.on("error", reject);
     credentialProcess.on("close", (exitCode) => {
       if (exitCode !== 0) {
-        reject(new Error(stderr.trim() || "Git Credential Manager n'a renvoyé aucun identifiant."));
+        reject(new Error(stderr.trim() || "Git Credential Manager did not return any credentials."));
         return;
       }
 
@@ -391,7 +391,7 @@ function readGitHubCredential(): Promise<string> {
       const token = credential.password?.trim();
 
       if (!token) {
-        reject(new Error("Aucun identifiant GitHub n'est disponible dans Git Credential Manager."));
+        reject(new Error("No GitHub credentials are available in Git Credential Manager."));
         return;
       }
 

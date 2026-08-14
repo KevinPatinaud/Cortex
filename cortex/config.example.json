@@ -1,0 +1,9 @@
+{
+  "projects": [],
+  "agentOrders": {},
+  "agentWorkflows": {},
+  "agentConfiguration": {
+    "autopilot": true,
+    "allowAll": true
+  }
+}

@@ -154,14 +154,14 @@ export class ProjectService {
     const parentStats = await stat(parentDirectory).catch(() => null);
 
     if (!parentStats?.isDirectory()) {
-      throw new TypeError("Le dossier parent est introuvable.");
+      throw new TypeError("The parent directory could not be found.");
     }
 
     const projectDirectory = path.join(parentDirectory, options.name);
 
     if (await this.pathExists(projectDirectory)) {
       throw new TypeError(
-        "Un fichier ou un dossier porte déjà ce nom à cet emplacement."
+        "A file or directory with this name already exists at this location."
       );
     }
 
@@ -187,7 +187,7 @@ export class ProjectService {
     );
 
     if (!project) {
-      throw new Error("Le nouveau projet n'a pas pu être enregistré.");
+      throw new Error("The new project could not be saved.");
     }
 
     return { project, projects };
@@ -203,7 +203,7 @@ export class ProjectService {
     );
 
     if (!project) {
-      throw new NotFoundError("Le projet est introuvable.");
+      throw new NotFoundError("The project could not be found.");
     }
 
     const nextDirectoryPath = path.join(
@@ -218,7 +218,7 @@ export class ProjectService {
       await this.pathExists(nextDirectoryPath)
     ) {
       throw new TypeError(
-        "Un fichier ou un dossier porte dÃ©jÃ  ce nom Ã  cet emplacement."
+        "A file or directory with this name already exists at this location."
       );
     }
 
@@ -230,7 +230,7 @@ export class ProjectService {
 
     if (!await this.pathExists(configurationDirectory)) {
       throw new TypeError(
-        "Le moteur du brouillon ne correspond pas à la configuration du projet."
+        "The draft engine does not match the project configuration."
       );
     }
 
@@ -260,7 +260,7 @@ export class ProjectService {
       );
 
       if (retainedFileNames.has(fileName)) {
-        throw new TypeError("Deux agents ne peuvent pas utiliser le même fichier.");
+        throw new TypeError("Two agents cannot use the same file.");
       }
 
       retainedFileNames.add(fileName);
@@ -294,7 +294,7 @@ export class ProjectService {
 
   async saveProject(directoryPath: string): Promise<Project[]> {
     if (!directoryPath.trim()) {
-      throw new TypeError("Le chemin du répertoire est obligatoire.");
+      throw new TypeError("The directory path is required.");
     }
 
     const normalizedPath = path.normalize(directoryPath.trim());
@@ -334,7 +334,7 @@ export class ProjectService {
     const projectId = id.trim();
 
     if (!projectId) {
-      throw new TypeError("L'identifiant du projet est obligatoire.");
+      throw new TypeError("The project ID is required.");
     }
 
     const project = (await this.getProjects()).find(
@@ -342,7 +342,7 @@ export class ProjectService {
     );
 
     if (!project) {
-      throw new NotFoundError("Le projet est introuvable.");
+      throw new NotFoundError("The project could not be found.");
     }
 
     return {
@@ -391,7 +391,7 @@ export class ProjectService {
 
   async deleteProject(directoryPath: string): Promise<DeleteProjectResult> {
     if (!directoryPath.trim()) {
-      throw new TypeError("Le chemin du répertoire est obligatoire.");
+      throw new TypeError("The directory path is required.");
     }
 
     const normalizedPath = path.normalize(directoryPath.trim());
@@ -662,7 +662,7 @@ export class ProjectService {
     const expectedPrefix = `${configuration.rootDirectory}/agents/`;
 
     if (!portableId.startsWith(expectedPrefix)) {
-      throw new TypeError("L'identifiant d'un agent existant est invalide.");
+      throw new TypeError("The ID of an existing agent is invalid.");
     }
 
     const fileName = portableId.slice(expectedPrefix.length);
@@ -673,7 +673,7 @@ export class ProjectService {
       !this.isAgentFileName(fileName, configuration.extension) ||
       !currentAgentFileNames.includes(fileName)
     ) {
-      throw new TypeError("Le fichier d'un agent existant est introuvable.");
+      throw new TypeError("The file for an existing agent could not be found.");
     }
 
     return fileName;

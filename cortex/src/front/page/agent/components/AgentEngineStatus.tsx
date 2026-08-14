@@ -1,5 +1,6 @@
 import { Bot, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useTranslation } from "../../../i18n.tsx";
 import {
   getAgentConfiguration,
   getAgentStatus,
@@ -20,6 +21,7 @@ const DEFAULT_CONFIGURATION: AgentConfiguration = {
 };
 
 export function AgentEngineStatus() {
+  const { language, setLanguage, t } = useTranslation();
   const [status, setStatus] = useState<AgentStatus>(EMPTY_STATUS);
   const [configuration, setConfiguration] = useState(DEFAULT_CONFIGURATION);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,7 +49,7 @@ export function AgentEngineStatus() {
             label: null,
             error: error instanceof Error
               ? error.message
-              : "Impossible de détecter le moteur IA."
+              : t("engine.detectError")
           });
         }
       } finally {
@@ -79,7 +81,7 @@ export function AgentEngineStatus() {
     } catch (error) {
       setConfigurationError(error instanceof Error
         ? error.message
-        : "Impossible d'enregistrer la configuration des agents."
+        : t("engine.saveError")
       );
     } finally {
       setIsSaving(false);
@@ -95,16 +97,16 @@ export function AgentEngineStatus() {
           <Bot aria-hidden="true" size={18} strokeWidth={1.8} />
           <span className="agent-engine-status__content">
             <strong>
-              {isLoading ? "Détection..." : status.label || "Non configuré"}
+              {isLoading ? t("engine.detecting") : status.label || t("engine.notConfigured")}
             </strong>
-            <small>Paramètres</small>
+            <small>{t("engine.settings")}</small>
             {hasError && (
               <span className="agent-engine-status__error">{status.error}</span>
             )}
           </span>
           {isSaving && (
             <small className="agent-engine-settings__saving">
-              Enregistrement...
+              {t("engine.saving")}
             </small>
           )}
           <span className="agent-engine-status__indicator" aria-hidden="true" />
@@ -116,10 +118,24 @@ export function AgentEngineStatus() {
           />
         </summary>
         <div className="agent-engine-settings__content">
+          <label className="agent-engine-settings__language">
+            <span>
+              <strong>{t("language.label")}</strong>
+              <small>{t("language.help")}</small>
+            </span>
+            <select
+              value={language}
+              onChange={(event) => setLanguage(event.target.value as "fr" | "en")}
+              aria-label={t("language.label")}
+            >
+              <option value="fr">{t("language.fr")}</option>
+              <option value="en">{t("language.en")}</option>
+            </select>
+          </label>
           <label>
             <span>
               <strong>Autopilot</strong>
-              <small>Exécuter les tâches automatiquement</small>
+              <small>{t("engine.autopilotHelp")}</small>
             </span>
             <input
               type="checkbox"
@@ -133,7 +149,7 @@ export function AgentEngineStatus() {
           <label>
             <span>
               <strong>Allow all</strong>
-              <small>Sans sandbox ni confirmation en autopilot</small>
+              <small>{t("engine.allowAllHelp")}</small>
             </span>
             <input
               type="checkbox"

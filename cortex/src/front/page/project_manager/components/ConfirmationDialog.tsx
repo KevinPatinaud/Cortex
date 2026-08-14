@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from "react";
 import { RotateCcw, Trash2, X } from "lucide-react";
+import { useTranslation } from "../../../i18n.tsx";
 
 interface ConfirmationDialogProps {
   variant: "reset" | "delete";
@@ -26,6 +27,7 @@ export function ConfirmationDialog({
   onCancel,
   onConfirm
 }: ConfirmationDialogProps) {
+  const { t } = useTranslation();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
@@ -78,14 +80,14 @@ export function ConfirmationDialog({
             <Icon size={22} strokeWidth={1.8} />
           </span>
           <div>
-            <span className="confirmation-dialog__eyebrow">Confirmation</span>
+            <span className="confirmation-dialog__eyebrow">{t("dialog.confirmation")}</span>
             <h2 id={titleId}>{title}</h2>
           </div>
           <button
             className="confirmation-dialog__close"
             type="button"
-            aria-label="Fermer"
-            title="Fermer"
+            aria-label={t("common.close")}
+            title={t("common.close")}
             onClick={onCancel}
             disabled={isPending}
           >
@@ -96,7 +98,7 @@ export function ConfirmationDialog({
         <div className="confirmation-dialog__body">
           <p id={descriptionId}>{description}</p>
           <div className="confirmation-dialog__project">
-            <span>Projet concerné</span>
+            <span>{t("dialog.affectedProject")}</span>
             <strong>{projectName}</strong>
           </div>
           {error && (
@@ -114,7 +116,7 @@ export function ConfirmationDialog({
             onClick={onCancel}
             disabled={isPending}
           >
-            Annuler
+            {t("common.cancel")}
           </button>
           <button
             className="confirmation-dialog__confirm"

@@ -54,9 +54,9 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     options: AgentExecutionOptions = {}
   ): Promise<AgentExecutionResult> {
     const configuration = options.configuration ?? DEFAULT_AGENT_CONFIGURATION;
-    // Cortex orchestre lui-même les instances du workflow. Désactiver le
-    // multi-agent interne de Codex évite qu'une instruction métier demandant
-    // de lancer l'étape suivante consomme les threads de collaboration Codex.
+    // Cortex orchestrates workflow instances itself. Disabling Codex's
+    // internal multi-agent mode prevents a business instruction that asks to
+    // launch the next step from consuming Codex collaboration threads.
     const args = ["exec", "--disable", "multi_agent"];
 
     if (!configuration.autopilot) {
@@ -104,11 +104,11 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     const result = parseCodexJsonOutput(output, options.sessionId);
 
     if (!result.answer) {
-      throw new Error("Codex n'a renvoyé aucune réponse.");
+      throw new Error("Codex did not return a response.");
     }
 
     if (!result.sessionId) {
-      throw new Error("Codex n'a renvoyé aucun identifiant de session.");
+      throw new Error("Codex did not return a session ID.");
     }
 
     return result;
@@ -149,7 +149,7 @@ function parseCodexJsonOutput(
         }
       }
     } catch {
-      // Ignore les éventuelles lignes non JSON de la sortie CLI.
+      // Ignore any non-JSON lines in the CLI output.
     }
   }
 

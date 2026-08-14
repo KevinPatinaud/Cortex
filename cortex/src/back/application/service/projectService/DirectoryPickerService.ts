@@ -132,15 +132,15 @@ namespace Cortex.Windows
                     {
                         new FilterSpec
                         {
-                            Name = "Fichiers d'instructions (AGENTS.md, CLAUDE.md)",
+                            Name = "Instruction files (AGENTS.md, CLAUDE.md)",
                             Spec = "AGENTS.md;CLAUDE.md"
                         }
                     }
                 );
                 dialog.SetFileTypeIndex(1);
-                dialog.SetTitle("Sélectionnez le fichier d'instructions du projet");
-                dialog.SetOkButtonLabel("Sélectionner ce fichier");
-                dialog.SetFileNameLabel("Fichier :");
+                dialog.SetTitle("Select the project instruction file");
+                dialog.SetOkButtonLabel("Select this file");
+                dialog.SetFileNameLabel("File:");
 
                 int result = dialog.Show(IntPtr.Zero);
 
@@ -187,7 +187,7 @@ if ($null -ne $selectedFile) {
 export class DirectoryPickerService {
   async selectProjectDirectoryFromInstructionsFile(): Promise<string | null> {
     if (process.platform !== "win32") {
-      throw new Error("Le sélecteur natif est disponible uniquement sous Windows.");
+      throw new Error("The native file picker is available only on Windows.");
     }
 
     const { stdout } = await execFileAsync(
@@ -209,7 +209,7 @@ export class DirectoryPickerService {
 
     if (selectedFileName !== "AGENTS.MD" && selectedFileName !== "CLAUDE.MD") {
       throw new Error(
-        "Le fichier sélectionné doit s'appeler AGENTS.md ou CLAUDE.md."
+        "The selected file must be named AGENTS.md or CLAUDE.md."
       );
     }
 

@@ -26,8 +26,8 @@ export abstract class CliAgentProvider {
         resolve(stdout.trim());
       });
 
-      // Les CLI détectent sinon un stdin pipe et attendent indéfiniment une
-      // entrée supplémentaire, même lorsque le prompt est passé en argument.
+      // Otherwise, CLIs detect piped stdin and wait indefinitely for more
+      // input, even when the prompt is passed as an argument.
       child.stdin?.end();
     });
   }

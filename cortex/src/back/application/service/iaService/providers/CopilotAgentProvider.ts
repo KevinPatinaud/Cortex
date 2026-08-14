@@ -52,7 +52,7 @@ export class CopilotAgentProvider implements AgentProvider {
           ? approveAll
           : () => ({
               kind: "reject",
-              feedback: "La configuration globale n'autorise pas cette action."
+              feedback: "The global configuration does not allow this action."
             }),
         tools: this.toolRegistry.resolve([GITHUB_PULL_REQUESTS_CAPABILITY])
       };
@@ -79,7 +79,7 @@ export class CopilotAgentProvider implements AgentProvider {
       const answer = result?.data.content;
 
       if (!answer) {
-        throw new Error("Copilot n'a renvoyé aucune réponse.");
+        throw new Error("Copilot did not return a response.");
       }
 
       return {
@@ -96,7 +96,7 @@ export class CopilotAgentProvider implements AgentProvider {
     return Promise.race([
       promise,
       new Promise<never>((_resolve, reject) => {
-        setTimeout(() => reject(new Error("Le moteur Copilot n'a pas répondu à temps.")), timeout);
+        setTimeout(() => reject(new Error("The Copilot engine timed out.")), timeout);
       })
     ]);
   }

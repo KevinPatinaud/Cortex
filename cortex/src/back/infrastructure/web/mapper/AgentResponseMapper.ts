@@ -8,8 +8,8 @@ import type { ErrorMappingOptions } from "./HttpErrorMapper.ts";
 export const agentErrorMappings = {
   status: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible de détecter le moteur IA.",
-    logMessage: "Impossible de détecter le moteur IA :",
+    fallbackMessage: "Unable to detect the AI engine.",
+    logMessage: "Unable to detect the AI engine:",
     toFallbackBody: (message: string) => ({
       engine: null,
       label: null,
@@ -18,34 +18,34 @@ export const agentErrorMappings = {
   },
   getConfiguration: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible de charger la configuration des agents.",
-    logMessage: "Impossible de charger la configuration des agents :"
+    fallbackMessage: "Unable to load the agent configuration.",
+    logMessage: "Unable to load the agent configuration:"
   },
   saveConfiguration: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible d'enregistrer la configuration des agents.",
-    logMessage: "Impossible d'enregistrer la configuration des agents :"
+    fallbackMessage: "Unable to save the agent configuration.",
+    logMessage: "Unable to save the agent configuration:"
   },
   loadProject: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible de charger le projet.",
-    logMessage: "Impossible de charger le projet :"
+    fallbackMessage: "Unable to load the project.",
+    logMessage: "Unable to load the project:"
   },
   saveProject: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible d'enregistrer le projet.",
-    logMessage: "Impossible d'enregistrer le projet :"
+    fallbackMessage: "Unable to save the project.",
+    logMessage: "Unable to save the project:"
   },
   runAgent: {
     fallbackStatus: 503,
-    fallbackMessage: "Impossible d'exécuter l'agent.",
-    logMessage: "Impossible d'exécuter l'agent :",
+    fallbackMessage: "Unable to run the agent.",
+    logMessage: "Unable to run the agent:",
     exposeUnexpectedError: true
   },
   resetWorkflow: {
     fallbackStatus: 500,
-    fallbackMessage: "Impossible de réinitialiser le workflow.",
-    logMessage: "Impossible de réinitialiser le workflow :"
+    fallbackMessage: "Unable to reset the workflow.",
+    logMessage: "Unable to reset the workflow:"
   }
 } satisfies Record<string, ErrorMappingOptions>;
 

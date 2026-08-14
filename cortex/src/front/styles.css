@@ -3213,6 +3213,23 @@ dialog input {
   }
 }
 
+.agent-engine-settings__language select {
+  min-width: 6.4rem;
+  padding: 0.34rem 1.7rem 0.34rem 0.5rem;
+  border: 1px solid rgb(111 137 170 / 42%);
+  border-radius: 0.45rem;
+  background: #102641;
+  color: #dceaff;
+  font: inherit;
+  font-size: 0.65rem;
+  cursor: pointer;
+}
+
+.agent-engine-settings__language select:focus-visible {
+  outline: 2px solid #5f9ff5;
+  outline-offset: 2px;
+}
+
 @media (max-width: 700px) {
   .project-sidebar {
     position: sticky;

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronDown, FolderInput, Plus } from "lucide-react";
+import { useTranslation } from "../../../i18n.tsx";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
 import {
   getActualLoadedAgentProject,
@@ -40,8 +41,8 @@ interface ProjectConfirmation {
   project: Project;
 }
 
-function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Une erreur inattendue est survenue.";
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }
 
 function getProjectName(project: Project): string {
@@ -56,6 +57,7 @@ export function ProjectDirectoryManager({
   onProjectLoaded,
   onProjectCleared
 }: ProjectDirectoryManagerProps) {
+  const { t } = useTranslation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
@@ -108,7 +110,7 @@ export function ProjectDirectoryManager({
         }
       } catch (requestError) {
         if (isMounted) {
-          setError(getErrorMessage(requestError));
+          setError(getErrorMessage(requestError, t("common.unexpectedError")));
         }
       } finally {
         if (isMounted) {
@@ -135,10 +137,10 @@ export function ProjectDirectoryManager({
       if (selectedDirectoryPath) {
         const result = await saveProjectDirectory(selectedDirectoryPath);
         setProjects(result.projects);
-        setSaveMessage("Le projet a été ajouté depuis son fichier d'instructions.");
+        setSaveMessage(t("project.imported"));
       }
     } catch (requestError) {
-      setError(getErrorMessage(requestError));
+      setError(getErrorMessage(requestError, t("common.unexpectedError")));
     } finally {
       setIsSelecting(false);
     }
@@ -152,7 +154,7 @@ export function ProjectDirectoryManager({
     try {
       const result = await deleteProjectDirectory(project.directoryPath);
       setProjects(result.projects);
-      setSaveMessage("Le projet a été supprimé.");
+      setSaveMessage(t("project.deleted"));
 
       if (selectedProjectId === project.id) {
         setSelectedProjectId(null);
@@ -161,7 +163,7 @@ export function ProjectDirectoryManager({
 
       return true;
     } catch (requestError) {
-      setError(getErrorMessage(requestError));
+      setError(getErrorMessage(requestError, t("common.unexpectedError")));
       return false;
     } finally {
       setDeletingProjectId(null);
@@ -179,10 +181,10 @@ export function ProjectDirectoryManager({
       setSelectedProjectId(project.id);
       setIsProjectMenuOpen(false);
       onProjectLoaded(project, content);
-      setSaveMessage("Les fichiers du projet ont été rechargés.");
+      setSaveMessage(t("project.reloaded"));
       return true;
     } catch (requestError) {
-      setError(getErrorMessage(requestError));
+      setError(getErrorMessage(requestError, t("common.unexpectedError")));
       return false;
     } finally {
       setResettingProjectId(null);
@@ -223,7 +225,7 @@ export function ProjectDirectoryManager({
       setIsProjectMenuOpen(false);
       onProjectLoaded(project, content);
     } catch (requestError) {
-      setError(getErrorMessage(requestError));
+      setError(getErrorMessage(requestError, t("common.unexpectedError")));
     } finally {
       setLoadingProjectId(null);
     }
@@ -243,11 +245,11 @@ export function ProjectDirectoryManager({
       setSelectedProjectId(result.project.id);
       setIsProjectMenuOpen(false);
       setIsCreationDialogOpen(false);
-      setSaveMessage("Le projet est prêt. Créez maintenant votre premier agent.");
+      setSaveMessage(t("project.created"));
       onProjectLoaded(result.project, content, true);
       return { project: result.project, content };
     } catch (requestError) {
-      setError(getErrorMessage(requestError));
+      setError(getErrorMessage(requestError, t("common.unexpectedError")));
       return null;
     } finally {
       setIsCreating(false);
@@ -265,14 +267,14 @@ export function ProjectDirectoryManager({
         className={`project-sidebar${
           isSidebarExpanded ? " project-sidebar--expanded" : ""
         }`}
-        aria-label="Gestion des projets"
+        aria-label={t("sidebar.aria")}
       >
         <header className="project-sidebar__header">
-          <p className="project-sidebar__eyebrow">Espace de travail</p>
+          <p className="project-sidebar__eyebrow">{t("sidebar.workspace")}</p>
           <div className="project-sidebar__title-row">
-            <h2>Projets</h2>
+            <h2>{t("sidebar.projects")}</h2>
             <div className="project-sidebar__title-actions">
-              <span className="project-sidebar__count" aria-label={`${projects.length} projets`}>
+              <span className="project-sidebar__count" aria-label={t("sidebar.count", { count: projects.length })}>
                 {projects.length}
               </span>
               <button
@@ -281,19 +283,19 @@ export function ProjectDirectoryManager({
                 aria-controls="project-sidebar-panel"
                 aria-expanded={isSidebarExpanded}
                 aria-label={isSidebarExpanded
-                  ? "Masquer la liste des projets"
-                  : "Afficher la liste des projets"
+                  ? t("sidebar.hideList")
+                  : t("sidebar.showList")
                 }
                 onClick={() => setIsProjectMenuOpen((isOpen) => !isOpen)}
               >
-                <span>{isSidebarExpanded ? "Masquer" : "Changer"}</span>
+                <span>{isSidebarExpanded ? t("sidebar.hide") : t("sidebar.change")}</span>
                 <ChevronDown aria-hidden="true" size={17} />
               </button>
             </div>
           </div>
           {selectedProject && (
             <p className="project-sidebar__current-project">
-              {isEditing ? "Édition en cours" : "Projet actif"}
+              {isEditing ? t("sidebar.editing") : t("sidebar.activeProject")}
               <strong>{getProjectName(selectedProject)}</strong>
             </p>
           )}
@@ -333,7 +335,7 @@ export function ProjectDirectoryManager({
             disabled={isSelecting || isCreating || isEditing}
           >
             <Plus aria-hidden="true" size={18} />
-            Nouveau projet
+            {t("sidebar.newProject")}
           </button>
           <button
             className="project-sidebar__import-button"
@@ -342,7 +344,7 @@ export function ProjectDirectoryManager({
             disabled={isSelecting || isCreating || isEditing}
           >
             <FolderInput aria-hidden="true" size={16} />
-            {isSelecting ? "Ouverture..." : "Importer un projet existant"}
+            {isSelecting ? t("sidebar.opening") : t("sidebar.import")}
           </button>
           <AgentEngineStatus />
         </footer>
@@ -368,11 +370,11 @@ export function ProjectDirectoryManager({
       {confirmation?.action === "reset" && (
         <ConfirmationDialog
           variant="reset"
-          title="Réinitialiser le workflow ?"
-          description="Vous vous apprêtez à réinitialiser le workflow suivant :"
+          title={t("project.resetTitle")}
+          description={t("project.resetDescription")}
           projectName={getProjectName(confirmation.project)}
-          confirmLabel="Réinitialiser"
-          pendingLabel="Réinitialisation..."
+          confirmLabel={t("project.reset")}
+          pendingLabel={t("project.resetting")}
           isPending={resettingProjectId === confirmation.project.id}
           error={error || undefined}
           onCancel={() => {
@@ -386,11 +388,11 @@ export function ProjectDirectoryManager({
       {confirmation?.action === "delete" && (
         <ConfirmationDialog
           variant="delete"
-          title="Supprimer ce projet ?"
-          description="Le projet sera retiré de Cortex. Les fichiers resteront présents sur le disque et ne seront pas supprimés."
+          title={t("project.deleteTitle")}
+          description={t("project.deleteDescription")}
           projectName={getProjectName(confirmation.project)}
-          confirmLabel="Supprimer"
-          pendingLabel="Suppression..."
+          confirmLabel={t("common.delete")}
+          pendingLabel={t("project.deleting")}
           isPending={deletingProjectId === confirmation.project.id}
           error={error || undefined}
           onCancel={() => {

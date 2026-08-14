@@ -28,7 +28,7 @@ export class AgentToolRegistry {
         const tool = factory();
 
         if (toolNames.has(tool.name)) {
-          throw new Error(`L'outil d'agent ${tool.name} est enregistré plusieurs fois.`);
+          throw new Error(`Agent tool ${tool.name} is registered more than once.`);
         }
 
         toolNames.add(tool.name);

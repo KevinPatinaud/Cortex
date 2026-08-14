@@ -1,6 +1,4 @@
-interface ApiErrorResponse {
-  error?: string;
-}
+import { requestJson } from "./apiClient.ts";
 
 export interface Project {
   id: string;
@@ -37,80 +35,44 @@ interface ProjectsResponse {
 }
 
 export async function getSavedProjects(): Promise<Project[]> {
-  const response = await fetch("/api/projects");
-  const data = await response.json() as ProjectsResponse & ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(data.error || "Impossible de charger les projets.");
-  }
-
+  const data = await requestJson<ProjectsResponse>("/api/projects");
   return data.projects;
 }
 
-export async function createProject(
+export function createProject(
   input: CreateProjectInput
 ): Promise<CreateProjectResponse> {
-  const response = await fetch("/api/projects/create", {
+  return requestJson("/api/projects/create", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input)
   });
-  const data = await response.json() as CreateProjectResponse & ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(data.error || "Impossible de créer le projet.");
-  }
-
-  return data;
 }
 
-export async function saveProjectDirectory(
+export function saveProjectDirectory(
   directoryPath: string
 ): Promise<SaveProjectResponse> {
-  const response = await fetch("/api/projects/save", {
+  return requestJson("/api/projects/save", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ directoryPath })
   });
-  const data = await response.json() as SaveProjectResponse & ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(data.error || "Impossible d'enregistrer le répertoire.");
-  }
-
-  return data;
 }
 
-export async function deleteProjectDirectory(
+export function deleteProjectDirectory(
   directoryPath: string
 ): Promise<DeleteProjectResponse> {
-  const response = await fetch("/api/projects", {
+  return requestJson("/api/projects", {
     method: "DELETE",
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ directoryPath })
   });
-  const data = await response.json() as DeleteProjectResponse & ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(data.error || "Impossible de supprimer le projet.");
-  }
-
-  return data;
 }
 
 export async function selectProjectInstructionsFile(): Promise<string | null> {
-  const response = await fetch("/api/projects/select-instructions-file", {
-    method: "POST"
-  });
-  const data = await response.json() as DirectorySelectionResponse & ApiErrorResponse;
-
-  if (!response.ok) {
-    throw new Error(data.error || "Impossible d'ouvrir le sélecteur de fichier.");
-  }
-
+  const data = await requestJson<DirectorySelectionResponse>(
+    "/api/projects/select-instructions-file",
+    { method: "POST" }
+  );
   return data.directoryPath;
 }

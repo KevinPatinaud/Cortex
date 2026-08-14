@@ -57,7 +57,7 @@ export class ProjectUseCase {
     const projectId = id.trim();
 
     if (!projectId) {
-      throw new ValidationError("L'identifiant du projet est obligatoire.");
+      throw new ValidationError("The project ID is required.");
     }
 
     return this.projectService.getProjectContent(projectId);
@@ -72,11 +72,11 @@ export class ProjectUseCase {
   createProject(input: CreateProjectInput | null | undefined): Promise<CreateProjectResult> {
     const parentDirectory = this.getRequiredString(
       input?.parentDirectory,
-      "Le dossier parent est obligatoire."
+      "The parent directory is required."
     );
     const name = this.getRequiredString(
       input?.name,
-      "Le nom du projet est obligatoire."
+      "The project name is required."
     );
     const engine = this.getAgentEngine(input?.engine);
     const instructions = typeof input?.instructions === "string"
@@ -89,7 +89,7 @@ export class ProjectUseCase {
       /[<>:"/\\|?*\u0000-\u001F]/.test(name)
     ) {
       throw new ValidationError(
-        "Le nom du projet contient des caractères non autorisés."
+        "The project name contains invalid characters."
       );
     }
 
@@ -113,18 +113,18 @@ export class ProjectUseCase {
   ): Promise<Project> {
     const normalizedProjectId = this.getRequiredString(
       projectId,
-      "L'identifiant du projet est obligatoire."
+      "The project ID is required."
     );
     const engine = this.getAgentEngine(input?.engine);
     const name = this.getProjectName(input?.name);
 
     if (typeof input?.instructions !== "string") {
-      throw new ValidationError("Les instructions du projet sont invalides.");
+      throw new ValidationError("The project instructions are invalid.");
     }
 
     if (!Array.isArray(input.agents) || input.agents.length > 50) {
       throw new ValidationError(
-        "La liste des agents est invalide ou dépasse la limite de 50 agents."
+        "The agent list is invalid or exceeds the 50-agent limit."
       );
     }
 
@@ -136,7 +136,7 @@ export class ProjectUseCase {
       .filter((id): id is string => Boolean(id));
 
     if (new Set(existingIds).size !== existingIds.length) {
-      throw new ValidationError("Un même agent est présent plusieurs fois.");
+      throw new ValidationError("The same agent appears more than once.");
     }
 
     const draft: EditableAgentProject = {
@@ -174,7 +174,7 @@ export class ProjectUseCase {
     );
 
     if (!result.deleted) {
-      throw new NotFoundError("Le projet est introuvable.");
+      throw new NotFoundError("The project could not be found.");
     }
 
     return result.projects;
@@ -191,7 +191,7 @@ export class ProjectUseCase {
 
     if (!normalizedInput) {
       throw new ValidationError(
-        "Le chemin du répertoire est obligatoire."
+        "The directory path is required."
       );
     }
 
@@ -211,7 +211,7 @@ export class ProjectUseCase {
   private getProjectName(value: unknown): string {
     const name = this.getRequiredString(
       value,
-      "Le nom du projet est obligatoire."
+      "The project name is required."
     );
 
     if (
@@ -220,7 +220,7 @@ export class ProjectUseCase {
       /[<>:"/\\|?*\u0000-\u001F]/.test(name)
     ) {
       throw new ValidationError(
-        "Le nom du projet contient des caractÃ¨res non autorisÃ©s."
+        "The project name contains invalid characters."
       );
     }
 
@@ -229,7 +229,7 @@ export class ProjectUseCase {
 
   private getAgentEngine(value: unknown): ProjectAgentEngine {
     if (value !== "codex" && value !== "claude" && value !== "copilot") {
-      throw new ValidationError("Le moteur d'agents sélectionné est invalide.");
+      throw new ValidationError("The selected agent engine is invalid.");
     }
 
     return value;
@@ -240,17 +240,17 @@ export class ProjectUseCase {
     index: number
   ): EditableAgentProject["agents"][number] {
     if (typeof input !== "object" || input === null || Array.isArray(input)) {
-      throw new ValidationError(`L'agent ${index + 1} est invalide.`);
+      throw new ValidationError(`Agent ${index + 1} is invalid.`);
     }
 
     const agent = input as EditableProjectAgentInput;
     const name = this.getRequiredString(
       agent.name,
-      `Le nom de l'agent ${index + 1} est obligatoire.`
+      `The name of agent ${index + 1} is required.`
     );
     const prompt = this.getRequiredString(
       agent.prompt,
-      `Les instructions de l'agent « ${name} » sont obligatoires.`
+      `Instructions for agent “${name}” are required.`
     );
     const readOptionalString = (value: unknown): string | undefined => {
       if (value === undefined || value === null || value === "") {
@@ -258,7 +258,7 @@ export class ProjectUseCase {
       }
 
       if (typeof value !== "string") {
-        throw new ValidationError(`La configuration de l'agent « ${name} » est invalide.`);
+        throw new ValidationError(`The configuration for agent “${name}” is invalid.`);
       }
 
       return value.trim() || undefined;

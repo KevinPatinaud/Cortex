@@ -40,7 +40,7 @@ export class AgentService {
       return {
         engine: null,
         label: null,
-        error: "Aucun moteur IA configuré. Installez et connectez Codex, Claude ou Copilot."
+        error: "No AI engine is configured. Install and connect Codex, Claude, or Copilot."
       };
     }
 
@@ -62,7 +62,7 @@ export class AgentService {
 
     if (!provider || !(await provider.isAvailable())) {
       throw new Error(
-        `Le moteur ${engine} requis par cet agent n'est pas disponible.`
+        `The ${engine} engine required by this agent is unavailable.`
       );
     }
 

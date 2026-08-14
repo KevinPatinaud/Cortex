@@ -1,0 +1,16 @@
+node_modules/
+dist/
+
+# Configuration locale et secrets
+config.json
+.env
+.env.*
+!.env.example
+
+# Sorties locales
+coverage/
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

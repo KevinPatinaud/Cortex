@@ -27,6 +27,7 @@ import {
   getWorkflowEdgeKey,
   getWorkflowFeedbackEdgeKeys
 } from "../../../../shared/AgentWorkflowGraph.ts";
+import { useTranslation, type Translate } from "../../../i18n.tsx";
 
 interface AgentProjectWorkspaceProps {
   project: Project | null;
@@ -96,7 +97,7 @@ function saveHandoffPreferences(
       ))
     );
   } catch {
-    // Le workflow reste utilisable lorsque le stockage navigateur est indisponible.
+    // The workflow remains usable when browser storage is unavailable.
   }
 }
 
@@ -105,10 +106,10 @@ function getProjectName(directoryPath: string): string {
   return pathParts.at(-1) || directoryPath;
 }
 
-function getErrorMessage(error: unknown): string {
+function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error
     ? error.message
-    : "Une erreur inattendue est survenue.";
+    : fallback;
 }
 
 function MarkdownContent({ content }: { content: string }) {
@@ -148,6 +149,7 @@ function ConversationMessageContent({
   onSelectedItemIndexesChange?: (indexes: number[]) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation();
   if (message.role === "user") {
     return <pre>{message.content}</pre>;
   }
@@ -194,7 +196,7 @@ function ConversationMessageContent({
       ) : response.items.length > 1 ? (
         <ul
           className="agent-card__conversation-response-list"
-          aria-label="Réponses proposées"
+          aria-label={t("agent.responsesAria")}
         >
           {response.items.map((item, itemIndex) => {
             const isSelected = selectedItemIndexes.includes(
@@ -222,7 +224,7 @@ function ConversationMessageContent({
         </ul>
       ) : (
         <p className="agent-card__conversation-response">
-          Aucune réponse proposée.
+          {t("agent.noResponse")}
         </p>
       )}
       {response.notes && (
@@ -232,7 +234,7 @@ function ConversationMessageContent({
       )}
       {response.nextAgentIds !== null && (
         <div className="agent-card__conversation-routing">
-          <span>Branche sélectionnée</span>
+          <span>{t("agent.selectedBranch")}</span>
           {response.nextAgentIds.length > 0 ? (
             <ul>
               {response.nextAgentIds.map((agentId) => (
@@ -242,7 +244,7 @@ function ConversationMessageContent({
               ))}
             </ul>
           ) : (
-            <strong>Fin du workflow</strong>
+            <strong>{t("agent.workflowEnd")}</strong>
           )}
         </div>
       )}
@@ -336,7 +338,8 @@ function getPrerequisiteMessage(
   targetAgentId: string,
   states: AgentResultStates,
   workflowAgents: AgentDefinition[],
-  feedbackEdgeKeys: ReadonlySet<string>
+  feedbackEdgeKeys: ReadonlySet<string>,
+  t: Translate
 ): string | null {
   if (upstreamAgents.length === 0) {
     return null;
@@ -364,10 +367,10 @@ function getPrerequisiteMessage(
 
   if (pendingAgents.length > 0) {
     return triggerUpstreamAgents.length === 1
-      ? `Exécutez d'abord « ${pendingAgents[0].name} ».`
-      : `Attendez la fin de tous les agents précédents : ${pendingAgents
-        .map((agent) => `« ${agent.name} »`)
-        .join(" et ")}.`;
+      ? t("prerequisite.runFirst", { name: pendingAgents[0].name })
+      : t("prerequisite.waitAll", {
+        names: pendingAgents.map((agent) => `“${agent.name}”`).join(", ")
+      });
   }
 
   const applicableTriggerAgents = getApplicableUpstreamAgents(
@@ -377,7 +380,7 @@ function getPrerequisiteMessage(
   );
 
   if (applicableTriggerAgents.length === 0) {
-    return "Cette branche n'a pas été sélectionnée par les agents précédents.";
+    return t("prerequisite.notSelected");
   }
 
   const applicableUpstreamAgents = getApplicableUpstreamAgents(
@@ -406,8 +409,8 @@ function getPrerequisiteMessage(
         candidate.items.length > 1
     )!;
     return response.isMultiSelectionAllowed === true
-      ? `Sélectionnez un ou plusieurs résultats de « ${agentAwaitingSelection.name} ».`
-      : `Sélectionnez un résultat de « ${agentAwaitingSelection.name} ».`;
+      ? t("prerequisite.selectMany", { name: agentAwaitingSelection.name })
+      : t("prerequisite.selectOne", { name: agentAwaitingSelection.name });
   }
 
   if (applicableUpstreamAgents.some(
@@ -416,10 +419,10 @@ function getPrerequisiteMessage(
         response.items.length === 0
     )
   )) {
-    return "Aucun agent précédent exécuté n'a produit de résultat transmissible.";
+    return t("prerequisite.noResult");
   }
 
-  return "Les résultats de tous les agents précédents ne sont pas encore prêts.";
+  return t("prerequisite.notReady");
 }
 
 function getAgentProgressState(
@@ -716,7 +719,8 @@ function HandoffToggle({
   variant = "agent",
   onChange
 }: HandoffToggleProps) {
-  const stateLabel = checked ? "Automatique" : "Manuel";
+  const { t } = useTranslation();
+  const stateLabel = checked ? t("handoff.automatic") : t("handoff.manual");
 
   return (
     <button
@@ -727,7 +731,7 @@ function HandoffToggle({
       role="switch"
       aria-checked={checked}
       aria-label={`${stateLabel}. ${description}`}
-      title={`Mode actuel : ${stateLabel}. ${description}`}
+      title={t("handoff.current", { state: stateLabel, description })}
       onClick={() => onChange(!checked)}
     >
       <span className="handoff-toggle__label">
@@ -773,6 +777,7 @@ function AgentThreadConversation({
   selectedItemIndexes,
   onSelectedItemIndexesChange
 }: AgentThreadConversationProps) {
+  const { t } = useTranslation();
   const conversationRef = useRef<HTMLDivElement>(null);
   const { thread, lastAgentMessageIndex, itemIndexOffset } = presentation;
 
@@ -790,9 +795,9 @@ function AgentThreadConversation({
   return (
     <section
       className="agent-card__conversation"
-      aria-label={`Conversation avec ${agentName}`}
+      aria-label={t("agent.conversationAria", { name: agentName })}
     >
-      <span className="agent-card__conversation-title">Conversation</span>
+      <span className="agent-card__conversation-title">{t("agent.conversation")}</span>
       <div
         className="agent-card__conversation-messages"
         ref={conversationRef}
@@ -805,7 +810,7 @@ function AgentThreadConversation({
             className={`agent-card__conversation-message agent-card__conversation-message--${message.role}`}
             key={messageIndex}
           >
-            <span>{message.role === "user" ? "Vous" : "Agent"}</span>
+            <span>{message.role === "user" ? t("agent.you") : "Agent"}</span>
             <ConversationMessageContent
               message={message}
               disabled={disabled}
@@ -847,6 +852,7 @@ function AgentInstanceCard({
   onRun,
   ...conversationProps
 }: AgentInstanceCardProps) {
+  const { t } = useTranslation();
   const additionalInstructionsId = useId();
   const threadId = conversationProps.presentation.thread.id;
   const [additionalInstructions, setAdditionalInstructions] = useState("");
@@ -872,25 +878,25 @@ function AgentInstanceCard({
     <article className="agent-instance-card">
       <header className="agent-instance-card__header">
         <span className="agent-instance-card__index">
-          Instance {String(index + 1).padStart(2, "0")}
+          {t("agent.instance", { number: String(index + 1).padStart(2, "0") })}
         </span>
         <span className="agent-instance-card__status">
-          <span aria-hidden="true" /> Session active
+          <span aria-hidden="true" /> {t("agent.activeSession")}
         </span>
       </header>
       <AgentThreadConversation
-        agentName={`${agentName}, instance ${index + 1}`}
+        agentName={t("agent.instanceName", { name: agentName, number: index + 1 })}
         disabled={disabled}
         {...conversationProps}
       />
       {!hideAdditionalInstructions && (
         <div className="agent-card__additional-instructions">
-          <label htmlFor={additionalInstructionsId}>Précisions</label>
+          <label htmlFor={additionalInstructionsId}>{t("agent.details")}</label>
           <textarea
             id={additionalInstructionsId}
             value={additionalInstructions}
             onChange={(event) => setAdditionalInstructions(event.target.value)}
-            placeholder="Ajoutez une précision pour cette instance..."
+            placeholder={t("agent.instancePlaceholder")}
             rows={4}
             disabled={isRunning || disabled}
           />
@@ -904,8 +910,8 @@ function AgentInstanceCard({
           onClick={() => void handleRun()}
           disabled={isRunning || disabled}
           title={isFrozen
-            ? "Cette instance est figée car un agent en aval a déjà été lancé."
-            : `Relancer l'instance ${index + 1}`
+            ? t("agent.frozenInstance")
+            : t("agent.rerunInstanceTitle", { number: index + 1 })
           }
         >
           {isRunning ? (
@@ -918,7 +924,7 @@ function AgentInstanceCard({
           ) : (
             <RotateCcw aria-hidden="true" size={15} strokeWidth={1.8} />
           )}
-          {isRunning ? "Exécution..." : "Relancer cette instance"}
+          {isRunning ? t("agent.running") : t("agent.rerunInstance")}
         </button>
       </div>
     </article>
@@ -943,6 +949,7 @@ function AgentCard({
   onRunEnd,
   onHandoffEnabledChange
 }: AgentCardProps) {
+  const { t } = useTranslation();
   const additionalInstructionsId = useId();
   const autoRunAttemptedRef = useRef(false);
   const [runningThreadId, setRunningThreadId] = useState<string | null>(null);
@@ -1016,7 +1023,7 @@ function AgentCard({
       onRunEnd(true);
       return true;
     } catch (requestError) {
-      setError(getErrorMessage(requestError));
+      setError(getErrorMessage(requestError, t("common.unexpectedError")));
       onRunEnd(false);
       return false;
     } finally {
@@ -1080,7 +1087,7 @@ function AgentCard({
       }${handoffEnabled ? " agent-card--handoff" : ""}`}
       aria-disabled={isDisabled || undefined}
       aria-label={isParallelRunPrepared
-        ? `${agent.name}, lancement préparé sur ${plannedThreadCount} instances parallèles`
+        ? t("agent.parallelAria", { name: agent.name, count: plannedThreadCount })
         : undefined
       }
     >
@@ -1093,8 +1100,8 @@ function AgentCard({
           <HandoffToggle
             checked={handoffEnabled}
             description={handoffEnabled
-              ? `Repasser ${agent.name} en exécution manuelle`
-              : `Lancer automatiquement ${agent.name} dès que les résultats requis sont prêts`
+              ? t("agent.manual", { name: agent.name })
+              : t("agent.auto", { name: agent.name })
             }
             onChange={(enabled) => onHandoffEnabledChange(agent.id, enabled)}
           />
@@ -1102,13 +1109,13 @@ function AgentCard({
             <dl className="agent-card__model">
               {agent.model && (
                 <div>
-                  <dt>Modèle</dt>
+                  <dt>{t("agent.model")}</dt>
                   <dd>{agent.model}</dd>
                 </div>
               )}
               {agent.reasoningEffort && (
                 <div>
-                  <dt>Raisonnement</dt>
+                  <dt>{t("agent.reasoning")}</dt>
                   <dd>{agent.reasoningEffort}</dd>
                 </div>
               )}
@@ -1119,11 +1126,11 @@ function AgentCard({
       <details className="agent-card__prompt">
         <summary>
           <span className="agent-card__prompt-description">
-            {agent.description || "Aucune description."}
+            {agent.description || t("agent.noDescription")}
           </span>
           <ChevronDown aria-hidden="true" size={15} strokeWidth={1.7} />
         </summary>
-        <pre>{agent.prompt || "Aucune instruction."}</pre>
+        <pre>{agent.prompt || t("agent.noInstruction")}</pre>
       </details>
       <div className="agent-card__run-feedback" aria-live="polite">
         {prerequisiteMessage && (
@@ -1138,16 +1145,16 @@ function AgentCard({
       {isMultithreaded ? (
         <section
           className="agent-instances-zone"
-          aria-label={`Instances de ${agent.name}`}
+          aria-label={t("agent.instancesAria", { name: agent.name })}
         >
           <header className="agent-instances-zone__header">
             <div>
               <GitBranch aria-hidden="true" size={18} strokeWidth={1.7} />
               <span>
-                Zone d'évolution · {threadPresentation.length} instances
+                {t("agent.evolutionZone", { count: threadPresentation.length })}
               </span>
             </div>
-            <p>Chaque branche possède sa propre session et peut être relancée séparément.</p>
+            <p>{t("agent.branchesHelp")}</p>
           </header>
           <div className="agent-instances-zone__track">
             {threadPresentation.map((presentation, index) => (
@@ -1189,14 +1196,14 @@ function AgentCard({
           )}
           {!handoffEnabled && (
             <div className="agent-card__additional-instructions">
-              <label htmlFor={additionalInstructionsId}>Précisions</label>
+              <label htmlFor={additionalInstructionsId}>{t("agent.details")}</label>
               <textarea
                 id={additionalInstructionsId}
                 value={additionalInstructions}
                 onChange={(event) => setAdditionalInstructions(event.target.value)}
                 placeholder={hasSession
-                  ? "Ajoutez une précision pour la prochaine relance..."
-                  : "Ajoutez une précision avant de lancer l'agent..."
+                  ? t("agent.rerunPlaceholder")
+                  : t("agent.runPlaceholder")
                 }
                 rows={4}
                 disabled={isRunning || isDisabled}
@@ -1214,10 +1221,10 @@ function AgentCard({
                 )}
                 disabled={isRunning || !canRun || isFrozen}
                 title={isFrozen
-                  ? "Cet agent est figé car un agent en aval a déjà été lancé."
+                  ? t("agent.frozen")
                   : prerequisiteMessage || (canRun
-                    ? `${hasSession ? "Relancer" : "Lancer"} ${agent.name}`
-                    : "Cet agent ne contient aucune instruction."
+                    ? t(hasSession ? "agent.rerunTitle" : "agent.runTitle", { name: agent.name })
+                    : t("agent.emptyInstruction")
                   )
                 }
               >
@@ -1236,8 +1243,8 @@ function AgentCard({
                   <Send aria-hidden="true" size={15} strokeWidth={1.8} />
                 )}
                 {isRunning
-                  ? "Exécution..."
-                  : hasSession ? "Relancer" : "Lancer"
+                  ? t("agent.running")
+                  : hasSession ? t("agent.rerun") : t("agent.run")
                 }
               </button>
             </div>
@@ -1255,6 +1262,7 @@ export function AgentProjectWorkspace({
   onContentRefresh,
   onRunStateChange
 }: AgentProjectWorkspaceProps) {
+  const { t } = useTranslation();
   const tabsId = useId();
   const instructionsTabRef = useRef<HTMLButtonElement>(null);
   const agentsTabRef = useRef<HTMLButtonElement>(null);
@@ -1382,7 +1390,7 @@ export function AgentProjectWorkspace({
           onContentRefresh(refreshedContent);
         }
       } catch {
-        // La requête de lancement affiche déjà les erreurs d'exécution.
+        // The run request already displays execution errors.
       } finally {
         isRefreshing = false;
       }
@@ -1457,7 +1465,7 @@ export function AgentProjectWorkspace({
         <p className="eyebrow">Cortex workspace</p>
         <h1>Cortex.</h1>
         <p className="intro">
-          Sélectionnez un projet dans le bandeau latéral pour afficher ses agents.
+          {t("workspace.welcome")}
         </p>
       </section>
     );
@@ -1465,9 +1473,12 @@ export function AgentProjectWorkspace({
 
   const projectId = content.projectId;
   const projectName = getProjectName(project.directoryPath);
-  const agentsTabLabel = `Workflow (${content.agents.length} agent${
-    content.agents.length > 1 ? "s" : ""
-  })`;
+  const agentsTabLabel = t("workspace.workflowTab", {
+    count: content.agents.length,
+    agents: t(content.agents.length === 1
+      ? "workspace.agentSingular"
+      : "workspace.agentPlural")
+  });
   const instructionsTabId = `${tabsId}-instructions-tab`;
   const instructionsPanelId = `${tabsId}-instructions-panel`;
   const agentsTabId = `${tabsId}-agents-tab`;
@@ -1774,7 +1785,8 @@ export function AgentProjectWorkspace({
       agent.id,
       agentResultStates,
       workflowAgents,
-      workflowFeedbackEdgeKeys
+      workflowFeedbackEdgeKeys,
+      t
     )) {
       return 1;
     }
@@ -1795,12 +1807,12 @@ export function AgentProjectWorkspace({
       <header className="agent-project__header">
         <div className="agent-project__title-row">
           <div>
-            <p className="eyebrow">Projet {content.engine}</p>
+            <p className="eyebrow">{t("workspace.project", { engine: content.engine })}</p>
             <h1>{projectName}</h1>
           </div>
         </div>
         <div className="agent-project__tabs-row">
-          <div className="agent-project__tabs" role="tablist" aria-label="Contenu du projet">
+          <div className="agent-project__tabs" role="tablist" aria-label={t("workspace.contentAria")}>
             <button
               className={`agent-project__tab${
                 activeTab === "instructions" ? " agent-project__tab--active" : ""
@@ -1815,7 +1827,7 @@ export function AgentProjectWorkspace({
               onClick={() => setActiveTab("instructions")}
               onKeyDown={handleTabKeyDown}
             >
-              Instructions projet
+              {t("workspace.instructionsTab")}
             </button>
             <button
               className={`agent-project__tab${
@@ -1839,8 +1851,8 @@ export function AgentProjectWorkspace({
               <HandoffToggle
                 checked={isGlobalHandoffEnabled}
                 description={isGlobalHandoffEnabled
-                  ? "Repasser tous les agents en exécution manuelle"
-                  : "Enchaîner automatiquement les agents dès que leurs prérequis sont remplis"
+                  ? t("workspace.manualAll")
+                  : t("workspace.autoAll")
                 }
                 variant="global"
                 onChange={handleGlobalHandoffChange}
@@ -1852,11 +1864,11 @@ export function AgentProjectWorkspace({
               onClick={onEdit}
               disabled={content.agents.some((agent) => agent.executionStatus === "running")}
               title={content.agents.some((agent) => agent.executionStatus === "running")
-                ? "L’édition sera disponible à la fin de l’exécution"
-                : "Modifier le projet et ses agents"}
+                ? t("workspace.editUnavailable")
+                : t("workspace.editTitle")}
             >
               <Pencil aria-hidden="true" size={15} />
-              Modifier le projet
+              {t("workspace.edit")}
             </button>
           </div>
         </div>
@@ -1871,15 +1883,14 @@ export function AgentProjectWorkspace({
           tabIndex={0}
         >
           <header className="project-instructions__header">
-            <span>Fichier d'instructions</span>
+            <span>{t("workspace.instructionsFile")}</span>
             <h2>{content.instructions.fileName}</h2>
           </header>
           {content.instructions.content !== null ? (
-            <pre>{content.instructions.content || "Le fichier est vide."}</pre>
+            <pre>{content.instructions.content || t("workspace.emptyFile")}</pre>
           ) : (
             <p className="project-instructions__empty">
-              Le fichier {content.instructions.fileName} est introuvable à la
-              racine du projet.
+              {t("workspace.missingFile", { name: content.instructions.fileName })}
             </p>
           )}
         </section>
@@ -1893,7 +1904,7 @@ export function AgentProjectWorkspace({
         >
           {content.agents.length === 0 ? (
             <p className="agent-project__empty">
-              Aucun agent n'est configuré dans ce projet.
+              {t("workspace.noAgents")}
             </p>
           ) : (
             <div
@@ -1985,7 +1996,7 @@ export function AgentProjectWorkspace({
                         ? " agent-project__workflow-level--lanes"
                         : ""
                     }`}
-                    aria-label={`Étape ${levelIndex + 1}`}
+                    aria-label={t("workspace.step", { number: levelIndex + 1 })}
                     key={levelIndex}
                     style={{ gridRow: levelIndex + 1 }}
                   >
@@ -2010,7 +2021,8 @@ export function AgentProjectWorkspace({
                           agent.id,
                           agentResultStates,
                           workflowAgents,
-                          workflowFeedbackEdgeKeys
+                          workflowFeedbackEdgeKeys,
+                          t
                         );
                         const applicableUpstreamAgents =
                           getApplicableUpstreamAgents(
@@ -2108,7 +2120,7 @@ export function AgentProjectWorkspace({
                               hasTerminalParallelBranch && (
                                 <>
                                   <i />
-                                  <small>Fin de la branche</small>
+                                  <small>{t("workspace.branchEnd")}</small>
                                 </>
                               )}
                           </span>

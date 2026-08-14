@@ -106,7 +106,7 @@ function parseTomlFile(file: ProjectFile): Record<string, unknown> {
     return parse(content) as Record<string, unknown>;
   } catch {
     throw new ValidationError(
-      `Le fichier TOML Codex "${file.relativePath}" est invalide.`
+      `The Codex TOML file "${file.relativePath}" is invalid.`
     );
   }
 }

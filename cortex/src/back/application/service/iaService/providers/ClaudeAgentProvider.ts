@@ -61,7 +61,7 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
     );
 
     if (!answer) {
-      throw new Error("Claude n'a renvoyé aucune réponse.");
+      throw new Error("Claude did not return a response.");
     }
 
     return {

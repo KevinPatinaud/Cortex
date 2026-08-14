@@ -13,6 +13,7 @@ import type {
   Project
 } from "../../../services/projectApi.ts";
 import type { AgentProject } from "../../../services/agentApi.ts";
+import { useTranslation } from "../../../i18n.tsx";
 
 interface ProjectCreationDialogProps {
   defaultParentDirectory: string;
@@ -43,6 +44,7 @@ export function ProjectCreationDialog({
   onCancel,
   onCreate
 }: ProjectCreationDialogProps) {
+  const { t } = useTranslation();
   const dialogRef = useRef<HTMLDialogElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const titleId = useId();
@@ -52,8 +54,8 @@ export function ProjectCreationDialog({
     defaultParentDirectory
   );
   const [engine, setEngine] = useState<CreateProjectInput["engine"]>("codex");
-  const [instructions, setInstructions] = useState(
-    "# Contexte du projet\n\nDécrivez ici les objectifs, contraintes et conventions à partager avec tous les agents."
+  const [instructions, setInstructions] = useState(() =>
+    t("creation.defaultInstructions")
   );
 
   useEffect(() => {
@@ -76,7 +78,7 @@ export function ProjectCreationDialog({
   }, []);
 
   const selectedEngine = engines.find((candidate) => candidate.id === engine)!;
-  const previewName = name.trim() || "nouveau-projet";
+  const previewName = name.trim() || t("creation.defaultName");
 
   return (
     <dialog
@@ -104,16 +106,16 @@ export function ProjectCreationDialog({
             <Sparkles size={22} />
           </span>
           <div>
-            <span className="project-creation-dialog__eyebrow">Nouveau workspace</span>
-            <h2 id={titleId}>Créer un projet Cortex</h2>
+            <span className="project-creation-dialog__eyebrow">{t("creation.eyebrow")}</span>
+            <h2 id={titleId}>{t("creation.title")}</h2>
             <p id={descriptionId}>
-              Cortex prépare la structure et les fichiers du moteur choisi.
+              {t("creation.description")}
             </p>
           </div>
           <button
             className="project-creation-dialog__close"
             type="button"
-            aria-label="Fermer"
+            aria-label={t("common.close")}
             onClick={onCancel}
             disabled={isPending}
           >
@@ -124,7 +126,7 @@ export function ProjectCreationDialog({
         <div className="project-creation-dialog__layout">
           <div className="project-creation-dialog__fields">
             <label className="editor-field">
-              <span>Nom du projet</span>
+              <span>{t("creation.projectName")}</span>
               <input
                 ref={nameInputRef}
                 value={name}
@@ -136,7 +138,7 @@ export function ProjectCreationDialog({
             </label>
 
             <label className="editor-field">
-              <span>Dossier parent</span>
+              <span>{t("creation.parentDirectory")}</span>
               <input
                 value={parentDirectory}
                 onChange={(event) => setParentDirectory(event.target.value)}
@@ -144,11 +146,11 @@ export function ProjectCreationDialog({
                 required
                 disabled={isPending}
               />
-              <small>Le dossier du projet sera créé à cet emplacement.</small>
+              <small>{t("creation.parentHelp")}</small>
             </label>
 
             <fieldset className="engine-selector" disabled={isPending}>
-              <legend>Moteur d’agents</legend>
+              <legend>{t("creation.engine")}</legend>
               <div className="engine-selector__options">
                 {engines.map((candidate) => (
                   <label
@@ -176,7 +178,7 @@ export function ProjectCreationDialog({
             </fieldset>
 
             <label className="editor-field editor-field--instructions">
-              <span>Instructions partagées</span>
+              <span>{t("creation.sharedInstructions")}</span>
               <textarea
                 value={instructions}
                 onChange={(event) => setInstructions(event.target.value)}
@@ -186,8 +188,8 @@ export function ProjectCreationDialog({
             </label>
           </div>
 
-          <aside className="project-blueprint" aria-label="Aperçu du projet">
-            <span className="project-blueprint__label">Structure générée</span>
+          <aside className="project-blueprint" aria-label={t("creation.previewAria")}>
+            <span className="project-blueprint__label">{t("creation.generatedStructure")}</span>
             <div className="project-blueprint__title">
               <Folder aria-hidden="true" size={19} />
               <strong>{previewName}</strong>
@@ -203,7 +205,7 @@ export function ProjectCreationDialog({
               </li>
             </ul>
             <p>
-              Vous pourrez créer et composer les agents dès l’ouverture du projet.
+              {t("creation.readyHelp")}
             </p>
           </aside>
         </div>
@@ -214,7 +216,7 @@ export function ProjectCreationDialog({
 
         <footer className="project-creation-dialog__actions">
           <button type="button" onClick={onCancel} disabled={isPending}>
-            Annuler
+            {t("common.cancel")}
           </button>
           <button
             className="project-creation-dialog__submit"
@@ -226,7 +228,7 @@ export function ProjectCreationDialog({
             ) : (
               <Sparkles aria-hidden="true" size={16} />
             )}
-            {isPending ? "Création..." : "Créer le projet"}
+            {isPending ? t("creation.creating") : t("creation.create")}
           </button>
         </footer>
       </form>
