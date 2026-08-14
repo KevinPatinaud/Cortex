@@ -19,7 +19,8 @@ import {
   improveAgent,
   saveAgentProject,
   type AgentProject,
-  type EditableAgentDefinition
+  type EditableAgentDefinition,
+  type ImproveProjectAgent
 } from "../../../services/agentApi.ts";
 import {
   deleteProjectDirectory,
@@ -31,6 +32,7 @@ import { ConfirmationDialog } from "../../project_manager/components/Confirmatio
 interface AgentProjectEditorProps {
   project: Project;
   content: AgentProject;
+  requiresInitialSave: boolean;
   onClose: () => void;
   onSaved: (content: AgentProject) => void;
   onDeleted: (projectId: string) => void;
@@ -47,16 +49,14 @@ interface DeletedAgent {
 
 type EditorSection = "agents" | "instructions";
 
-interface AgentContent {
-  name: string;
-  description: string;
-  prompt: string;
+interface ProjectContent {
+  instructions: string;
+  agents: ImproveProjectAgent[];
 }
 
 interface AgentImprovementPreview {
-  agentId: string;
-  original: AgentContent;
-  improved: AgentContent;
+  original: ImproveProjectAgent;
+  improved: ImproveProjectAgent;
 }
 
 const modelSuggestions = {
@@ -109,6 +109,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 export function AgentProjectEditor({
   project,
   content,
+  requiresInitialSave,
   onClose,
   onSaved,
   onDeleted
@@ -177,7 +178,7 @@ export function AgentProjectEditor({
     () => serializeDraft(projectName, instructions, agents),
     [agents, instructions, projectName]
   );
-  const isDirty = currentDraft !== initialDraft.current;
+  const isDirty = requiresInitialSave || currentDraft !== initialDraft.current;
 
   function updateSelectedAgent(changes: Partial<DraftAgent>): void {
     if (!selectedAgentId) {
@@ -246,34 +247,31 @@ export function AgentProjectEditor({
       return;
     }
 
-    const agentToImprove = selectedAgent;
+    const projectContext: ProjectContent = {
+      instructions,
+      agents: agents.map((agent) => ({
+        key: agent.clientId,
+        name: agent.name,
+        description: agent.description,
+        prompt: agent.prompt
+      }))
+    };
+    const original: ImproveProjectAgent = {
+      key: selectedAgent.clientId,
+      name: selectedAgent.name,
+      description: selectedAgent.description,
+      prompt: selectedAgent.prompt
+    };
     setIsImprovingAgent(true);
     setError("");
     setSaveMessage("");
 
     try {
       const improved = await improveAgent(content.projectId, {
-        prompt: agentToImprove.prompt,
-        name: agentToImprove.name,
-        description: agentToImprove.description,
-        projectInstructions: instructions,
-        ...(agentToImprove.model?.trim()
-          ? { model: agentToImprove.model.trim() }
-          : {}),
-        ...(agentToImprove.reasoningEffort?.trim()
-          ? { reasoningEffort: agentToImprove.reasoningEffort.trim() }
-          : {})
+        targetAgentKey: selectedAgent.clientId,
+        ...projectContext
       });
-
-      setAgentImprovement({
-        agentId: agentToImprove.clientId,
-        original: {
-          name: agentToImprove.name,
-          description: agentToImprove.description,
-          prompt: agentToImprove.prompt
-        },
-        improved
-      });
+      setAgentImprovement({ original, improved });
     } catch (requestError) {
       setError(getErrorMessage(requestError, t("editor.improveError")));
     } finally {
@@ -283,24 +281,25 @@ export function AgentProjectEditor({
 
   function applyAgentImprovement(): void {
     if (
-      !agentImprovement?.improved.name.trim() ||
+      !agentImprovement ||
+      !agentImprovement.improved.name.trim() ||
       !agentImprovement.improved.prompt.trim()
     ) {
       return;
     }
 
-    const improvement = agentImprovement;
-    setAgents((currentAgents) => currentAgents.map((agent) =>
-      agent.clientId === improvement.agentId
+    const improvement = agentImprovement.improved;
+    setAgents((currentAgents) => currentAgents.map((agent) => {
+      return agent.clientId === improvement.key
         ? {
           ...agent,
-          name: improvement.improved.name.trim(),
-          description: improvement.improved.description.trim(),
-          prompt: improvement.improved.prompt.trim()
+          name: improvement.name.trim(),
+          description: improvement.description.trim(),
+          prompt: improvement.prompt.trim()
         }
-        : agent
-    ));
-    setSelectedAgentId(improvement.agentId);
+        : agent;
+    }));
+    setSelectedAgentId(improvement.key);
     setSection("agents");
     setAgentImprovement(null);
     setSaveMessage(t("editor.improved"));
@@ -399,7 +398,7 @@ export function AgentProjectEditor({
                   setProjectName(event.target.value);
                   setSaveMessage("");
                 }}
-                disabled={isSaving}
+                disabled={isSaving || isImprovingAgent}
                 aria-label={t("creation.projectName")}
               />
             </label>
@@ -417,7 +416,7 @@ export function AgentProjectEditor({
               setError("");
               setIsDeleteDialogOpen(true);
             }}
-            disabled={isSaving || isDeleting}
+            disabled={isSaving || isDeleting || isImprovingAgent}
           >
             <Trash2 aria-hidden="true" size={16} />
             {t("editor.deleteProject")}
@@ -426,7 +425,7 @@ export function AgentProjectEditor({
             className="project-editor__exit"
             type="button"
             onClick={requestClose}
-            disabled={isSaving}
+            disabled={isSaving || isImprovingAgent}
           >
             <X aria-hidden="true" size={16} />
             {t("editor.leave")}
@@ -435,7 +434,7 @@ export function AgentProjectEditor({
             className="project-editor__save"
             type="button"
             onClick={() => void handleSave()}
-            disabled={isSaving || !isDirty}
+            disabled={isSaving || isImprovingAgent || !isDirty}
           >
             {isSaving ? (
               <LoaderCircle aria-hidden="true" className="spin" size={16} />
@@ -505,7 +504,7 @@ export function AgentProjectEditor({
               <button
                 type="button"
                 onClick={addAgent}
-                disabled={isSaving}
+                disabled={isSaving || isImprovingAgent}
               >
                 <Plus aria-hidden="true" size={16} />
                 {t("common.add")}
@@ -559,12 +558,12 @@ export function AgentProjectEditor({
                     className="agent-inspector__improve"
                     type="button"
                     onClick={() => void handleImproveAgent()}
-                    disabled={isSaving || isImprovingAgent}
+                    disabled={isSaving || isDeleting || isImprovingAgent}
                   >
                     {isImprovingAgent ? (
-                      <LoaderCircle aria-hidden="true" className="spin" size={15} />
+                      <LoaderCircle aria-hidden="true" className="spin" size={16} />
                     ) : (
-                      <Sparkles aria-hidden="true" size={15} />
+                      <Sparkles aria-hidden="true" size={16} />
                     )}
                     {isImprovingAgent
                       ? t("editor.improving")
@@ -681,7 +680,7 @@ export function AgentProjectEditor({
               }}
               rows={22}
               placeholder={t("editor.contextPlaceholder")}
-              disabled={isSaving}
+              disabled={isSaving || isImprovingAgent}
             />
           </label>
         </section>
@@ -777,55 +776,42 @@ export function AgentProjectEditor({
                 </label>
                 <label className="editor-field">
                   <span>{t("editor.mission")}</span>
-                  <textarea
-                    value={agentImprovement.original.prompt}
-                    rows={11}
-                    readOnly
-                  />
+                  <textarea value={agentImprovement.original.prompt} rows={11} readOnly />
                 </label>
               </section>
 
               <section className="agent-improvement__version agent-improvement__version--improved">
                 <h3>{t("editor.improvedAgent")}</h3>
                 <label className="editor-field">
-                  <span>{t("editor.name")}</span>
-                  <input
-                    value={agentImprovement.improved.name}
-                    onChange={(event) => setAgentImprovement({
-                      ...agentImprovement,
-                      improved: {
-                        ...agentImprovement.improved,
-                        name: event.target.value
-                      }
-                    })}
-                  />
+                    <span>{t("editor.name")}</span>
+                    <input
+                      value={agentImprovement.improved.name}
+                      onChange={(event) => setAgentImprovement({
+                        ...agentImprovement,
+                        improved: { ...agentImprovement.improved, name: event.target.value }
+                      })}
+                    />
                 </label>
                 <label className="editor-field">
-                  <span>{t("editor.shortDescription")}</span>
-                  <input
-                    value={agentImprovement.improved.description}
-                    onChange={(event) => setAgentImprovement({
-                      ...agentImprovement,
-                      improved: {
-                        ...agentImprovement.improved,
-                        description: event.target.value
-                      }
-                    })}
-                  />
+                    <span>{t("editor.shortDescription")}</span>
+                    <input
+                      value={agentImprovement.improved.description}
+                      onChange={(event) => setAgentImprovement({
+                        ...agentImprovement,
+                        improved: { ...agentImprovement.improved, description: event.target.value }
+                      })}
+                    />
                 </label>
                 <label className="editor-field">
-                  <span>{t("editor.mission")}</span>
-                  <textarea
-                    value={agentImprovement.improved.prompt}
-                    onChange={(event) => setAgentImprovement({
-                      ...agentImprovement,
-                      improved: {
-                        ...agentImprovement.improved,
-                        prompt: event.target.value
-                      }
-                    })}
-                    rows={11}
-                  />
+                    <span>{t("editor.mission")}</span>
+                    <textarea
+                      value={agentImprovement.improved.prompt}
+                      onChange={(event) => setAgentImprovement({
+                        ...agentImprovement,
+                        improved: { ...agentImprovement.improved, prompt: event.target.value }
+                      })}
+                      rows={11}
+                    />
                 </label>
               </section>
             </div>
@@ -838,10 +824,7 @@ export function AgentProjectEditor({
                 className="agent-improvement__apply"
                 type="button"
                 onClick={applyAgentImprovement}
-                disabled={
-                  !agentImprovement.improved.name.trim() ||
-                  !agentImprovement.improved.prompt.trim()
-                }
+                disabled={!agentImprovement.improved.name.trim() || !agentImprovement.improved.prompt.trim()}
               >
                 <Check aria-hidden="true" size={15} />
                 {t("editor.useImprovedAgent")}

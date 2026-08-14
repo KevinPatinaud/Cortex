@@ -35,7 +35,12 @@ test("crée et enregistre un projet Cortex prêt à être édité", async () => 
       parentDirectory,
       name: "Atlas",
       engine: "codex",
-      instructions: "# Projet Atlas"
+      instructions: "# Projet Atlas",
+      agents: [{
+        name: "Architecte",
+        description: "Conçoit la solution.",
+        prompt: "Propose une architecture adaptée."
+      }]
     });
     const projectDirectory = path.join(parentDirectory, "Atlas");
 
@@ -47,7 +52,14 @@ test("crée et enregistre un projet Cortex prêt à être édité", async () => 
     );
     assert.deepEqual(
       await readdir(path.join(projectDirectory, ".codex", "agents")),
-      []
+      ["architecte.toml"]
+    );
+    assert.match(
+      await readFile(
+        path.join(projectDirectory, ".codex", "agents", "architecte.toml"),
+        "utf8"
+      ),
+      /developer_instructions = "Propose une architecture adaptée\."/
     );
   });
 });

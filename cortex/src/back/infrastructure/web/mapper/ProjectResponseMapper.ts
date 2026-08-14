@@ -3,9 +3,10 @@ import type { ErrorMappingOptions } from "./HttpErrorMapper.ts";
 
 export const projectErrorMappings = {
   create: {
-    fallbackStatus: 500,
+    fallbackStatus: 503,
     fallbackMessage: "Unable to create the project.",
-    logMessage: "Unable to create the project:"
+    logMessage: "Unable to create the project:",
+    exposeUnexpectedError: true
   },
   save: {
     fallbackStatus: 500,

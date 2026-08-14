@@ -29,7 +29,8 @@ interface ProjectDirectoryManagerProps {
   onProjectLoaded: (
     project: Project,
     content: AgentProject,
-    openEditor?: boolean
+    openEditor?: boolean,
+    requiresInitialSave?: boolean
   ) => void;
 }
 
@@ -179,7 +180,7 @@ export function ProjectDirectoryManager({
       setIsProjectMenuOpen(false);
       setIsCreationDialogOpen(false);
       setSaveMessage(t("project.created"));
-      onProjectLoaded(result.project, content, true);
+      onProjectLoaded(result.project, content, true, true);
       return { project: result.project, content };
     } catch (requestError) {
       setError(getErrorMessage(requestError, t("common.unexpectedError")));

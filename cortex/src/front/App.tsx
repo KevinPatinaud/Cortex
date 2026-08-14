@@ -9,6 +9,7 @@ import type { Project } from "./services/projectApi.ts";
 interface ProjectSelection {
   project: Project;
   content: AgentProject;
+  requiresInitialSave: boolean;
 }
 
 export function App() {
@@ -38,8 +39,13 @@ export function App() {
         deletedProject={deletedProject}
         isEditing={isEditing}
         projectActivity={projectActivity}
-        onProjectLoaded={(project, content, openEditor = false) => {
-          setSelection({ project, content });
+        onProjectLoaded={(
+          project,
+          content,
+          openEditor = false,
+          requiresInitialSave = false
+        ) => {
+          setSelection({ project, content, requiresInitialSave });
           setIsEditing(openEditor);
           if (content.agents.some(
             (agent) => agent.executionStatus === "running"
@@ -57,6 +63,7 @@ export function App() {
         <AgentProjectEditor
           project={selection.project}
           content={selection.content}
+          requiresInitialSave={selection.requiresInitialSave}
           onClose={() => setIsEditing(false)}
           onSaved={(content) => {
             setSelection((currentSelection) => currentSelection &&
@@ -66,7 +73,8 @@ export function App() {
                     ...currentSelection.project,
                     directoryPath: content.directoryPath
                   },
-                  content
+                  content,
+                  requiresInitialSave: false
                 }
               : currentSelection
             );

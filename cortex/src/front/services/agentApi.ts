@@ -91,19 +91,17 @@ export interface EditableAgentProject {
   agents: EditableAgentDefinition[];
 }
 
-export interface ImproveAgentInput {
-  prompt: string;
+export interface ImproveProjectAgent {
+  key: string;
   name: string;
   description: string;
-  projectInstructions: string;
-  model?: string;
-  reasoningEffort?: string;
+  prompt: string;
 }
 
-export interface ImprovedAgent {
-  name: string;
-  description: string;
-  prompt: string;
+export interface ImproveAgentInput {
+  targetAgentKey: string;
+  instructions: string;
+  agents: ImproveProjectAgent[];
 }
 
 export function getAgentStatus(): Promise<AgentStatus> {
@@ -158,8 +156,8 @@ export function getActualLoadedAgentProject(): Promise<AgentProject | null> {
 export async function improveAgent(
   projectId: string,
   input: ImproveAgentInput
-): Promise<ImprovedAgent> {
-  return requestJson<ImprovedAgent>(
+): Promise<ImproveProjectAgent> {
+  return requestJson<ImproveProjectAgent>(
     `/api/agents/projects/${encodeURIComponent(projectId)}/agents/improve`,
     {
       method: "POST",

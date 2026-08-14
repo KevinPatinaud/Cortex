@@ -19,7 +19,7 @@ export interface CreateProjectInput {
   parentDirectory: string;
   name: string;
   engine: "codex" | "claude" | "copilot";
-  instructions: string;
+  description: string;
 }
 
 export interface CreateProjectResponse extends SaveProjectResponse {

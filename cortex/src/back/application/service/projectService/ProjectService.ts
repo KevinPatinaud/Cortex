@@ -72,6 +72,7 @@ export interface CreateProjectOptions {
   name: string;
   engine: ProjectAgentEngine;
   instructions: string;
+  agents?: EditableProjectAgent[];
 }
 
 export interface CreateProjectResult {
@@ -153,23 +154,30 @@ export class ProjectService {
 
   constructor(private readonly configurationFile: string) {}
 
-  async createProject(
-    options: CreateProjectOptions
-  ): Promise<CreateProjectResult> {
-    const parentDirectory = path.resolve(options.parentDirectory);
-    const parentStats = await stat(parentDirectory).catch(() => null);
+  async assertProjectCanBeCreated(
+    parentDirectory: string,
+    name: string
+  ): Promise<void> {
+    const resolvedParentDirectory = path.resolve(parentDirectory);
+    const parentStats = await stat(resolvedParentDirectory).catch(() => null);
 
     if (!parentStats?.isDirectory()) {
       throw new TypeError("The parent directory could not be found.");
     }
 
-    const projectDirectory = path.join(parentDirectory, options.name);
-
-    if (await this.pathExists(projectDirectory)) {
+    if (await this.pathExists(path.join(resolvedParentDirectory, name))) {
       throw new TypeError(
         "A file or directory with this name already exists at this location."
       );
     }
+  }
+
+  async createProject(
+    options: CreateProjectOptions
+  ): Promise<CreateProjectResult> {
+    await this.assertProjectCanBeCreated(options.parentDirectory, options.name);
+    const parentDirectory = path.resolve(options.parentDirectory);
+    const projectDirectory = path.join(parentDirectory, options.name);
 
     const fileConfiguration = agentFileConfigurations[options.engine];
     await mkdir(projectDirectory);
@@ -186,6 +194,27 @@ export class ProjectService {
       options.instructions,
       "utf8"
     );
+
+    const unavailableFileNames = new Set<string>();
+
+    for (const agent of options.agents ?? []) {
+      const fileName = this.createAgentFileName(
+        agent.name,
+        fileConfiguration.extension,
+        unavailableFileNames
+      );
+      unavailableFileNames.add(fileName);
+      await writeFile(
+        path.join(
+          projectDirectory,
+          fileConfiguration.rootDirectory,
+          "agents",
+          fileName
+        ),
+        this.serializeAgent(options.engine, agent),
+        "utf8"
+      );
+    }
 
     const projects = await this.saveProject(projectDirectory);
     const project = projects.find((candidate) =>

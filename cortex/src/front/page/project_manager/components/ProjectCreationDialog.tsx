@@ -58,9 +58,7 @@ export function ProjectCreationDialog({
   );
   const [engine, setEngine] = useState<CreateProjectInput["engine"] | null>(null);
   const [isDetectingEngine, setIsDetectingEngine] = useState(true);
-  const [instructions, setInstructions] = useState(() =>
-    t("creation.defaultInstructions")
-  );
+  const [projectDescription, setProjectDescription] = useState("");
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -131,7 +129,12 @@ export function ProjectCreationDialog({
         onSubmit={(event) => {
           event.preventDefault();
           if (engine) {
-            void onCreate({ parentDirectory, name, engine, instructions });
+            void onCreate({
+              parentDirectory,
+              name,
+              engine,
+              description: projectDescription
+            });
           }
         }}
       >
@@ -215,13 +218,17 @@ export function ProjectCreationDialog({
             </fieldset>
 
             <label className="editor-field editor-field--instructions">
-              <span>{t("creation.sharedInstructions")}</span>
+              <span>{t("creation.projectDescription")}</span>
               <textarea
-                value={instructions}
-                onChange={(event) => setInstructions(event.target.value)}
+                value={projectDescription}
+                onChange={(event) => setProjectDescription(event.target.value)}
+                placeholder={t("creation.descriptionPlaceholder")}
                 rows={5}
+                maxLength={20_000}
+                required
                 disabled={isPending}
               />
+              <small>{t("creation.descriptionHelp")}</small>
             </label>
           </div>
 
@@ -238,7 +245,7 @@ export function ProjectCreationDialog({
               </li>
               <li>
                 <Folder aria-hidden="true" size={15} />
-                {selectedEngine?.root ?? ".codex"}/agents
+                {selectedEngine?.root ?? ".codex"}/agents/*
               </li>
             </ul>
             <p>
@@ -258,7 +265,12 @@ export function ProjectCreationDialog({
           <button
             className="project-creation-dialog__submit"
             type="submit"
-            disabled={isPending || isDetectingEngine || !engine}
+            disabled={
+              isPending ||
+              isDetectingEngine ||
+              !engine ||
+              !projectDescription.trim()
+            }
           >
             {isPending ? (
               <LoaderCircle aria-hidden="true" className="spin" size={16} />

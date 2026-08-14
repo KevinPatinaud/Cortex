@@ -38,7 +38,8 @@ const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(configurationFile);
 const projectUseCase = new ProjectUseCase(
   projectService,
-  directoryPickerService
+  directoryPickerService,
+  agentService
 );
 const agentUseCase = new AgentUseCase(agentService, projectUseCase);
 const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase);
