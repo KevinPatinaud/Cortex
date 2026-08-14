@@ -5,7 +5,7 @@ import {
   useState,
   type KeyboardEvent
 } from "react";
-import { ArrowDown, Bot, CalendarClock, ChevronDown, FastForward, GitBranch, LoaderCircle, Pause, Pencil, RotateCcw, Send } from "lucide-react";
+import { ArrowDown, Bot, CalendarClock, ChevronDown, FastForward, GitBranch, LoaderCircle, Pause, Pencil, Play, RotateCcw, Send } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -686,6 +686,112 @@ interface WorkflowFeedbackLoopPlacement {
   targetLevelIndex: number;
 }
 
+function WorkflowFeedbackLoop({
+  placement
+}: {
+  placement: WorkflowFeedbackLoopPlacement;
+}) {
+  const containerRef = useRef<HTMLSpanElement>(null);
+  const [loopGeometry, setLoopGeometry] = useState({
+    width: 0,
+    rootFontSize: 16
+  });
+
+  useEffect(() => {
+    const container = containerRef.current;
+
+    if (!container) {
+      return;
+    }
+
+    const updateLoopGeometry = (): void => {
+      const width = container.getBoundingClientRect().width;
+
+      if (width <= 0) {
+        return;
+      }
+
+      const rootFontSize = Number.parseFloat(
+        window.getComputedStyle(document.documentElement).fontSize
+      );
+      setLoopGeometry({
+        width,
+        rootFontSize: Number.isFinite(rootFontSize) ? rootFontSize : 16
+      });
+    };
+
+    updateLoopGeometry();
+    const observer = new ResizeObserver(updateLoopGeometry);
+    observer.observe(container);
+
+    return () => observer.disconnect();
+  }, []);
+
+  const desktopGutterPosition = loopGeometry.width > 0
+    ? (3.25 * loopGeometry.rootFontSize / loopGeometry.width) * 100
+    : 3.53;
+  const desktopLaneGap = loopGeometry.width > 0
+    ? (2.25 * loopGeometry.rootFontSize / loopGeometry.width) * 100
+    : 2.45;
+  const desktopCardWidth = loopGeometry.width > 0
+    ? Math.min(
+      (50 * loopGeometry.rootFontSize / loopGeometry.width) * 100,
+      100 - desktopGutterPosition
+    )
+    : 54.35;
+  const desktopTargetX = desktopGutterPosition + Math.max(
+    0,
+    (100 - desktopGutterPosition - desktopCardWidth) / 2
+  );
+  const desktopSourceX = desktopGutterPosition +
+    (100 - desktopGutterPosition - desktopLaneGap) / 4;
+  const desktopLoopX = desktopGutterPosition * 0.35;
+  const desktopCornerWidth = desktopGutterPosition * 0.43;
+  const desktopArrowWidth = desktopGutterPosition * 0.24;
+  const compactGutterPosition = loopGeometry.width > 0
+    ? (1.75 * loopGeometry.rootFontSize / loopGeometry.width) * 100
+    : 5;
+  const compactLoopX = compactGutterPosition * 0.3;
+  const compactCornerWidth = compactGutterPosition * 0.7;
+  const compactSourceX = 50 + compactGutterPosition / 2;
+  const compactArrowWidth = compactGutterPosition * 0.17;
+
+  return (
+    <span
+      aria-hidden="true"
+      className="agent-project__feedback-grid-loop"
+      ref={containerRef}
+      style={{
+        gridRow: `${placement.targetLevelIndex + 1} / ${placement.sourceLevelIndex + 2}`
+      }}
+    >
+      <svg
+        className="agent-project__feedback-grid-loop-canvas"
+        focusable="false"
+        preserveAspectRatio="none"
+        viewBox="0 0 100 100"
+      >
+        <path
+          className="agent-project__feedback-grid-loop-path agent-project__feedback-grid-loop-path--desktop"
+          d={`M ${desktopSourceX} 100 L ${desktopSourceX} 102.3 Q ${desktopSourceX} 104.8, ${desktopSourceX - desktopCornerWidth} 104.8 L ${desktopLoopX + desktopCornerWidth} 104.8 Q ${desktopLoopX} 104.8, ${desktopLoopX} 102.3 L ${desktopLoopX} 10.5 Q ${desktopLoopX} 8, ${desktopLoopX + desktopCornerWidth} 8 L ${desktopTargetX} 8`}
+        />
+        <path
+          className="agent-project__feedback-grid-loop-arrow agent-project__feedback-grid-loop-arrow--desktop"
+          d={`M ${desktopTargetX - desktopArrowWidth} 7.2 L ${desktopTargetX} 8 L ${desktopTargetX - desktopArrowWidth} 8.8`}
+        />
+        <path
+          className="agent-project__feedback-grid-loop-path agent-project__feedback-grid-loop-path--compact"
+          d={`M ${compactSourceX} 100 L ${compactSourceX} 102.3 Q ${compactSourceX} 104.8, ${compactSourceX - compactCornerWidth} 104.8 L ${compactLoopX + compactCornerWidth} 104.8 Q ${compactLoopX} 104.8, ${compactLoopX} 102.3 L ${compactLoopX} 10.5 Q ${compactLoopX} 8, ${compactLoopX + compactCornerWidth} 8 L ${compactGutterPosition} 8`}
+        />
+        <path
+          className="agent-project__feedback-grid-loop-arrow agent-project__feedback-grid-loop-arrow--compact"
+          d={`M ${compactGutterPosition - compactArrowWidth} 7.2 L ${compactGutterPosition} 8 L ${compactGutterPosition - compactArrowWidth} 8.8`}
+        />
+      </svg>
+    </span>
+  );
+}
+
 interface AgentCardProps {
   agent: AgentDefinition;
   nextAgentNamesById: ReadonlyMap<string, string>;
@@ -695,6 +801,8 @@ interface AgentCardProps {
   upstreamAgentResults?: UpstreamAgentResult[];
   isInvalidated: boolean;
   isFrozen: boolean;
+  showContinueButton: boolean;
+  canContinue: boolean;
   prerequisiteMessage: string | null;
   projectId: string;
   selectedItemIndexes: number[];
@@ -708,6 +816,7 @@ interface AgentCardProps {
   ) => void;
   onRunStart: (agentId: string) => void;
   onRunEnd: (succeeded: boolean) => void;
+  onContinue: () => void;
   onHandoffEnabledChange: (agentId: string, enabled: boolean) => void;
 }
 
@@ -945,6 +1054,8 @@ function AgentCard({
   upstreamAgentResults,
   isInvalidated,
   isFrozen,
+  showContinueButton,
+  canContinue,
   prerequisiteMessage,
   projectId,
   selectedItemIndexes,
@@ -952,6 +1063,7 @@ function AgentCard({
   onSelectedItemIndexesChange,
   onRunStart,
   onRunEnd,
+  onContinue,
   onHandoffEnabledChange
 }: AgentCardProps) {
   const { t } = useTranslation();
@@ -1148,43 +1260,61 @@ function AgentCard({
         )}
       </div>
       {isMultithreaded ? (
-        <section
-          className="agent-instances-zone"
-          aria-label={t("agent.instancesAria", { name: agent.name })}
-        >
-          <header className="agent-instances-zone__header">
-            <div>
-              <GitBranch aria-hidden="true" size={18} strokeWidth={1.7} />
-              <span>
-                {t("agent.evolutionZone", { count: threadPresentation.length })}
-              </span>
+        <>
+          <section
+            className="agent-instances-zone"
+            aria-label={t("agent.instancesAria", { name: agent.name })}
+          >
+            <header className="agent-instances-zone__header">
+              <div>
+                <GitBranch aria-hidden="true" size={18} strokeWidth={1.7} />
+                <span>
+                  {t("agent.evolutionZone", { count: threadPresentation.length })}
+                </span>
+              </div>
+              <p>{t("agent.branchesHelp")}</p>
+            </header>
+            <div className="agent-instances-zone__track">
+              {threadPresentation.map((presentation, index) => (
+                <AgentInstanceCard
+                  agentName={agent.name}
+                  disabled={isDisabled || isRunning}
+                  nextAgentNamesById={nextAgentNamesById}
+                  hideAdditionalInstructions={handoffEnabled}
+                  index={index}
+                  isFrozen={isFrozen}
+                  isRunning={isRunning && (
+                    runningThreadId === null ||
+                    runningThreadId === presentation.thread.id
+                  )}
+                  key={presentation.thread.id}
+                  onRun={handleRun}
+                  onSelectedItemIndexesChange={(indexes) =>
+                    onSelectedItemIndexesChange(agent.id, indexes)
+                  }
+                  presentation={presentation}
+                  selectedItemIndexes={selectedItemIndexes}
+                />
+              ))}
             </div>
-            <p>{t("agent.branchesHelp")}</p>
-          </header>
-          <div className="agent-instances-zone__track">
-            {threadPresentation.map((presentation, index) => (
-              <AgentInstanceCard
-                agentName={agent.name}
-                disabled={isDisabled || isRunning}
-                nextAgentNamesById={nextAgentNamesById}
-                hideAdditionalInstructions={handoffEnabled}
-                index={index}
-                isFrozen={isFrozen}
-                isRunning={isRunning && (
-                  runningThreadId === null ||
-                  runningThreadId === presentation.thread.id
-                )}
-                key={presentation.thread.id}
-                onRun={handleRun}
-                onSelectedItemIndexesChange={(indexes) =>
-                  onSelectedItemIndexesChange(agent.id, indexes)
-                }
-                presentation={presentation}
-                selectedItemIndexes={selectedItemIndexes}
-              />
-            ))}
-          </div>
-        </section>
+          </section>
+          {showContinueButton && (
+            <div className="agent-card__actions">
+              <button
+                className="agent-card__continue-button"
+                type="button"
+                onClick={onContinue}
+                disabled={!canContinue || isRunning}
+                title={canContinue
+                  ? t("agent.continueTitle")
+                  : t("agent.continueUnavailable")}
+              >
+                <Play aria-hidden="true" size={15} strokeWidth={2} />
+                {t("agent.continue")}
+              </button>
+            </div>
+          )}
+        </>
       ) : (
         <>
           {threadPresentation[0] && (
@@ -1215,43 +1345,59 @@ function AgentCard({
               />
             </div>
           )}
-          {shouldShowRunButton && (
+          {(shouldShowRunButton || showContinueButton) && (
             <div className="agent-card__actions">
-              <button
-                className="agent-card__run-button"
-                type="button"
-                aria-busy={isRunning}
-                onClick={() => void handleRun(
-                  handoffEnabled ? "" : additionalInstructions.trim()
-                )}
-                disabled={isRunning || !canRun || isFrozen}
-                title={isFrozen
-                  ? t("agent.frozen")
-                  : prerequisiteMessage || (canRun
-                    ? t(hasSession ? "agent.rerunTitle" : "agent.runTitle", { name: agent.name })
-                    : t("agent.emptyInstruction")
-                  )
-                }
-              >
-                {isRunning ? (
-                  <LoaderCircle
-                    aria-hidden="true"
-                    className="agent-card__run-icon--running"
-                    size={15}
-                    strokeWidth={1.8}
-                  />
-                ) : isParallelRunPrepared ? (
-                  <GitBranch aria-hidden="true" size={16} strokeWidth={1.8} />
-                ) : hasSession ? (
-                  <RotateCcw aria-hidden="true" size={15} strokeWidth={1.8} />
-                ) : (
-                  <Send aria-hidden="true" size={15} strokeWidth={1.8} />
-                )}
-                {isRunning
-                  ? t("agent.running")
-                  : hasSession ? t("agent.rerun") : t("agent.run")
-                }
-              </button>
+              {shouldShowRunButton && (
+                <button
+                  className="agent-card__run-button"
+                  type="button"
+                  aria-busy={isRunning}
+                  onClick={() => void handleRun(
+                    handoffEnabled ? "" : additionalInstructions.trim()
+                  )}
+                  disabled={isRunning || !canRun || isFrozen}
+                  title={isFrozen
+                    ? t("agent.frozen")
+                    : prerequisiteMessage || (canRun
+                      ? t(hasSession ? "agent.rerunTitle" : "agent.runTitle", { name: agent.name })
+                      : t("agent.emptyInstruction")
+                    )
+                  }
+                >
+                  {isRunning ? (
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="agent-card__run-icon--running"
+                      size={15}
+                      strokeWidth={1.8}
+                    />
+                  ) : isParallelRunPrepared ? (
+                    <GitBranch aria-hidden="true" size={16} strokeWidth={1.8} />
+                  ) : hasSession ? (
+                    <RotateCcw aria-hidden="true" size={15} strokeWidth={1.8} />
+                  ) : (
+                    <Send aria-hidden="true" size={15} strokeWidth={1.8} />
+                  )}
+                  {isRunning
+                    ? t("agent.running")
+                    : hasSession ? t("agent.rerun") : t("agent.run")
+                  }
+                </button>
+              )}
+              {showContinueButton && (
+                <button
+                  className="agent-card__continue-button"
+                  type="button"
+                  onClick={onContinue}
+                  disabled={!canContinue || isRunning}
+                  title={canContinue
+                    ? t("agent.continueTitle")
+                    : t("agent.continueUnavailable")}
+                >
+                  <Play aria-hidden="true" size={15} strokeWidth={2} />
+                  {t("agent.continue")}
+                </button>
+              )}
             </div>
           )}
         </>
@@ -1284,6 +1430,8 @@ export function AgentProjectWorkspace({
   const [launchedAgentIds, setLaunchedAgentIds] = useState<Set<string>>(
     () => new Set()
   );
+  const [releasedAutomaticAgentIds, setReleasedAutomaticAgentIds] =
+    useState<Set<string>>(() => new Set());
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [resetError, setResetError] = useState("");
@@ -1306,6 +1454,7 @@ export function AgentProjectWorkspace({
     setIsScheduleDialogOpen(false);
     setWorkflowSchedule(null);
     setResetError("");
+    setReleasedAutomaticAgentIds(new Set());
   }, [content?.projectId]);
 
   useEffect(() => {
@@ -1742,6 +1891,15 @@ export function AgentProjectWorkspace({
 
       return nextAgentIds;
     });
+    setReleasedAutomaticAgentIds((currentAgentIds) => {
+      const nextAgentIds = new Set(currentAgentIds);
+
+      for (const invalidatedAgentId of invalidatedAgentIds) {
+        nextAgentIds.delete(invalidatedAgentId);
+      }
+
+      return nextAgentIds;
+    });
   }
 
   function handleResponseChange(
@@ -1866,6 +2024,7 @@ export function AgentProjectWorkspace({
       const refreshedContent = await loadAgentProject(projectId);
       delete selectedItemIndexesByProject.current[projectId];
       delete runningAgentIdsByProject.current[projectId];
+      setReleasedAutomaticAgentIds(new Set());
       onContentRefresh(refreshedContent);
       onRunStateChange(projectId, "idle");
       setIsResetDialogOpen(false);
@@ -2028,38 +2187,10 @@ export function AgentProjectWorkspace({
               }`}
             >
               {workflowFeedbackLoopPlacements.map((placement) => (
-                <span
-                  aria-hidden="true"
-                  className="agent-project__feedback-grid-loop"
+                <WorkflowFeedbackLoop
                   key={placement.key}
-                  style={{
-                    gridRow: `${placement.targetLevelIndex + 1} / ${placement.sourceLevelIndex + 2}`
-                  }}
-                >
-                  <svg
-                    className="agent-project__feedback-grid-loop-canvas"
-                    focusable="false"
-                    preserveAspectRatio="none"
-                    viewBox="0 0 100 100"
-                  >
-                    <path
-                      className="agent-project__feedback-grid-loop-path agent-project__feedback-grid-loop-path--desktop"
-                      d="M 27 100 L 27 102.3 Q 27 104.8, 25.5 104.8 L 2.75 104.8 Q 1.25 104.8, 1.25 102.3 L 1.25 10.5 Q 1.25 8, 2.75 8 L 24 8"
-                    />
-                    <path
-                      className="agent-project__feedback-grid-loop-arrow agent-project__feedback-grid-loop-arrow--desktop"
-                      d="M 23.15 7.2 L 24 8 L 23.15 8.8"
-                    />
-                    <path
-                      className="agent-project__feedback-grid-loop-path agent-project__feedback-grid-loop-path--compact"
-                      d="M 52.5 100 L 52.5 102.3 Q 52.5 104.8, 49 104.8 L 5 104.8 Q 1.5 104.8, 1.5 102.3 L 1.5 10.5 Q 1.5 8, 5 8"
-                    />
-                    <path
-                      className="agent-project__feedback-grid-loop-arrow agent-project__feedback-grid-loop-arrow--compact"
-                      d="M 4.15 7.2 L 5 8 L 4.15 8.8"
-                    />
-                  </svg>
-                </span>
+                  placement={placement}
+                />
               ))}
               {workflowLevels.map((levelAgents, levelIndex) => {
                 const nextLevelAgents = workflowLevels[levelIndex + 1] ?? [];
@@ -2154,6 +2285,35 @@ export function AgentProjectWorkspace({
                             .filter((result): result is UpstreamAgentResult =>
                               result !== null
                             );
+                        const pendingAutomaticSuccessorIds = agent.nextAgentIds
+                          .filter((nextAgentId) =>
+                            handoffEnabledAgentIds.has(nextAgentId) &&
+                            !launchedAgentIds.has(nextAgentId)
+                          );
+                        const readyAutomaticSuccessorIds =
+                          pendingAutomaticSuccessorIds.filter((nextAgentId) => {
+                            const nextAgent = agentsById.get(nextAgentId);
+
+                            if (!nextAgent) {
+                              return false;
+                            }
+
+                            const nextAgentUpstreamAgents = workflowAgents.filter(
+                              (candidate) => candidate.nextAgentIds.includes(nextAgentId)
+                            );
+                            return getPrerequisiteMessage(
+                              nextAgentUpstreamAgents,
+                              nextAgentId,
+                              agentResultStates,
+                              workflowAgents,
+                              workflowFeedbackEdgeKeys,
+                              t
+                            ) === null;
+                          });
+                        const hasManualUpstreamAgent = upstreamAgents.some(
+                          (upstreamAgent) =>
+                            !handoffEnabledAgentIds.has(upstreamAgent.id)
+                        );
 
                         return (
                           <li
@@ -2174,6 +2334,10 @@ export function AgentProjectWorkspace({
                                 handoffEnabledAgentIds.has(agent.id) &&
                                 upstreamAgents.length > 0 &&
                                 !launchedAgentIds.has(agent.id) &&
+                                (
+                                  !hasManualUpstreamAgent ||
+                                  releasedAutomaticAgentIds.has(agent.id)
+                                ) &&
                                 prerequisiteMessage === null
                               }
                               plannedThreadCount={getPlannedThreadCount(
@@ -2190,6 +2354,12 @@ export function AgentProjectWorkspace({
                               ].some((descendantId) =>
                                 launchedAgentIds.has(descendantId)
                               )}
+                              showContinueButton={
+                                !handoffEnabledAgentIds.has(agent.id) &&
+                                (agentResultStates[agent.id]?.responses.length ?? 0) > 0 &&
+                                pendingAutomaticSuccessorIds.length > 0
+                              }
+                              canContinue={readyAutomaticSuccessorIds.length > 0}
                               prerequisiteMessage={prerequisiteMessage}
                               projectId={content.projectId}
                               selectedItemIndexes={
@@ -2204,6 +2374,14 @@ export function AgentProjectWorkspace({
                                 agent.id,
                                 succeeded
                               )}
+                              onContinue={() => {
+                                setReleasedAutomaticAgentIds((currentAgentIds) =>
+                                  new Set([
+                                    ...currentAgentIds,
+                                    ...readyAutomaticSuccessorIds
+                                  ])
+                                );
+                              }}
                               onHandoffEnabledChange={handleAgentHandoffChange}
                             />
                           </li>

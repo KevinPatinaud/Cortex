@@ -102,3 +102,39 @@ test("refuse une réponse IA invalide avant de créer le dossier", async () => {
   );
   assert.equal(creationCalls.length, 0);
 });
+
+test("demande une architecture minimale et confie le fan-out a Cortex", async () => {
+  const generatedProject = {
+    instructions: "# Applications au demarrage",
+    agents: [
+      {
+        name: "Inventaire",
+        description: "Liste les applications lancees au demarrage.",
+        prompt: "Retourne les applications sous forme d'elements selectionnables."
+      },
+      {
+        name: "Desactivation",
+        description: "Desactive une application selectionnee.",
+        prompt: "Une instance traite exactement une application selectionnee."
+      }
+    ]
+  };
+  const { useCase, executionCalls, creationCalls } = createUseCase(
+    JSON.stringify(generatedProject)
+  );
+
+  await useCase.createProject({
+    parentDirectory: "C:\\projects",
+    name: "Demarrage",
+    engine: "codex",
+    description: "Un agent liste les applications. Un second agent multithreade desactive chaque selection."
+  });
+
+  const prompt = executionCalls[0].prompt;
+  assert.match(prompt, /prefer the smallest sufficient set of agents/);
+  assert.match(prompt, /respect an explicit number or set of agents requested/);
+  assert.match(prompt, /do not create agents for Cortex control-plane concerns/);
+  assert.match(prompt, /one reusable downstream agent definition/);
+  assert.match(prompt, /means exactly two agent definitions/);
+  assert.equal(creationCalls[0].agents?.length, 2);
+});

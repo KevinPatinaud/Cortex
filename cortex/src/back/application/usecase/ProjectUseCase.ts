@@ -352,10 +352,22 @@ Turn the user's project description into a coherent set of shared project instru
 Requirements:
 - write the shared instructions as useful Markdown for the project's root instruction file;
 - preserve the user's intent, language, domain details, goals, constraints, and expected deliverables;
-- create only the agents that materially help complete the project, with at least one and at most 12 agents;
+- treat an agent as a reusable execution capability, not as every step, screen, interaction, or implementation detail in the workflow;
+- prefer the smallest sufficient set of agents: merge responsibilities that naturally belong to the same execution capability and create a separate agent only when it performs genuinely distinct work;
+- respect an explicit number or set of agents requested by the user whenever it is coherent. Do not add supporting roles merely to make the architecture look more complete;
+- do not create agents for Cortex control-plane concerns such as orchestration, coordination, delegation, routing, presenting another agent's result, or asking the user to select result items. Cortex itself handles workflow routing, user selection, parallel instances, and result presentation;
+- keep verification and reporting inside the agent responsible for the action unless the user explicitly requests an independent review or a genuinely distinct synthesis deliverable;
+- model fan-out with one reusable downstream agent definition, not one agent per item and not an extra orchestrator. When each selected item must be handled independently, state in that downstream agent's prompt that one instance processes exactly one selected item;
+- let the producing agent both discover and return the selectable items when discovery is followed by user selection; do not split selection into a separate agent;
+- create between 1 and 12 agents, but never use the upper range as a target;
 - give every agent a concise unique name, a one-sentence description, and operational instructions defining its mission, scope, expected inputs, constraints, and deliverable;
 - keep shared context in the project instructions and agent-specific responsibilities in each agent prompt;
 - do not invent business requirements or claim that work has already been completed.
+
+Architecture examples:
+- "One agent lists startup applications; a second, multi-threaded agent disables each selected application" means exactly two agent definitions: one inventory agent returning selectable items, then one disable agent whose instances each receive one selected item. Do not add selection, orchestration, verification, or reporting agents; those are interactions or responsibilities inside the two requested capabilities.
+- "Research several sources in parallel, then synthesize them" normally means two agent definitions: one reusable researcher fanned out into separate instances and one synthesizer aggregating their results.
+- A single agent may inspect, act, verify its own action, and report its result when these are parts of one responsibility.
 
 Return only one valid JSON object with exactly these properties:
 {"instructions":"string","agents":[{"name":"string","description":"string","prompt":"string"}]}
