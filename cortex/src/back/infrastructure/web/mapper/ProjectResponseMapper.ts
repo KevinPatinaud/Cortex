@@ -8,6 +8,11 @@ export const projectErrorMappings = {
     logMessage: "Unable to create the project:",
     exposeUnexpectedError: true
   },
+  import: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to import the project.",
+    logMessage: "Unable to import the project:"
+  },
   save: {
     fallbackStatus: 500,
     fallbackMessage: "Unable to save the directory.",

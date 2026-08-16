@@ -1,5 +1,6 @@
 node_modules/
 dist/
+projects/
 
 # Configuration locale et secrets
 config.json

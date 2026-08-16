@@ -64,6 +64,57 @@ test("crée et enregistre un projet Cortex prêt à être édité", async () => 
   });
 });
 
+test("importe un dossier envoyé par le navigateur dans le stockage géré", async () => {
+  await withProjectService(async (service, parentDirectory) => {
+    const result = await service.importProject("Atlas importé", [
+      {
+        relativePath: "AGENTS.md",
+        content: Buffer.from("# Atlas importé", "utf8")
+      },
+      {
+        relativePath: "src/index.ts",
+        content: Buffer.from("export const answer = 42;", "utf8")
+      }
+    ]);
+    const projectDirectory = path.join(parentDirectory, "Atlas importé");
+
+    assert.equal(result.project.directoryPath, projectDirectory);
+    assert.equal(
+      await readFile(path.join(projectDirectory, "AGENTS.md"), "utf8"),
+      "# Atlas importé"
+    );
+    assert.equal(
+      await readFile(path.join(projectDirectory, "src", "index.ts"), "utf8"),
+      "export const answer = 42;"
+    );
+  });
+});
+
+test("refuse les chemins dangereux lors d'un import", async () => {
+  await withProjectService(async (service, parentDirectory) => {
+    await assert.rejects(
+      service.importProject("Projet", [
+        { relativePath: "AGENTS.md", content: Buffer.from("instructions") },
+        { relativePath: "../secret.txt", content: Buffer.from("secret") }
+      ]),
+      /uploaded path/
+    );
+    assert.deepEqual(await readdir(parentDirectory), []);
+  });
+});
+
+test("exige un fichier d'instructions à la racine lors d'un import", async () => {
+  await withProjectService(async (service, parentDirectory) => {
+    await assert.rejects(
+      service.importProject("Projet", [
+        { relativePath: "src/index.ts", content: Buffer.from("export {}") }
+      ]),
+      /AGENTS\.md or CLAUDE\.md/
+    );
+    assert.deepEqual(await readdir(parentDirectory), []);
+  });
+});
+
 test("crée, modifie et supprime les fichiers agents d'un projet", async () => {
   await withProjectService(async (service, parentDirectory) => {
     const { project } = await service.createProject({

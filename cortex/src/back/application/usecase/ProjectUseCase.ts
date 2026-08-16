@@ -8,6 +8,7 @@ import type {
   Project,
   ProjectContent,
   ProjectService,
+  UploadedProjectFile,
   WorkflowScheduleConfiguration
 } from "../service/projectService/ProjectService.ts";
 import { NotFoundError } from "../error/NotFoundError.ts";
@@ -139,6 +140,26 @@ export class ProjectUseCase {
 
       throw error;
     }
+  }
+
+  importProject(
+    name: unknown,
+    files: UploadedProjectFile[]
+  ): Promise<CreateProjectResult> {
+    const projectName = this.getRequiredString(
+      name,
+      "The project name is required."
+    );
+
+    return this.projectService.importProject(projectName, files).catch(
+      (error: unknown) => {
+        if (error instanceof TypeError) {
+          throw new ValidationError(error.message);
+        }
+
+        throw error;
+      }
+    );
   }
 
   saveAgentProject(

@@ -6,6 +6,7 @@ import {
   readFile,
   readlink,
   rename,
+  rm,
   stat,
   unlink,
   writeFile
@@ -80,6 +81,23 @@ export interface CreateProjectResult {
   projects: Project[];
 }
 
+export interface UploadedProjectFile {
+  relativePath: string;
+  content: Buffer;
+}
+
+const maximumUploadedProjectFiles = 2_000;
+const maximumUploadedProjectBytes = 100 * 1024 * 1024;
+const maximumUploadedFileBytes = 20 * 1024 * 1024;
+const excludedUploadedDirectories = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+  ".next"
+]);
+
 interface AgentFileConfiguration {
   rootDirectory: ".codex" | ".claude" | ".github";
   instructionsFileName: "AGENTS.md" | "CLAUDE.md";
@@ -152,7 +170,13 @@ export class ProjectService {
   private projectsCache: Project[] | null = null;
   private projectsLoading: Promise<Project[]> | null = null;
 
-  constructor(private readonly configurationFile: string) {}
+  constructor(
+    private readonly configurationFile: string,
+    private readonly managedProjectsDirectory = path.join(
+      path.dirname(configurationFile),
+      "projects"
+    )
+  ) {}
 
   async assertProjectCanBeCreated(
     parentDirectory: string,
@@ -223,6 +247,57 @@ export class ProjectService {
 
     if (!project) {
       throw new Error("The new project could not be saved.");
+    }
+
+    return { project, projects };
+  }
+
+  async importProject(
+    name: string,
+    files: UploadedProjectFile[]
+  ): Promise<CreateProjectResult> {
+    this.validateImportedProject(name, files);
+
+    const projectsDirectory = path.resolve(this.managedProjectsDirectory);
+    const projectDirectory = path.join(projectsDirectory, name);
+    const temporaryDirectory = path.join(
+      projectsDirectory,
+      `.cortex-upload-${randomUUID()}`
+    );
+
+    await mkdir(projectsDirectory, { recursive: true });
+
+    if (await this.pathExists(projectDirectory)) {
+      throw new TypeError(
+        "A file or directory with this name already exists at this location."
+      );
+    }
+
+    await mkdir(temporaryDirectory);
+
+    try {
+      for (const file of files) {
+        const destination = path.join(
+          temporaryDirectory,
+          ...file.relativePath.split("/")
+        );
+        await mkdir(path.dirname(destination), { recursive: true });
+        await writeFile(destination, file.content);
+      }
+
+      await rename(temporaryDirectory, projectDirectory);
+    } catch (error) {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+      throw error;
+    }
+
+    const projects = await this.saveProject(projectDirectory);
+    const project = projects.find((candidate) =>
+      this.pathsAreEqual(candidate.directoryPath, projectDirectory)
+    );
+
+    if (!project) {
+      throw new Error("The imported project could not be saved.");
     }
 
     return { project, projects };
@@ -745,6 +820,78 @@ export class ProjectService {
 
       throw error;
     });
+  }
+
+  private validateImportedProject(
+    name: string,
+    files: UploadedProjectFile[]
+  ): void {
+    if (
+      !name ||
+      name.length > 120 ||
+      name === "." ||
+      name === ".." ||
+      /[<>:"/\\|?*\u0000-\u001F]/.test(name)
+    ) {
+      throw new TypeError("The project name contains invalid characters.");
+    }
+
+    if (files.length === 0 || files.length > maximumUploadedProjectFiles) {
+      throw new TypeError(
+        `The project must contain between 1 and ${maximumUploadedProjectFiles} files.`
+      );
+    }
+
+    const paths = new Set<string>();
+    let totalBytes = 0;
+
+    for (const file of files) {
+      const relativePath = file.relativePath;
+      const segments = relativePath.split("/");
+      const portableKey = relativePath.toLowerCase();
+
+      if (
+        !relativePath ||
+        relativePath.startsWith("/") ||
+        relativePath.includes("\\") ||
+        segments.some((segment) => !segment || segment === "." || segment === "..") ||
+        segments.some((segment) => excludedUploadedDirectories.has(segment.toLowerCase()))
+      ) {
+        throw new TypeError(`The uploaded path "${relativePath}" is invalid.`);
+      }
+
+      const fileName = segments.at(-1)?.toLowerCase() ?? "";
+
+      if (
+        (fileName === ".env" || fileName.startsWith(".env.")) &&
+        fileName !== ".env.example"
+      ) {
+        throw new TypeError(
+          `The sensitive file "${relativePath}" cannot be imported.`
+        );
+      }
+
+      if (paths.has(portableKey)) {
+        throw new TypeError(`The uploaded path "${relativePath}" is duplicated.`);
+      }
+
+      if (file.content.byteLength > maximumUploadedFileBytes) {
+        throw new TypeError(`The file "${relativePath}" exceeds the 20 MB limit.`);
+      }
+
+      paths.add(portableKey);
+      totalBytes += file.content.byteLength;
+    }
+
+    if (totalBytes > maximumUploadedProjectBytes) {
+      throw new TypeError("The project exceeds the 100 MB limit.");
+    }
+
+    if (!paths.has("agents.md") && !paths.has("claude.md")) {
+      throw new TypeError(
+        "The selected folder must contain AGENTS.md or CLAUDE.md at its root."
+      );
+    }
   }
 
   private isAgentFileName(

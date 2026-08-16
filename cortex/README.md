@@ -48,6 +48,19 @@ npm run dev:web
 
 Vite serves the frontend and proxies `/api` to the Express server.
 
+## Importing an existing project
+
+The **Import an existing project** button opens the browser's folder picker in
+both local and server modes. The browser uploads the selected project to
+Cortex, so a remote server never needs direct access to the user's filesystem.
+Imported projects are stored in `projects/` by default and are opened
+immediately. A project must contain `AGENTS.md` or `CLAUDE.md` at its root.
+
+Imports are limited to 100 MB, 2,000 files, and 20 MB per file. Generated or
+sensitive content such as `.git`, `node_modules`, build directories, and `.env`
+files is excluded. Empty directories, symbolic links, and executable permission
+bits are not preserved by browser folder uploads.
+
 ## Scheduled workflows
 
 From a project's **Workflow** tab, select **Schedule** to configure a standard
@@ -73,6 +86,7 @@ This command runs strict TypeScript type checking, all Node.js tests, and the pr
 | `PORT` | `3000` | HTTP port, between 1 and 65535 |
 | `CORTEX_PASSWORD` | none | Optional access password, at least 12 characters when set |
 | `CORTEX_SECURE_COOKIE` | `false` | Set to `true` when Cortex is served over HTTPS |
+| `CORTEX_PROJECTS_DIRECTORY` | `<workspace>/projects` | Directory used to store projects uploaded through the browser |
 
 The server intentionally listens locally by default: its routes can read and modify projects on the machine and must not be exposed publicly without additional authentication and access controls.
 The password protects the application, but remote deployments must still use HTTPS so that credentials and session cookies are encrypted in transit.

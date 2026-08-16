@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ChevronDown, FolderInput, Plus } from "lucide-react";
 import { useTranslation } from "../../../i18n.tsx";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
@@ -10,10 +10,10 @@ import {
 import {
   createProject,
   getSavedProjects,
+  importProjectDirectory,
+  prepareProjectDirectoryUpload,
   type CreateProjectInput,
-  type Project,
-  saveProjectDirectory,
-  selectProjectInstructionsFile
+  type Project
 } from "../../../services/projectApi.ts";
 import { ProjectCreationDialog } from "./ProjectCreationDialog.tsx";
 import {
@@ -61,6 +61,12 @@ export function ProjectDirectoryManager({
   const [isCreating, setIsCreating] = useState(false);
   const [isCreationDialogOpen, setIsCreationDialogOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+  const directoryInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    directoryInputRef.current?.setAttribute("webkitdirectory", "");
+    directoryInputRef.current?.setAttribute("directory", "");
+  }, []);
 
   useEffect(() => {
     if (!activeProject) {
@@ -128,19 +134,29 @@ export function ProjectDirectoryManager({
     };
   }, []);
 
-  async function handleInstructionsFileSelection(): Promise<void> {
+  async function handleDirectorySelection(
+    event: ChangeEvent<HTMLInputElement>
+  ): Promise<void> {
+    const selectedFiles = Array.from(event.target.files ?? []);
+    event.target.value = "";
+
+    if (selectedFiles.length === 0) {
+      return;
+    }
+
     setIsSelecting(true);
     setError("");
     setSaveMessage("");
 
     try {
-      const selectedDirectoryPath = await selectProjectInstructionsFile();
-
-      if (selectedDirectoryPath) {
-        const result = await saveProjectDirectory(selectedDirectoryPath);
-        setProjects(result.projects);
-        setSaveMessage(t("project.imported"));
-      }
+      const upload = prepareProjectDirectoryUpload(selectedFiles);
+      const result = await importProjectDirectory(upload);
+      setProjects(result.projects);
+      const content = await loadAgentProject(result.project.id);
+      setSelectedProjectId(result.project.id);
+      setIsProjectMenuOpen(false);
+      setSaveMessage(t("project.imported"));
+      onProjectLoaded(result.project, content);
     } catch (requestError) {
       setError(getErrorMessage(requestError, t("common.unexpectedError")));
     } finally {
@@ -248,6 +264,15 @@ export function ProjectDirectoryManager({
         </div>
 
         <footer className="project-sidebar__footer">
+          <input
+            ref={directoryInputRef}
+            type="file"
+            multiple
+            hidden
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(event) => void handleDirectorySelection(event)}
+          />
           <div className="project-sidebar__feedback" aria-live="polite">
             {saveMessage && <p className="success-message">{saveMessage}</p>}
             {error && (
@@ -270,11 +295,11 @@ export function ProjectDirectoryManager({
           <button
             className="project-sidebar__import-button"
             type="button"
-            onClick={handleInstructionsFileSelection}
+            onClick={() => directoryInputRef.current?.click()}
             disabled={isSelecting || isCreating || isEditing}
           >
             <FolderInput aria-hidden="true" size={16} />
-            {isSelecting ? t("sidebar.opening") : t("sidebar.import")}
+            {isSelecting ? t("sidebar.importing") : t("sidebar.import")}
           </button>
           <AgentEngineStatus />
         </footer>

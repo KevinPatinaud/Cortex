@@ -32,6 +32,8 @@ const directoryName = path.dirname(fileURLToPath(import.meta.url));
 const workspaceDirectory = path.resolve(directoryName, "../../../../..");
 const clientDirectory = path.join(workspaceDirectory, "dist");
 const configurationFile = path.join(workspaceDirectory, "config.json");
+const managedProjectsDirectory = process.env.CORTEX_PROJECTS_DIRECTORY?.trim() ||
+  path.join(workspaceDirectory, "projects");
 const shouldOpenBrowser = process.argv.includes("--open");
 const suppliedPassword = readPasswordArgument(process.argv) ??
   process.env.CORTEX_PASSWORD;
@@ -52,7 +54,10 @@ const agentService = new AgentService([
   new CopilotAgentProvider(agentToolRegistry)
 ], agentConfigurationService);
 const directoryPickerService = new DirectoryPickerService();
-const projectService = new ProjectService(configurationFile);
+const projectService = new ProjectService(
+  configurationFile,
+  managedProjectsDirectory
+);
 const projectUseCase = new ProjectUseCase(
   projectService,
   directoryPickerService,
