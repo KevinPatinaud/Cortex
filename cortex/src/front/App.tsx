@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { LogOut } from "lucide-react";
 import { AgentProjectWorkspace } from "./page/agent/components/AgentProjectWorkspace.tsx";
 import { AgentProjectEditor } from "./page/agent/components/AgentProjectEditor.tsx";
+import { LoginPage } from "./page/authentication/LoginPage.tsx";
 import { ProjectDirectoryManager } from "./page/project_manager/components/ProjectDirectoryManager.tsx";
 import type { ProjectActivityStatus } from "./page/project_manager/components/ProjectList.tsx";
 import type { AgentProject } from "./services/agentApi.ts";
 import type { Project } from "./services/projectApi.ts";
+import { getAuthenticationStatus, logout } from "./services/authApi.ts";
+import { useTranslation } from "./i18n.tsx";
 
 interface ProjectSelection {
   project: Project;
@@ -13,12 +17,48 @@ interface ProjectSelection {
 }
 
 export function App() {
+  const { t } = useTranslation();
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
+  const [isAuthenticationRequired, setIsAuthenticationRequired] = useState(false);
   const [selection, setSelection] = useState<ProjectSelection | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [deletedProject, setDeletedProject] = useState<{ id: string } | null>(null);
   const [projectActivity, setProjectActivity] = useState<
     Record<string, ProjectActivityStatus>
   >({});
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void getAuthenticationStatus()
+      .then((status) => {
+        if (isMounted) {
+          setIsAuthenticated(status.authenticated);
+          setIsAuthenticationRequired(status.required);
+        }
+      })
+      .catch(() => {
+        if (isMounted) {
+          setIsAuthenticated(false);
+        }
+      });
+
+    const handleUnauthorized = () => setIsAuthenticated(false);
+    window.addEventListener("cortex:unauthorized", handleUnauthorized);
+
+    return () => {
+      isMounted = false;
+      window.removeEventListener("cortex:unauthorized", handleUnauthorized);
+    };
+  }, []);
+
+  if (isAuthenticated === null) {
+    return <main className="login-page"><p>{t("common.loading")}</p></main>;
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage onAuthenticated={() => setIsAuthenticated(true)} />;
+  }
 
   function clearProjectActivity(projectId: string): void {
     setProjectActivity((currentActivity) => {
@@ -34,6 +74,20 @@ export function App() {
 
   return (
     <main>
+      {isAuthenticationRequired && (
+        <button
+          className="logout-button"
+          type="button"
+          title={t("auth.logout")}
+          aria-label={t("auth.logout")}
+          onClick={() => void logout().finally(() => {
+            setSelection(null);
+            setIsAuthenticated(false);
+          })}
+        >
+          <LogOut aria-hidden="true" size={17} />
+        </button>
+      )}
       <ProjectDirectoryManager
         activeProject={selection?.project ?? null}
         deletedProject={deletedProject}

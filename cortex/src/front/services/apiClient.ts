@@ -32,6 +32,10 @@ export async function requestJson<T>(
   const body = await readResponseBody(response);
 
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new Event("cortex:unauthorized"));
+    }
+
     throw new ApiRequestError(
       getApiErrorMessage(body) ||
         `The request failed (HTTP ${response.status}).`,

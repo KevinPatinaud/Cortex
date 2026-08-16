@@ -15,6 +15,15 @@ npm ci
 npm start
 ```
 
+Authentication is disabled while Cortex listens on the local loopback interface.
+To expose Cortex on a network interface, set a password of at least 12 characters:
+
+```bash
+HOST=0.0.0.0 \
+CORTEX_PASSWORD="choose-a-password-of-at-least-12-characters" \
+npm start
+```
+
 The application is then available at <http://127.0.0.1:3000>. The local `config.json` file is created on the first save and is not committed to version control. Its structure is documented in `config.example.json`.
 
 For development with hot reload, use two terminals:
@@ -49,8 +58,11 @@ This command runs strict TypeScript type checking, all Node.js tests, and the pr
 | --- | --- | --- |
 | `HOST` | `127.0.0.1` | Server listening interface |
 | `PORT` | `3000` | HTTP port, between 1 and 65535 |
+| `CORTEX_PASSWORD` | none locally | Access password, required for non-loopback listening interfaces, at least 12 characters |
+| `CORTEX_SECURE_COOKIE` | `false` | Set to `true` when Cortex is served over HTTPS |
 
 The server intentionally listens locally by default: its routes can read and modify projects on the machine and must not be exposed publicly without additional authentication and access controls.
+The password protects the application, but remote deployments must still use HTTPS so that credentials and session cookies are encrypted in transit.
 
 ## Project structure
 

@@ -14,6 +14,13 @@ import { AgentUseCase } from "../../../application/usecase/AgentUseCase.ts";
 import { ProjectUseCase } from "../../../application/usecase/ProjectUseCase.ts";
 import { WorkflowScheduler } from "../../../application/service/workflowScheduler/WorkflowScheduler.ts";
 import { httpErrorMiddleware } from "../middleware/HttpErrorMiddleware.ts";
+import {
+  createAuthenticationRouter,
+  PasswordAuthentication,
+  readAccessPassword,
+  readSecureCookie,
+  requireAuthentication
+} from "../middleware/PasswordAuthentication.ts";
 import { createAgentController } from "./AgentController.ts";
 import { createProjectController } from "./ProjectController.ts";
 
@@ -25,6 +32,13 @@ const workspaceDirectory = path.resolve(directoryName, "../../../../..");
 const clientDirectory = path.join(workspaceDirectory, "dist");
 const configurationFile = path.join(workspaceDirectory, "config.json");
 const shouldOpenBrowser = process.argv.includes("--open");
+const accessPassword = readAccessPassword(process.env.CORTEX_PASSWORD, host);
+const authentication = accessPassword === null
+  ? null
+  : new PasswordAuthentication({
+    password: accessPassword,
+    secureCookie: readSecureCookie(process.env.CORTEX_SECURE_COOKIE)
+  });
 const agentToolRegistry = createDefaultAgentToolRegistry();
 const agentConfigurationService = new AgentConfigurationService(
   configurationFile
@@ -67,9 +81,13 @@ app.use((_request, response, next) => {
   next();
 });
 app.use(express.json({ limit: "1mb", strict: true }));
+app.use("/api/auth", createAuthenticationRouter(authentication));
 app.get("/api/health", (_request, response) => {
   response.json({ status: "ok" });
 });
+if (authentication) {
+  app.use("/api", requireAuthentication(authentication));
+}
 app.use(
   "/api/projects",
   createProjectController(projectUseCase)

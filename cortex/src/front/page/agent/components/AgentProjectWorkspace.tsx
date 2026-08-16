@@ -694,6 +694,7 @@ function WorkflowFeedbackLoop({
   const containerRef = useRef<HTMLSpanElement>(null);
   const [loopGeometry, setLoopGeometry] = useState({
     width: 0,
+    height: 0,
     rootFontSize: 16
   });
 
@@ -705,9 +706,9 @@ function WorkflowFeedbackLoop({
     }
 
     const updateLoopGeometry = (): void => {
-      const width = container.getBoundingClientRect().width;
+      const { width, height } = container.getBoundingClientRect();
 
-      if (width <= 0) {
+      if (width <= 0 || height <= 0) {
         return;
       }
 
@@ -716,6 +717,7 @@ function WorkflowFeedbackLoop({
       );
       setLoopGeometry({
         width,
+        height,
         rootFontSize: Number.isFinite(rootFontSize) ? rootFontSize : 16
       });
     };
@@ -755,6 +757,14 @@ function WorkflowFeedbackLoop({
   const compactCornerWidth = compactGutterPosition * 0.7;
   const compactSourceX = 50 + compactGutterPosition / 2;
   const compactArrowWidth = compactGutterPosition * 0.17;
+  const bottomOffset = loopGeometry.height > 0
+    ? (1.5 * loopGeometry.rootFontSize / loopGeometry.height) * 100
+    : 4.8;
+  const bottomCornerHeight = loopGeometry.height > 0
+    ? (0.5 * loopGeometry.rootFontSize / loopGeometry.height) * 100
+    : 2.5;
+  const bottomY = 100 + bottomOffset;
+  const bottomCornerStartY = bottomY - bottomCornerHeight;
 
   return (
     <span
@@ -773,7 +783,7 @@ function WorkflowFeedbackLoop({
       >
         <path
           className="agent-project__feedback-grid-loop-path agent-project__feedback-grid-loop-path--desktop"
-          d={`M ${desktopSourceX} 100 L ${desktopSourceX} 102.3 Q ${desktopSourceX} 104.8, ${desktopSourceX - desktopCornerWidth} 104.8 L ${desktopLoopX + desktopCornerWidth} 104.8 Q ${desktopLoopX} 104.8, ${desktopLoopX} 102.3 L ${desktopLoopX} 10.5 Q ${desktopLoopX} 8, ${desktopLoopX + desktopCornerWidth} 8 L ${desktopTargetX} 8`}
+          d={`M ${desktopSourceX} 100 L ${desktopSourceX} ${bottomCornerStartY} Q ${desktopSourceX} ${bottomY}, ${desktopSourceX - desktopCornerWidth} ${bottomY} L ${desktopLoopX + desktopCornerWidth} ${bottomY} Q ${desktopLoopX} ${bottomY}, ${desktopLoopX} ${bottomCornerStartY} L ${desktopLoopX} 10.5 Q ${desktopLoopX} 8, ${desktopLoopX + desktopCornerWidth} 8 L ${desktopTargetX} 8`}
         />
         <path
           className="agent-project__feedback-grid-loop-arrow agent-project__feedback-grid-loop-arrow--desktop"
@@ -781,7 +791,7 @@ function WorkflowFeedbackLoop({
         />
         <path
           className="agent-project__feedback-grid-loop-path agent-project__feedback-grid-loop-path--compact"
-          d={`M ${compactSourceX} 100 L ${compactSourceX} 102.3 Q ${compactSourceX} 104.8, ${compactSourceX - compactCornerWidth} 104.8 L ${compactLoopX + compactCornerWidth} 104.8 Q ${compactLoopX} 104.8, ${compactLoopX} 102.3 L ${compactLoopX} 10.5 Q ${compactLoopX} 8, ${compactLoopX + compactCornerWidth} 8 L ${compactGutterPosition} 8`}
+          d={`M ${compactSourceX} 100 L ${compactSourceX} ${bottomCornerStartY} Q ${compactSourceX} ${bottomY}, ${compactSourceX - compactCornerWidth} ${bottomY} L ${compactLoopX + compactCornerWidth} ${bottomY} Q ${compactLoopX} ${bottomY}, ${compactLoopX} ${bottomCornerStartY} L ${compactLoopX} 10.5 Q ${compactLoopX} 8, ${compactLoopX + compactCornerWidth} 8 L ${compactGutterPosition} 8`}
         />
         <path
           className="agent-project__feedback-grid-loop-arrow agent-project__feedback-grid-loop-arrow--compact"

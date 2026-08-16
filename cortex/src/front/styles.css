@@ -68,6 +68,88 @@ main {
   background: #f2f6fc;
 }
 
+.login-page {
+  display: grid;
+  min-height: 100vh;
+  padding: 1.5rem;
+  place-items: center;
+  background:
+    radial-gradient(circle at 20% 15%, rgb(49 199 230 / 14%), transparent 30rem),
+    radial-gradient(circle at 85% 80%, rgb(37 99 235 / 12%), transparent 32rem),
+    #f2f6fc;
+}
+
+.login-card {
+  width: min(100%, 27rem);
+  padding: clamp(2rem, 6vw, 3rem);
+  border: 1px solid var(--color-line);
+  border-radius: 1.25rem;
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 1.5rem 4rem rgb(40 77 130 / 13%);
+  backdrop-filter: blur(18px);
+}
+
+.login-card__icon {
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  margin-bottom: 1.5rem;
+  border-radius: 0.85rem;
+  place-items: center;
+  background: linear-gradient(135deg, var(--color-primary), var(--color-cyan));
+  color: white;
+}
+
+.login-card h1 {
+  margin: 0;
+  font-size: 2rem;
+  letter-spacing: -0.04em;
+}
+
+.login-card__description {
+  margin: 0.7rem 0 1.75rem;
+  color: var(--color-text-muted);
+  line-height: 1.55;
+}
+
+.login-card form {
+  display: grid;
+  gap: 1rem;
+}
+
+.login-card form > button {
+  display: flex;
+  min-height: 2.8rem;
+  border: 0;
+  border-radius: 0.7rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  background: var(--color-primary);
+  color: white;
+  font-weight: 700;
+}
+
+.logout-button {
+  position: fixed;
+  z-index: 30;
+  top: 1rem;
+  right: 1rem;
+  display: grid;
+  width: 2.45rem;
+  height: 2.45rem;
+  border: 1px solid var(--color-line);
+  border-radius: 50%;
+  place-items: center;
+  background: rgb(255 255 255 / 90%);
+  color: var(--color-text-muted);
+  box-shadow: 0 0.4rem 1.2rem rgb(40 77 130 / 10%);
+}
+
+.logout-button:hover {
+  color: var(--color-danger);
+}
+
 .workspace-content {
   display: grid;
   min-height: 100vh;
@@ -208,6 +290,7 @@ main {
 
 .agent-project__workflow--has-feedback {
   grid-template-columns: 3.25rem minmax(0, 1fr);
+  padding-bottom: 2.5rem;
 }
 
 .agent-project__workflow-level {
