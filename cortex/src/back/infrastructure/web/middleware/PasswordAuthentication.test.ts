@@ -7,7 +7,9 @@ import {
   createAuthenticationRouter,
   PasswordAuthentication,
   readAccessPassword,
+  readPasswordArgument,
   readSecureCookie,
+  requireServerPassword,
   requireAuthentication
 } from "./PasswordAuthentication.ts";
 
@@ -85,6 +87,25 @@ test("validates authentication environment variables", () => {
   assert.equal(readSecureCookie("true"), true);
   assert.equal(readSecureCookie("false"), false);
   assert.throws(() => readSecureCookie("yes"), /true or false/);
+});
+
+test("reads the server password from command-line arguments", () => {
+  assert.equal(
+    readPasswordArgument(["node", "server.ts", "--password=strong-password"]),
+    "strong-password"
+  );
+  assert.equal(
+    readPasswordArgument(["node", "server.ts", "--password", "strong-password"]),
+    "strong-password"
+  );
+  assert.equal(readPasswordArgument(["node", "server.ts"]), undefined);
+  assert.throws(
+    () => readPasswordArgument(["node", "server.ts", "--password"]),
+    /requires a value/
+  );
+  assert.equal(requireServerPassword(true, "strong-password"), "strong-password");
+  assert.throws(() => requireServerPassword(true, undefined), /start:server/);
+  assert.equal(requireServerPassword(false, undefined), undefined);
 });
 
 test("disables authentication for a local-only instance", async () => {

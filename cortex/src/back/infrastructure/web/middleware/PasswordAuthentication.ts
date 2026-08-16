@@ -208,6 +208,41 @@ export function readAccessPassword(
   return value;
 }
 
+export function readPasswordArgument(args: string[]): string | undefined {
+  const inlineArgument = args.find((argument) => argument.startsWith("--password="));
+
+  if (inlineArgument) {
+    return inlineArgument.slice("--password=".length);
+  }
+
+  const argumentIndex = args.indexOf("--password");
+
+  if (argumentIndex === -1) {
+    return undefined;
+  }
+
+  const value = args[argumentIndex + 1];
+
+  if (!value || value.startsWith("--")) {
+    throw new Error("The --password argument requires a value.");
+  }
+
+  return value;
+}
+
+export function requireServerPassword(
+  isServerMode: boolean,
+  value: string | undefined
+): string | undefined {
+  if (isServerMode && !value) {
+    throw new Error(
+      "The start:server command requires --password or CORTEX_PASSWORD."
+    );
+  }
+
+  return value;
+}
+
 function isLoopbackHost(host: string): boolean {
   return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }

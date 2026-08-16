@@ -16,12 +16,19 @@ npm start
 ```
 
 Authentication is disabled while Cortex listens on the local loopback interface.
-To expose Cortex on a network interface, set a password of at least 12 characters:
+This command opens Cortex in the default browser. On a headless server, pass a
+password of at least 12 characters to `start:server`:
 
 ```bash
-HOST=0.0.0.0 \
-CORTEX_PASSWORD="choose-a-password-of-at-least-12-characters" \
-npm start
+npm run start:server -- --password="choose-a-password-of-at-least-12-characters"
+```
+
+When a reverse proxy exposes Cortex over HTTPS while Cortex itself listens on
+`127.0.0.1`, enable secure session cookies:
+
+```bash
+CORTEX_SECURE_COOKIE=true \
+npm run start:server -- --password="choose-a-password-of-at-least-12-characters"
 ```
 
 The application is then available at <http://127.0.0.1:3000>. The local `config.json` file is created on the first save and is not committed to version control. Its structure is documented in `config.example.json`.
