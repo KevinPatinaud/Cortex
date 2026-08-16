@@ -9,7 +9,6 @@ import {
   readAccessPassword,
   readPasswordArgument,
   readSecureCookie,
-  requireServerPassword,
   requireAuthentication
 } from "./PasswordAuthentication.ts";
 
@@ -69,18 +68,12 @@ test("expires and revokes sessions", () => {
 
 test("validates authentication environment variables", () => {
   assert.equal(
-    readAccessPassword("a-strong-password", "0.0.0.0"),
+    readAccessPassword("a-strong-password"),
     "a-strong-password"
   );
-  assert.equal(readAccessPassword(undefined, "127.0.0.1"), null);
-  assert.equal(readAccessPassword(undefined, "localhost"), null);
-  assert.equal(readAccessPassword(undefined, "::1"), null);
+  assert.equal(readAccessPassword(undefined), null);
   assert.throws(
-    () => readAccessPassword(undefined, "0.0.0.0"),
-    /required for network access/
-  );
-  assert.throws(
-    () => readAccessPassword("too-short", "127.0.0.1"),
+    () => readAccessPassword("too-short"),
     /at least 12/
   );
   assert.equal(readSecureCookie(undefined), false);
@@ -103,9 +96,6 @@ test("reads the server password from command-line arguments", () => {
     () => readPasswordArgument(["node", "server.ts", "--password"]),
     /requires a value/
   );
-  assert.equal(requireServerPassword(true, "strong-password"), "strong-password");
-  assert.throws(() => requireServerPassword(true, undefined), /start:server/);
-  assert.equal(requireServerPassword(false, undefined), undefined);
 });
 
 test("disables authentication for a local-only instance", async () => {

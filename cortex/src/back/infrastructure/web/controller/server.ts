@@ -20,7 +20,6 @@ import {
   readAccessPassword,
   readPasswordArgument,
   readSecureCookie,
-  requireServerPassword,
   requireAuthentication
 } from "../middleware/PasswordAuthentication.ts";
 import { createAgentController } from "./AgentController.ts";
@@ -34,14 +33,9 @@ const workspaceDirectory = path.resolve(directoryName, "../../../../..");
 const clientDirectory = path.join(workspaceDirectory, "dist");
 const configurationFile = path.join(workspaceDirectory, "config.json");
 const shouldOpenBrowser = process.argv.includes("--open");
-const suppliedPassword = requireServerPassword(
-  process.argv.includes("--server"),
-  readPasswordArgument(process.argv) ?? process.env.CORTEX_PASSWORD
-);
-const accessPassword = readAccessPassword(
-  suppliedPassword,
-  host
-);
+const suppliedPassword = readPasswordArgument(process.argv) ??
+  process.env.CORTEX_PASSWORD;
+const accessPassword = readAccessPassword(suppliedPassword);
 const authentication = accessPassword === null
   ? null
   : new PasswordAuthentication({

@@ -16,8 +16,14 @@ npm start
 ```
 
 Authentication is disabled while Cortex listens on the local loopback interface.
-This command opens Cortex in the default browser. On a headless server, pass a
-password of at least 12 characters to `start:server`:
+This command opens Cortex in the default browser. On a headless server, use:
+
+```bash
+npm run start:server
+```
+
+Authentication is optional for `start:server`. To enable it, pass a password of
+at least 12 characters:
 
 ```bash
 npm run start:server -- --password="choose-a-password-of-at-least-12-characters"
@@ -65,7 +71,7 @@ This command runs strict TypeScript type checking, all Node.js tests, and the pr
 | --- | --- | --- |
 | `HOST` | `127.0.0.1` | Server listening interface |
 | `PORT` | `3000` | HTTP port, between 1 and 65535 |
-| `CORTEX_PASSWORD` | none locally | Access password, required for non-loopback listening interfaces, at least 12 characters |
+| `CORTEX_PASSWORD` | none | Optional access password, at least 12 characters when set |
 | `CORTEX_SECURE_COOKIE` | `false` | Set to `true` when Cortex is served over HTTPS |
 
 The server intentionally listens locally by default: its routes can read and modify projects on the machine and must not be exposed publicly without additional authentication and access controls.

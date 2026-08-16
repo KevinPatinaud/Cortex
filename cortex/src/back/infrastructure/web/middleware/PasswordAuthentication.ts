@@ -192,16 +192,15 @@ export function requireAuthentication(
 }
 
 export function readAccessPassword(
-  value: string | undefined,
-  host: string
+  value: string | undefined
 ): string | null {
-  if (!value && isLoopbackHost(host)) {
+  if (!value) {
     return null;
   }
 
-  if (!value || value.length < 12) {
+  if (value.length < 12) {
     throw new Error(
-      "The CORTEX_PASSWORD variable is required for network access and must contain at least 12 characters."
+      "The Cortex password must contain at least 12 characters."
     );
   }
 
@@ -228,23 +227,6 @@ export function readPasswordArgument(args: string[]): string | undefined {
   }
 
   return value;
-}
-
-export function requireServerPassword(
-  isServerMode: boolean,
-  value: string | undefined
-): string | undefined {
-  if (isServerMode && !value) {
-    throw new Error(
-      "The start:server command requires --password or CORTEX_PASSWORD."
-    );
-  }
-
-  return value;
-}
-
-function isLoopbackHost(host: string): boolean {
-  return host === "127.0.0.1" || host === "localhost" || host === "::1";
 }
 
 export function readSecureCookie(value: string | undefined): boolean {
