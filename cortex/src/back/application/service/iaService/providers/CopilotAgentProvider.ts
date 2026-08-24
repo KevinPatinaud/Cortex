@@ -14,6 +14,7 @@ import {
   AgentToolRegistry,
   GITHUB_PULL_REQUESTS_CAPABILITY
 } from "../iaTools/AgentToolRegistry.ts";
+import { McpConfigurationService } from "../McpConfigurationService.ts";
 
 type CopilotSession = Awaited<ReturnType<CopilotClient["createSession"]>>;
 
@@ -21,7 +22,10 @@ export class CopilotAgentProvider implements AgentProvider {
   readonly engine = "copilot" as const;
   readonly label = "GitHub Copilot";
 
-  constructor(private readonly toolRegistry: AgentToolRegistry) {}
+  constructor(
+    private readonly toolRegistry: AgentToolRegistry,
+    private readonly mcpConfigurationService = new McpConfigurationService()
+  ) {}
 
   async isAvailable(): Promise<boolean> {
     const client = new CopilotClient({ useLoggedInUser: true });
@@ -54,7 +58,12 @@ export class CopilotAgentProvider implements AgentProvider {
               kind: "reject",
               feedback: "The global configuration does not allow this action."
             }),
-        tools: this.toolRegistry.resolve([GITHUB_PULL_REQUESTS_CAPABILITY])
+        tools: this.toolRegistry.resolve([GITHUB_PULL_REQUESTS_CAPABILITY]),
+        mcpServers: await this.mcpConfigurationService.getCopilotMcpServers(
+          options.workingDirectory
+        ),
+        mcpOAuthTokenStorage: "persistent",
+        enableConfigDiscovery: true
       };
 
       if (options.workingDirectory) {

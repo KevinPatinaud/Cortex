@@ -8,7 +8,8 @@ export abstract class CliAgentProvider {
     command: string,
     args: string[],
     timeout = 120_000,
-    workingDirectory = this.workingDirectory
+    workingDirectory = this.workingDirectory,
+    input?: string
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       const child = execFile(command, args, {
@@ -26,9 +27,7 @@ export abstract class CliAgentProvider {
         resolve(stdout.trim());
       });
 
-      // Otherwise, CLIs detect piped stdin and wait indefinitely for more
-      // input, even when the prompt is passed as an argument.
-      child.stdin?.end();
+      child.stdin?.end(input);
     });
   }
 

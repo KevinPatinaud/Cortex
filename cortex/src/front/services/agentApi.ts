@@ -1,4 +1,11 @@
 import { requestJson } from "./apiClient.ts";
+import type { McpDiscoveryResult } from "../../shared/McpConnection.ts";
+
+export type {
+  McpConnectionSummary,
+  McpDiscoveryIssue,
+  McpDiscoveryResult
+} from "../../shared/McpConnection.ts";
 
 export type AgentEngine = "codex" | "claude" | "copilot";
 
@@ -106,6 +113,16 @@ export interface ImproveAgentInput {
 
 export function getAgentStatus(): Promise<AgentStatus> {
   return requestJson("/api/agents/status");
+}
+
+export function getMcpConnections(
+  projectId?: string
+): Promise<McpDiscoveryResult> {
+  const query = projectId
+    ? `?projectId=${encodeURIComponent(projectId)}`
+    : "";
+
+  return requestJson(`/api/agents/mcp-connections${query}`);
 }
 
 export async function getAgentConfiguration(): Promise<AgentConfiguration> {

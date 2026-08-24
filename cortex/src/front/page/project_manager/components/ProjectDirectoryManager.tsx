@@ -301,7 +301,7 @@ export function ProjectDirectoryManager({
             <FolderInput aria-hidden="true" size={16} />
             {isSelecting ? t("sidebar.importing") : t("sidebar.import")}
           </button>
-          <AgentEngineStatus />
+          <AgentEngineStatus projectId={activeProject?.id} />
         </footer>
       </aside>
 

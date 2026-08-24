@@ -3,6 +3,7 @@ import type {
   AgentConfiguration,
   AgentEngine
 } from "../service/iaService/AgentProvider.ts";
+import type { McpDiscoveryResult } from "../../../shared/McpConnection.ts";
 import type {
   AgentService,
   AgentStatus
@@ -257,6 +258,14 @@ export class AgentUseCase {
 
   getConfiguration(): Promise<AgentConfiguration> {
     return this.agentService.getConfiguration();
+  }
+
+  async getMcpConnections(projectId?: string): Promise<McpDiscoveryResult> {
+    const project = projectId?.trim()
+      ? await this.projectUseCase.getProject(projectId)
+      : null;
+
+    return this.agentService.getMcpConnections(project?.directoryPath);
   }
 
   saveConfiguration(

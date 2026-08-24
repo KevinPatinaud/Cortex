@@ -122,6 +122,17 @@ export function createAgentController(
     }, agentErrorMappings.getConfiguration)
   );
 
+  router.get(
+    "/mcp-connections",
+    asyncRoute(async (request, response) => {
+      const projectId = typeof request.query.projectId === "string"
+        ? request.query.projectId
+        : undefined;
+
+      response.json(await agentUseCase.getMcpConnections(projectId));
+    }, agentErrorMappings.getMcpConnections)
+  );
+
   router.put(
     "/configuration",
     asyncRoute<AgentConfigurationInput>(async (request, response) => {

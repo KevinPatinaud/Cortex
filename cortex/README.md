@@ -70,6 +70,25 @@ closed, as long as the Cortex server is running. Each occurrence starts a fresh
 workflow and automatically passes the selected branch results to downstream
 agents. An occurrence is skipped when the same project is already running.
 
+## MCP connections
+
+The engine settings panel discovers MCP servers configured for Codex, Claude,
+and GitHub Copilot. When a project is active, it also includes project-scoped
+servers. Cortex reads these files without modifying them:
+
+- Codex: `~/.codex/config.toml` and `.codex/config.toml`;
+- Claude: `~/.claude.json` and `.mcp.json`;
+- Copilot: `~/.copilot/mcp-config.json`, `.mcp.json`, and `.github/mcp.json`.
+
+Codex and Claude load their native configuration through their CLI. Copilot is
+run through its SDK, so Cortex supplies the user MCP servers to each session and
+enables project configuration discovery. OAuth tokens remain in each engine's
+native credential store and are never returned by the Cortex API.
+
+`CODEX_HOME` and `COPILOT_HOME` change the corresponding user configuration
+directory. `CORTEX_COPILOT_MCP_CONFIG` and `CORTEX_CLAUDE_MCP_CONFIG` can point
+to a specific MCP configuration file when a non-standard layout is required.
+
 ## Quality checks
 
 ```bash
@@ -87,6 +106,8 @@ This command runs strict TypeScript type checking, all Node.js tests, and the pr
 | `CORTEX_PASSWORD` | none | Optional access password, at least 12 characters when set |
 | `CORTEX_SECURE_COOKIE` | `false` | Set to `true` when Cortex is served over HTTPS |
 | `CORTEX_PROJECTS_DIRECTORY` | `<workspace>/projects` | Directory used to store projects uploaded through the browser |
+| `CORTEX_COPILOT_MCP_CONFIG` | `<COPILOT_HOME>/mcp-config.json` | Optional Copilot MCP configuration file override |
+| `CORTEX_CLAUDE_MCP_CONFIG` | `~/.claude.json` | Optional Claude MCP configuration file override |
 
 The server intentionally listens locally by default: its routes can read and modify projects on the machine and must not be exposed publicly without additional authentication and access controls.
 The password protects the application, but remote deployments must still use HTTPS so that credentials and session cookies are encrypted in transit.

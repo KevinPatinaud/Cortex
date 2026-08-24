@@ -7,6 +7,8 @@ import type {
   AgentProvider
 } from "./AgentProvider.ts";
 import type { AgentConfigurationService } from "./AgentConfigurationService.ts";
+import type { McpConfigurationService } from "./McpConfigurationService.ts";
+import type { McpDiscoveryResult } from "../../../../shared/McpConnection.ts";
 
 export interface AgentStatus {
   engine: AgentEngine | null;
@@ -20,8 +22,14 @@ export class AgentService {
 
   constructor(
     private readonly providers: AgentProvider[],
-    private readonly configurationService: AgentConfigurationService
+    private readonly configurationService: AgentConfigurationService,
+    private readonly mcpConfigurationService?: McpConfigurationService
   ) {}
+
+  getMcpConnections(workingDirectory?: string): Promise<McpDiscoveryResult> {
+    return this.mcpConfigurationService?.discover(workingDirectory) ??
+      Promise.resolve({ connections: [], issues: [] });
+  }
 
   getConfiguration(): Promise<AgentConfiguration> {
     return this.configurationService.getConfiguration();

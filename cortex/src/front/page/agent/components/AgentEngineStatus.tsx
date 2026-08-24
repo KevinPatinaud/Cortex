@@ -1,12 +1,24 @@
-import { Bot, ChevronDown } from "lucide-react";
+import {
+  Bot,
+  Cable,
+  ChevronDown,
+  Globe2,
+  KeyRound,
+  RefreshCw,
+  TerminalSquare,
+  TriangleAlert
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "../../../i18n.tsx";
 import {
   getAgentConfiguration,
+  getMcpConnections,
   getAgentStatus,
   saveAgentConfiguration,
   type AgentConfiguration,
-  type AgentStatus
+  type AgentStatus,
+  type McpConnectionSummary,
+  type McpDiscoveryResult
 } from "../../../services/agentApi.ts";
 
 const EMPTY_STATUS: AgentStatus = {
@@ -20,12 +32,23 @@ const DEFAULT_CONFIGURATION: AgentConfiguration = {
   allowAll: true
 };
 
-export function AgentEngineStatus() {
+const EMPTY_MCP_DISCOVERY: McpDiscoveryResult = {
+  connections: [],
+  issues: []
+};
+
+interface AgentEngineStatusProps {
+  projectId?: string;
+}
+
+export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
   const { language, setLanguage, t } = useTranslation();
   const [status, setStatus] = useState<AgentStatus>(EMPTY_STATUS);
   const [configuration, setConfiguration] = useState(DEFAULT_CONFIGURATION);
+  const [mcpDiscovery, setMcpDiscovery] = useState(EMPTY_MCP_DISCOVERY);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRefreshingMcp, setIsRefreshingMcp] = useState(false);
   const [configurationError, setConfigurationError] = useState("");
 
   useEffect(() => {
@@ -33,14 +56,16 @@ export function AgentEngineStatus() {
 
     async function loadStatus(): Promise<void> {
       try {
-        const [agentStatus, agentConfiguration] = await Promise.all([
+        const [agentStatus, agentConfiguration, discoveredMcp] = await Promise.all([
           getAgentStatus(),
-          getAgentConfiguration()
+          getAgentConfiguration(),
+          getMcpConnections(projectId)
         ]);
 
         if (isMounted) {
           setStatus(agentStatus);
           setConfiguration(agentConfiguration);
+          setMcpDiscovery(discoveredMcp);
         }
       } catch (error) {
         if (isMounted) {
@@ -64,7 +89,7 @@ export function AgentEngineStatus() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [projectId]);
 
   const hasError = !isLoading && Boolean(status.error);
 
@@ -85,6 +110,27 @@ export function AgentEngineStatus() {
       );
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function refreshMcpConnections(): Promise<void> {
+    setIsRefreshingMcp(true);
+
+    try {
+      setMcpDiscovery(await getMcpConnections(projectId));
+    } catch (error) {
+      setMcpDiscovery({
+        connections: [],
+        issues: [{
+          source: "shared",
+          configurationFile: "",
+          message: error instanceof Error
+            ? error.message
+            : t("mcp.loadError")
+        }]
+      });
+    } finally {
+      setIsRefreshingMcp(false);
     }
   }
 
@@ -160,6 +206,52 @@ export function AgentEngineStatus() {
               })}
             />
           </label>
+          <section className="agent-engine-mcp" aria-labelledby="mcp-connections-title">
+            <header>
+              <span>
+                <Cable aria-hidden="true" size={15} strokeWidth={1.8} />
+                <span>
+                  <strong id="mcp-connections-title">{t("mcp.title")}</strong>
+                  <small>{t("mcp.count", {
+                    count: mcpDiscovery.connections.length
+                  })}</small>
+                </span>
+              </span>
+              <button
+                type="button"
+                className="agent-engine-mcp__refresh"
+                onClick={() => void refreshMcpConnections()}
+                disabled={isRefreshingMcp}
+                title={t("mcp.refresh")}
+                aria-label={t("mcp.refresh")}
+              >
+                <RefreshCw
+                  className={isRefreshingMcp ? "spin" : undefined}
+                  aria-hidden="true"
+                  size={14}
+                />
+              </button>
+            </header>
+            {mcpDiscovery.issues.length > 0 && (
+              <div className="agent-engine-mcp__issues" role="status">
+                {mcpDiscovery.issues.map((issue) => (
+                  <p key={`${issue.source}:${issue.configurationFile}`}>
+                    <TriangleAlert aria-hidden="true" size={13} />
+                    <span>{issue.message}</span>
+                  </p>
+                ))}
+              </div>
+            )}
+            {mcpDiscovery.connections.length === 0 ? (
+              <p className="agent-engine-mcp__empty">{t("mcp.empty")}</p>
+            ) : (
+              <ul className="agent-engine-mcp__list">
+                {mcpDiscovery.connections.map((connection) => (
+                  <McpConnectionItem key={connection.id} connection={connection} />
+                ))}
+              </ul>
+            )}
+          </section>
           {configurationError && (
             <p className="agent-engine-settings__error" role="alert">
               {configurationError}
@@ -168,5 +260,46 @@ export function AgentEngineStatus() {
         </div>
       </details>
     </div>
+  );
+}
+
+function McpConnectionItem({
+  connection
+}: {
+  connection: McpConnectionSummary;
+}) {
+  const { t } = useTranslation();
+  const sourceLabel = connection.source === "shared"
+    ? t("mcp.source.shared")
+    : connection.source === "codex"
+      ? "Codex"
+      : connection.source === "claude"
+        ? "Claude"
+        : "Copilot";
+  const scopeLabel = t(`mcp.scope.${connection.scope}`);
+  const configuredFor = connection.configuredFor.map((engine) =>
+    engine === "codex" ? "Codex" : engine === "claude" ? "Claude" : "Copilot"
+  ).join(" + ");
+
+  return (
+    <li>
+      <span className="agent-engine-mcp__transport" aria-hidden="true">
+        {connection.transport === "stdio"
+          ? <TerminalSquare size={14} />
+          : <Globe2 size={14} />}
+      </span>
+      <span className="agent-engine-mcp__connection">
+        <strong>{connection.name}</strong>
+        <small>{sourceLabel} · {scopeLabel} · {configuredFor}</small>
+        <code title={connection.endpoint}>{connection.endpoint}</code>
+      </span>
+      {connection.hasAuthentication && (
+        <KeyRound
+          className="agent-engine-mcp__authentication"
+          aria-label={t("mcp.authentication")}
+          size={13}
+        />
+      )}
+    </li>
   );
 }

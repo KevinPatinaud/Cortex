@@ -96,11 +96,14 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
       args.push(options.sessionId);
     }
 
-    args.push(prompt);
+    // Passing a large prompt as a process argument can exceed the operating
+    // system's command-line limit (E2BIG). Codex accepts `-` as an explicit
+    // instruction to read the prompt from stdin, including resumed sessions.
+    args.push("-");
     const output = await this.runCommand(this.command, [
       ...this.argumentPrefix,
       ...args
-    ], AGENT_EXECUTION_TIMEOUT_MS, options.workingDirectory);
+    ], AGENT_EXECUTION_TIMEOUT_MS, options.workingDirectory, prompt);
     const result = parseCodexJsonOutput(output, options.sessionId);
 
     if (!result.answer) {

@@ -51,6 +51,22 @@ export class ProjectUseCase {
     return this.projectService.getProjects();
   }
 
+  async getProject(projectId: string): Promise<Project> {
+    const normalizedProjectId = this.getRequiredString(
+      projectId,
+      "The project ID is required."
+    );
+    const project = (await this.projectService.getProjects()).find(
+      (candidate) => candidate.id === normalizedProjectId
+    );
+
+    if (!project) {
+      throw new NotFoundError("The project could not be found.");
+    }
+
+    return project;
+  }
+
   saveProject(directoryPath: unknown): Promise<Project[]> {
     return this.projectService.saveProject(
       this.getRequiredDirectoryPath(directoryPath)

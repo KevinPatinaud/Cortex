@@ -21,6 +21,11 @@ export const agentErrorMappings = {
     fallbackMessage: "Unable to load the agent configuration.",
     logMessage: "Unable to load the agent configuration:"
   },
+  getMcpConnections: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to discover MCP connections.",
+    logMessage: "Unable to discover MCP connections:"
+  },
   saveConfiguration: {
     fallbackStatus: 500,
     fallbackMessage: "Unable to save the agent configuration.",
