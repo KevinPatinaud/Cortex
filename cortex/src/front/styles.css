@@ -1634,6 +1634,16 @@ main {
   transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
 }
 
+.project-list__item[draggable="true"],
+.project-list__item[draggable="true"] .project-list__select-button {
+  cursor: grab;
+}
+
+.project-list__item[draggable="true"]:active,
+.project-list__item[draggable="true"]:active .project-list__select-button {
+  cursor: grabbing;
+}
+
 .project-list__item--selected {
   border-color: rgb(81 153 255 / 38%);
   background: rgb(37 99 235 / 18%);
@@ -1698,42 +1708,6 @@ main {
 
 .project-list__loading-icon {
   animation: project-activity-spin 900ms linear infinite;
-}
-
-.project-list__drag-handle {
-  display: grid;
-  width: 1.75rem;
-  height: 2rem;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  color: #5e7da5;
-  cursor: grab;
-  opacity: 0.72;
-  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, opacity 160ms ease;
-}
-
-.project-list__item:hover .project-list__drag-handle,
-.project-list__drag-handle:focus-visible {
-  color: #9bc5fc;
-  opacity: 1;
-}
-
-.project-list__drag-handle:hover,
-.project-list__drag-handle:focus-visible {
-  border-color: rgb(95 159 245 / 32%);
-  outline: 0;
-  background: rgb(95 159 245 / 10%);
-}
-
-.project-list__drag-handle:active {
-  cursor: grabbing;
-}
-
-.project-list__drag-handle[aria-disabled="true"] {
-  cursor: not-allowed;
-  opacity: 0.3;
 }
 
 .project-list__details {

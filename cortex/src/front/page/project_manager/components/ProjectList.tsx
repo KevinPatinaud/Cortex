@@ -1,5 +1,5 @@
 import { useState, type DragEvent, type KeyboardEvent } from "react";
-import { Check, Folder, GripVertical, LoaderCircle } from "lucide-react";
+import { Check, Folder, LoaderCircle } from "lucide-react";
 import type { Project } from "../../../services/projectApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
 
@@ -80,10 +80,13 @@ export function ProjectList({
   }
 
   function moveProjectWithKeyboard(
-    event: KeyboardEvent<HTMLSpanElement>,
+    event: KeyboardEvent<HTMLButtonElement>,
     projectId: string
   ): void {
-    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+    if (
+      !event.altKey ||
+      (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+    ) {
       return;
     }
 
@@ -141,6 +144,15 @@ export function ProjectList({
                 : ""
             }`}
             key={project.id}
+            draggable={!isInteractionLocked}
+            title={t("project.reorderHelp")}
+            onDragStart={(event: DragEvent<HTMLLIElement>) => {
+              setDraggedProjectId(project.id);
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", project.id);
+              event.dataTransfer.setDragImage(event.currentTarget, 24, 24);
+            }}
+            onDragEnd={clearDragState}
             onDragOver={(event: DragEvent<HTMLLIElement>) => {
               if (!draggedProjectId || isInteractionLocked) {
                 return;
@@ -173,6 +185,7 @@ export function ProjectList({
               aria-busy={isProjectLoading}
               aria-pressed={isSelected}
               onClick={() => onSelect(project)}
+              onKeyDown={(event) => moveProjectWithKeyboard(event, project.id)}
               disabled={loadingProjectId !== null || isInteractionLocked}
             >
               {isProjectLoading ? (
@@ -209,28 +222,6 @@ export function ProjectList({
                 </span>
               </span>
             </button>
-            <span
-              className="project-list__drag-handle"
-              role="button"
-              tabIndex={isInteractionLocked ? -1 : 0}
-              draggable={!isInteractionLocked}
-              aria-disabled={isInteractionLocked}
-              aria-label={t("project.reorderAria", { name: projectName })}
-              title={t("project.reorderHelp")}
-              onKeyDown={(event) => moveProjectWithKeyboard(event, project.id)}
-              onDragStart={(event: DragEvent<HTMLSpanElement>) => {
-                setDraggedProjectId(project.id);
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", project.id);
-                const projectItem = event.currentTarget.closest("li");
-                if (projectItem) {
-                  event.dataTransfer.setDragImage(projectItem, 24, 24);
-                }
-              }}
-              onDragEnd={clearDragState}
-            >
-              <GripVertical aria-hidden="true" size={16} />
-            </span>
           </li>
         );
       })}
