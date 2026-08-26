@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ApiRequestError, requestJson } from "./apiClient.ts";
+import { ApiRequestError, requestBlob, requestJson } from "./apiClient.ts";
 
 test("retourne le JSON d'une réponse réussie", async () => {
   const result = await requestJson<{ value: number }>(
@@ -52,5 +52,20 @@ test("distingue une panne réseau d'une erreur HTTP", async () => {
       error instanceof ApiRequestError &&
       error.status === null &&
       error.message.includes("connexion refusée")
+  );
+});
+
+test("refuse de traiter une erreur JSON comme un fichier à télécharger", async () => {
+  await assert.rejects(
+    requestBlob("/api/export", undefined, async () =>
+      new Response(JSON.stringify({ error: "Export indisponible." }), {
+        status: 404,
+        headers: { "Content-Type": "application/json" }
+      })
+    ),
+    (error: unknown) =>
+      error instanceof ApiRequestError &&
+      error.status === 404 &&
+      error.message === "Export indisponible."
   );
 });

@@ -952,6 +952,14 @@ main {
 }
 
 .agent-project__title-row {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.agent-project__title-row > div {
   min-width: 0;
 }
 
@@ -974,7 +982,8 @@ main {
 
 .agent-project__schedule-button,
 .agent-project__reset-button,
-.agent-project__edit-button {
+.agent-project__edit-button,
+.agent-project__export-button {
   display: inline-flex;
   min-height: 2.45rem;
   margin: 0;
@@ -990,8 +999,10 @@ main {
   font-size: 0.72rem;
   font-weight: 700;
   transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  text-decoration: none;
 }
 
+.agent-project__export-button:hover:not(:disabled),
 .agent-project__schedule-button:hover:not(:disabled),
 .agent-project__reset-button:hover:not(:disabled),
 .agent-project__edit-button:hover:not(:disabled) {
@@ -999,6 +1010,34 @@ main {
   background: #fff;
   box-shadow: 0 10px 24px rgb(35 73 128 / 12%);
   transform: translateY(-1px);
+}
+
+.agent-project__title-row .agent-project__export-button {
+  min-height: 2.2rem;
+  margin-top: 0.1rem;
+  padding: 0.48rem 0.72rem;
+  border-color: rgb(86 112 150 / 20%);
+  background: rgb(255 255 255 / 42%);
+  box-shadow: none;
+  color: #607694;
+}
+
+.agent-project__title-row .agent-project__export-button:hover:not(:disabled) {
+  border-color: rgb(37 99 235 / 32%);
+  background: rgb(255 255 255 / 88%);
+  box-shadow: 0 7px 18px rgb(35 73 128 / 8%);
+  color: #285ba8;
+}
+
+.agent-project__export-loading {
+  animation: project-activity-spin 900ms linear infinite;
+}
+
+.agent-project__export-error {
+  margin: 0 0 0.8rem;
+  color: #b42318;
+  font-size: 0.75rem;
+  font-weight: 650;
 }
 
 .agent-project__schedule-button--active {
@@ -1636,12 +1675,17 @@ main {
 
 .project-list__item[draggable="true"],
 .project-list__item[draggable="true"] .project-list__select-button {
-  cursor: grab;
+  cursor: pointer;
 }
 
-.project-list__item[draggable="true"]:active,
-.project-list__item[draggable="true"]:active .project-list__select-button {
+.project-list__item--dragging,
+.project-list__item--dragging .project-list__select-button {
   cursor: grabbing;
+}
+
+.project-list--dragging,
+.project-list--dragging * {
+  cursor: grabbing !important;
 }
 
 .project-list__item--selected {

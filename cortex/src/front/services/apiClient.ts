@@ -53,6 +53,41 @@ export async function requestJson<T>(
   return body as T;
 }
 
+export async function requestBlob(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  fetcher: Fetcher = fetch
+): Promise<Blob> {
+  let response: Response;
+
+  try {
+    response = await fetcher(input, init);
+  } catch (error) {
+    throw new ApiRequestError(
+      error instanceof Error && error.message
+        ? `Server unreachable: ${error.message}`
+        : "Server unreachable.",
+      null
+    );
+  }
+
+  if (!response.ok) {
+    const body = await readResponseBody(response);
+
+    if (response.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new Event("cortex:unauthorized"));
+    }
+
+    throw new ApiRequestError(
+      getApiErrorMessage(body) ||
+        `The request failed (HTTP ${response.status}).`,
+      response.status
+    );
+  }
+
+  return response.blob();
+}
+
 async function readResponseBody(response: Response): Promise<unknown> {
   const text = await response.text();
 

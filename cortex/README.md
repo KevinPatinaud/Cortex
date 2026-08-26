@@ -61,6 +61,13 @@ sensitive content such as `.git`, `node_modules`, build directories, and `.env`
 files is excluded. Empty directories, symbolic links, and executable permission
 bits are not preserved by browser folder uploads.
 
+## Exporting a project
+
+Open a project and select **Export** to download it as a Cortex `.ctx` file.
+A `.ctx` file is a standard ZIP archive whose root contains the project files,
+so it can be inspected or extracted with regular ZIP tools on Windows, Linux,
+and macOS.
+
 ## Scheduled workflows
 
 From a project's **Workflow** tab, select **Schedule** to configure a standard

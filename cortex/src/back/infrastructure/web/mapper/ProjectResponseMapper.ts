@@ -13,6 +13,11 @@ export const projectErrorMappings = {
     fallbackMessage: "Unable to import the project.",
     logMessage: "Unable to import the project:"
   },
+  export: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to export the project.",
+    logMessage: "Unable to export the project:"
+  },
   save: {
     fallbackStatus: 500,
     fallbackMessage: "Unable to save the directory.",

@@ -5,7 +5,7 @@ import {
   useState,
   type KeyboardEvent
 } from "react";
-import { ArrowDown, Bot, CalendarClock, ChevronDown, FastForward, GitBranch, LoaderCircle, Pause, Pencil, Play, RotateCcw, Send } from "lucide-react";
+import { ArrowDown, Bot, CalendarClock, ChevronDown, Download, FastForward, GitBranch, LoaderCircle, Pause, Pencil, Play, RotateCcw, Send } from "lucide-react";
 import {
   loadAgentProject,
   getWorkflowSchedule,
@@ -18,7 +18,10 @@ import {
   type UpstreamAgentResult,
   type WorkflowSchedule
 } from "../../../services/agentApi.ts";
-import type { Project } from "../../../services/projectApi.ts";
+import {
+  exportProjectArchive,
+  type Project
+} from "../../../services/projectApi.ts";
 import {
   parseAgentResponse,
   type AgentResponsePayload
@@ -108,6 +111,15 @@ function saveHandoffPreferences(
 function getProjectName(directoryPath: string): string {
   const pathParts = directoryPath.split(/[\\/]/).filter(Boolean);
   return pathParts.at(-1) || directoryPath;
+}
+
+function getProjectArchiveFileName(projectName: string): string {
+  const portableName = projectName
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, "-")
+    .replace(/[. ]+$/g, "")
+    .trim();
+
+  return `${portableName || "cortex-project"}.ctx`;
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -1424,6 +1436,8 @@ export function AgentProjectWorkspace({
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isResetting, setIsResetting] = useState(false);
   const [resetError, setResetError] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [workflowSchedule, setWorkflowSchedule] =
     useState<WorkflowSchedule | null>(null);
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
@@ -1443,6 +1457,7 @@ export function AgentProjectWorkspace({
     setIsScheduleDialogOpen(false);
     setWorkflowSchedule(null);
     setResetError("");
+    setExportError("");
     setReleasedAutomaticAgentIds(new Set());
   }, [content?.projectId]);
 
@@ -2024,6 +2039,27 @@ export function AgentProjectWorkspace({
     }
   }
 
+  async function handleExportProject(): Promise<void> {
+    setIsExporting(true);
+    setExportError("");
+
+    try {
+      const archive = await exportProjectArchive(projectId);
+      const downloadUrl = URL.createObjectURL(archive);
+      const downloadLink = document.createElement("a");
+      downloadLink.href = downloadUrl;
+      downloadLink.download = getProjectArchiveFileName(projectName);
+      document.body.append(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 0);
+    } catch (requestError) {
+      setExportError(getErrorMessage(requestError, t("project.exportError")));
+    } finally {
+      setIsExporting(false);
+    }
+  }
+
   return (
     <section className="workspace-content workspace-content--project">
       <header className="agent-project__header">
@@ -2032,6 +2068,24 @@ export function AgentProjectWorkspace({
             <p className="eyebrow">{t("workspace.project", { engine: content.engine })}</p>
             <h1>{projectName}</h1>
           </div>
+          <button
+            className="agent-project__export-button"
+            type="button"
+            onClick={() => void handleExportProject()}
+            disabled={isExporting}
+            title={t("project.exportHelp")}
+          >
+            {isExporting ? (
+              <LoaderCircle
+                className="agent-project__export-loading"
+                aria-hidden="true"
+                size={15}
+              />
+            ) : (
+              <Download aria-hidden="true" size={15} />
+            )}
+            {isExporting ? t("project.exporting") : t("project.export")}
+          </button>
         </div>
         <div className="agent-project__tabs-row">
           <div className="agent-project__tabs" role="tablist" aria-label={t("workspace.contentAria")}>
@@ -2134,6 +2188,12 @@ export function AgentProjectWorkspace({
           </div>
         </div>
       </header>
+
+      {exportError && (
+        <p className="agent-project__export-error" role="alert">
+          {exportError}
+        </p>
+      )}
 
       {activeTab === "instructions" ? (
         <section

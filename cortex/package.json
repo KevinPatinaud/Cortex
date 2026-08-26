@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@github/copilot-sdk": "^1.0.9",
+    "archiver": "^8.0.0",
     "express": "^5.2.1",
     "lucide-react": "^1.29.0",
     "multer": "^2.2.0",

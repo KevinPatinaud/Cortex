@@ -124,7 +124,7 @@ export function ProjectList({
 
   return (
     <ul
-      className="project-list"
+      className={`project-list${draggedProjectId ? " project-list--dragging" : ""}`}
       aria-busy={loadingProjectId !== null}
     >
       {projects.map((project) => {

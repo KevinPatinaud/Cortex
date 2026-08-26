@@ -1,4 +1,4 @@
-import { requestJson } from "./apiClient.ts";
+import { requestBlob, requestJson } from "./apiClient.ts";
 
 export interface Project {
   id: string;
@@ -68,6 +68,12 @@ export async function reorderProjects(projectIds: string[]): Promise<Project[]> 
     body: JSON.stringify({ projectIds })
   });
   return data.projects;
+}
+
+export function exportProjectArchive(projectId: string): Promise<Blob> {
+  return requestBlob(
+    `/api/projects/${encodeURIComponent(projectId)}/export`
+  );
 }
 
 export function getProjectSettings(): Promise<ProjectSettings> {

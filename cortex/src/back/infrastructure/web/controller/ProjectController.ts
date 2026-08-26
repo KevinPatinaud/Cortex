@@ -1,9 +1,12 @@
 import { Router, type Request, type Response } from "express";
 import multer from "multer";
+import { stat } from "node:fs/promises";
+import path from "node:path";
 import type {
   CreateProjectInput,
   ProjectUseCase
 } from "../../../application/usecase/ProjectUseCase.ts";
+import { NotFoundError } from "../../../application/error/NotFoundError.ts";
 import {
   projectErrorMappings,
   toProjectDeletedResponse,
@@ -13,6 +16,11 @@ import {
 } from "../mapper/ProjectResponseMapper.ts";
 import { ValidationError } from "../../../application/error/ValidationError.ts";
 import { asyncRoute } from "../middleware/HttpErrorMiddleware.ts";
+import {
+  cortexArchiveMimeType,
+  getCortexArchiveFileName,
+  writeCortexProjectArchive
+} from "../../archive/ProjectArchive.ts";
 
 interface ProjectPathRequestBody {
   directoryPath?: unknown;
@@ -125,6 +133,22 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
   );
 
   router.get(
+    "/:projectId/export",
+    asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+      const project = await projectUseCase.getProject(request.params.projectId);
+      await assertExportableProjectDirectory(project.directoryPath);
+
+      response.attachment(
+        getCortexArchiveFileName(path.basename(project.directoryPath))
+      );
+      response.type(cortexArchiveMimeType);
+      response.set("Cache-Control", "no-store");
+
+      await writeCortexProjectArchive(project.directoryPath, response);
+    }, projectErrorMappings.export)
+  );
+
+  router.get(
     "/",
     asyncRoute(async (_request, response) => {
       response.json(toProjectsResponse(await projectUseCase.getProjects()));
@@ -150,6 +174,22 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
   );
 
   return router;
+}
+
+async function assertExportableProjectDirectory(
+  directoryPath: string
+): Promise<void> {
+  try {
+    if ((await stat(directoryPath)).isDirectory()) {
+      return;
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  throw new NotFoundError("The project directory could not be found.");
 }
 
 function assertUploadRequestSize(request: Request): void {
