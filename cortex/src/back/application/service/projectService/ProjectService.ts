@@ -461,6 +461,26 @@ export class ProjectService {
     return this.cloneProjects(projects);
   }
 
+  async reorderProjects(projectIds: string[]): Promise<Project[]> {
+    const projects = await this.getProjects();
+    const uniqueProjectIds = new Set(projectIds);
+    const projectsById = new Map(projects.map((project) => [project.id, project]));
+
+    if (
+      projectIds.length !== projects.length ||
+      uniqueProjectIds.size !== projects.length ||
+      projectIds.some((projectId) => !projectsById.has(projectId))
+    ) {
+      throw new TypeError("The project order must contain every project exactly once.");
+    }
+
+    const reorderedProjects = projectIds.map(
+      (projectId) => projectsById.get(projectId) as Project
+    );
+    await this.persistProjects(reorderedProjects);
+    return this.cloneProjects(reorderedProjects);
+  }
+
   async getProjects(): Promise<Project[]> {
     if (this.projectsCache) {
       return this.cloneProjects(this.projectsCache);

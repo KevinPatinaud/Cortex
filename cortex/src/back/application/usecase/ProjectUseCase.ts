@@ -55,6 +55,25 @@ export class ProjectUseCase {
     return this.projectService.getProjects();
   }
 
+  async reorderProjects(projectIds: unknown): Promise<Project[]> {
+    if (
+      !Array.isArray(projectIds) ||
+      projectIds.some((projectId) => typeof projectId !== "string")
+    ) {
+      throw new ValidationError("The project order is invalid.");
+    }
+
+    try {
+      return await this.projectService.reorderProjects(projectIds);
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new ValidationError(error.message);
+      }
+
+      throw error;
+    }
+  }
+
   async getProjectSettings(): Promise<ProjectSettingsOutput> {
     return {
       projectsDirectory: await this.projectService.getManagedProjectsDirectory()

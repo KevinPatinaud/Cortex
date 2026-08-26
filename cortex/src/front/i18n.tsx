@@ -58,6 +58,9 @@ const fr = {
   "project.deleted": "Le projet a été supprimé.",
   "project.reloaded": "Les fichiers du projet ont été rechargés.",
   "project.created": "Le projet et ses agents ont été générés.",
+  "project.reorderAria": "Déplacer {name}. Faites glisser ou utilisez les flèches haut et bas.",
+  "project.reorderHelp": "Faire glisser pour réorganiser",
+  "project.reorderError": "Impossible d’enregistrer l’ordre des projets.",
   "project.resetTitle": "Réinitialiser le workflow ?",
   "project.resetDescription": "Vous vous apprêtez à réinitialiser le workflow suivant :",
   "project.reset": "Réinitialiser",
@@ -276,6 +279,9 @@ type TranslationKey = keyof typeof fr;
 
 const en: Record<TranslationKey, string> = {
   ...fr,
+  "project.reorderAria": "Move {name}. Drag or use the up and down arrow keys.",
+  "project.reorderHelp": "Drag to reorder",
+  "project.reorderError": "Unable to save the project order.",
   "storage.title": "New project storage",
   "storage.help": "Used for future creations and imports. Existing projects are not moved.",
   "storage.path": "Project storage location",

@@ -61,6 +61,15 @@ export async function getSavedProjects(): Promise<Project[]> {
   return data.projects;
 }
 
+export async function reorderProjects(projectIds: string[]): Promise<Project[]> {
+  const data = await requestJson<ProjectsResponse>("/api/projects/order", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectIds })
+  });
+  return data.projects;
+}
+
 export function getProjectSettings(): Promise<ProjectSettings> {
   return requestJson("/api/projects/settings");
 }

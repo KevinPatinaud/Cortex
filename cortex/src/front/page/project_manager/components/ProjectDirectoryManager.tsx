@@ -12,6 +12,7 @@ import {
   getSavedProjects,
   importProjectDirectory,
   prepareProjectDirectoryUpload,
+  reorderProjects,
   type CreateProjectInput,
   type Project
 } from "../../../services/projectApi.ts";
@@ -59,6 +60,7 @@ export function ProjectDirectoryManager({
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
   const [isCreationDialogOpen, setIsCreationDialogOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const directoryInputRef = useRef<HTMLInputElement>(null);
@@ -181,6 +183,24 @@ export function ProjectDirectoryManager({
     }
   }
 
+  async function handleProjectReorder(nextProjects: Project[]): Promise<void> {
+    const previousProjects = projects;
+    setProjects(nextProjects);
+    setIsReordering(true);
+    setError("");
+
+    try {
+      setProjects(await reorderProjects(
+        nextProjects.map((project) => project.id)
+      ));
+    } catch (requestError) {
+      setProjects(previousProjects);
+      setError(getErrorMessage(requestError, t("project.reorderError")));
+    } finally {
+      setIsReordering(false);
+    }
+  }
+
   async function handleProjectCreation(
     input: CreateProjectInput
   ): Promise<{ project: Project; content: AgentProject } | null> {
@@ -258,8 +278,9 @@ export function ProjectDirectoryManager({
             isLoading={isLoadingProjects}
             loadingProjectId={loadingProjectId}
             selectedProjectId={selectedProjectId}
-            isInteractionLocked={isEditing}
+            isInteractionLocked={isEditing || isReordering}
             onSelect={(project) => void handleProjectSelection(project)}
+            onReorder={(nextProjects) => void handleProjectReorder(nextProjects)}
           />
         </div>
 

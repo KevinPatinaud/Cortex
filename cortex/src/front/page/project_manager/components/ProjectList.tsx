@@ -1,4 +1,5 @@
-import { Check, Folder, LoaderCircle } from "lucide-react";
+import { useState, type DragEvent, type KeyboardEvent } from "react";
+import { Check, Folder, GripVertical, LoaderCircle } from "lucide-react";
 import type { Project } from "../../../services/projectApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
 
@@ -12,7 +13,10 @@ interface ProjectListProps {
   selectedProjectId: string | null;
   isInteractionLocked: boolean;
   onSelect: (project: Project) => void;
+  onReorder: (projects: Project[]) => void;
 }
+
+type DropPosition = "before" | "after";
 
 function getProjectName(directoryPath: string): string {
   const pathParts = directoryPath.split(/[\\/]/).filter(Boolean);
@@ -26,9 +30,78 @@ export function ProjectList({
   loadingProjectId,
   selectedProjectId,
   isInteractionLocked,
-  onSelect
+  onSelect,
+  onReorder
 }: ProjectListProps) {
   const { t } = useTranslation();
+  const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
+  const [dropTarget, setDropTarget] = useState<{
+    projectId: string;
+    position: DropPosition;
+  } | null>(null);
+
+  function clearDragState(): void {
+    setDraggedProjectId(null);
+    setDropTarget(null);
+  }
+
+  function moveProject(
+    projectId: string,
+    targetProjectId: string,
+    position: DropPosition
+  ): void {
+    const sourceIndex = projects.findIndex((project) => project.id === projectId);
+    if (sourceIndex < 0 || projectId === targetProjectId) {
+      clearDragState();
+      return;
+    }
+
+    const nextProjects = [...projects];
+    const [movedProject] = nextProjects.splice(sourceIndex, 1);
+    const targetIndex = nextProjects.findIndex(
+      (project) => project.id === targetProjectId
+    );
+
+    if (!movedProject || targetIndex < 0) {
+      clearDragState();
+      return;
+    }
+
+    nextProjects.splice(
+      targetIndex + (position === "after" ? 1 : 0),
+      0,
+      movedProject
+    );
+    clearDragState();
+
+    if (nextProjects.some((project, index) => project.id !== projects[index]?.id)) {
+      onReorder(nextProjects);
+    }
+  }
+
+  function moveProjectWithKeyboard(
+    event: KeyboardEvent<HTMLSpanElement>,
+    projectId: string
+  ): void {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+      return;
+    }
+
+    event.preventDefault();
+    const currentIndex = projects.findIndex((project) => project.id === projectId);
+    const targetIndex = currentIndex + (event.key === "ArrowUp" ? -1 : 1);
+    const targetProject = projects[targetIndex];
+
+    if (currentIndex < 0 || !targetProject) {
+      return;
+    }
+
+    moveProject(
+      projectId,
+      targetProject.id,
+      event.key === "ArrowUp" ? "before" : "after"
+    );
+  }
 
   if (isLoading) {
     return (
@@ -56,11 +129,43 @@ export function ProjectList({
         const isSelected = selectedProjectId === project.id;
         const isProjectLoading = loadingProjectId === project.id;
         const activityStatus = projectActivity[project.id];
+        const isDropTarget = dropTarget?.projectId === project.id;
 
         return (
           <li
-            className={`project-list__item${isSelected ? " project-list__item--selected" : ""}`}
+            className={`project-list__item${isSelected ? " project-list__item--selected" : ""}${
+              draggedProjectId === project.id ? " project-list__item--dragging" : ""
+            }${
+              isDropTarget
+                ? ` project-list__item--drop-${dropTarget.position}`
+                : ""
+            }`}
             key={project.id}
+            onDragOver={(event: DragEvent<HTMLLIElement>) => {
+              if (!draggedProjectId || isInteractionLocked) {
+                return;
+              }
+
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+              const bounds = event.currentTarget.getBoundingClientRect();
+              setDropTarget({
+                projectId: project.id,
+                position: event.clientY < bounds.top + bounds.height / 2
+                  ? "before"
+                  : "after"
+              });
+            }}
+            onDrop={(event: DragEvent<HTMLLIElement>) => {
+              event.preventDefault();
+              if (draggedProjectId && dropTarget) {
+                moveProject(
+                  draggedProjectId,
+                  dropTarget.projectId,
+                  dropTarget.position
+                );
+              }
+            }}
           >
             <button
               className="project-list__select-button"
@@ -70,7 +175,16 @@ export function ProjectList({
               onClick={() => onSelect(project)}
               disabled={loadingProjectId !== null || isInteractionLocked}
             >
-              <Folder aria-hidden="true" size={18} strokeWidth={1.8} />
+              {isProjectLoading ? (
+                <LoaderCircle
+                  className="project-list__loading-icon"
+                  aria-hidden="true"
+                  size={18}
+                  strokeWidth={1.8}
+                />
+              ) : (
+                <Folder aria-hidden="true" size={18} strokeWidth={1.8} />
+              )}
               <span className="project-list__details">
                 <span className="project-list__name-row">
                   <strong>{projectName}</strong>
@@ -93,9 +207,30 @@ export function ProjectList({
                     </span>
                   )}
                 </span>
-                {isProjectLoading && <small>{t("common.loading")}</small>}
               </span>
             </button>
+            <span
+              className="project-list__drag-handle"
+              role="button"
+              tabIndex={isInteractionLocked ? -1 : 0}
+              draggable={!isInteractionLocked}
+              aria-disabled={isInteractionLocked}
+              aria-label={t("project.reorderAria", { name: projectName })}
+              title={t("project.reorderHelp")}
+              onKeyDown={(event) => moveProjectWithKeyboard(event, project.id)}
+              onDragStart={(event: DragEvent<HTMLSpanElement>) => {
+                setDraggedProjectId(project.id);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", project.id);
+                const projectItem = event.currentTarget.closest("li");
+                if (projectItem) {
+                  event.dataTransfer.setDragImage(projectItem, 24, 24);
+                }
+              }}
+              onDragEnd={clearDragState}
+            >
+              <GripVertical aria-hidden="true" size={16} />
+            </span>
           </li>
         );
       })}

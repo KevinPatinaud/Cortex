@@ -22,6 +22,10 @@ interface ProjectSettingsRequestBody {
   projectsDirectory?: unknown;
 }
 
+interface ProjectOrderRequestBody {
+  projectIds?: unknown;
+}
+
 interface ImportProjectRequestBody {
   projectName?: unknown;
   relativePaths?: unknown;
@@ -56,6 +60,15 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
         request.body.projectsDirectory
       ));
     }, projectErrorMappings.settings)
+  );
+
+  router.put(
+    "/order",
+    asyncRoute<ProjectOrderRequestBody>(async (request, response) => {
+      response.json(toProjectsResponse(
+        await projectUseCase.reorderProjects(request.body.projectIds)
+      ));
+    }, projectErrorMappings.reorder)
   );
 
   router.post(

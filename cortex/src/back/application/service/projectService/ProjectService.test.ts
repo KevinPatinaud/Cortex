@@ -111,6 +111,39 @@ test("enregistre l’emplacement technique des nouveaux projets", async () => {
   });
 });
 
+test("réorganise les projets et conserve leur ordre", async () => {
+  await withProjectService(async (service, parentDirectory, temporaryDirectory) => {
+    const firstDirectory = path.join(parentDirectory, "Premier");
+    const secondDirectory = path.join(parentDirectory, "Second");
+    await mkdir(firstDirectory);
+    await mkdir(secondDirectory);
+
+    const firstOrder = await service.saveProject(firstDirectory);
+    const secondOrder = await service.saveProject(secondDirectory);
+    const reordered = await service.reorderProjects([
+      secondOrder[1].id,
+      firstOrder[0].id
+    ]);
+
+    assert.deepEqual(
+      reordered.map((project) => project.directoryPath),
+      [secondDirectory, firstDirectory]
+    );
+
+    const restoredService = new ProjectService(
+      path.join(temporaryDirectory, "config.json")
+    );
+    assert.deepEqual(
+      (await restoredService.getProjects()).map((project) => project.directoryPath),
+      [secondDirectory, firstDirectory]
+    );
+    await assert.rejects(
+      service.reorderProjects([firstOrder[0].id, firstOrder[0].id]),
+      /every project exactly once/
+    );
+  });
+});
+
 test("refuse les chemins dangereux lors d'un import", async () => {
   await withProjectService(async (service, parentDirectory) => {
     await assert.rejects(

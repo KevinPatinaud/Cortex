@@ -23,6 +23,11 @@ export const projectErrorMappings = {
     fallbackMessage: "Unable to read the saved directories.",
     logMessage: "Unable to read the saved directories:"
   },
+  reorder: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to save the project order.",
+    logMessage: "Unable to save the project order:"
+  },
   settings: {
     fallbackStatus: 500,
     fallbackMessage: "Unable to manage the project settings.",
