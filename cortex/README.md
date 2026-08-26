@@ -50,8 +50,8 @@ Vite serves the frontend and proxies `/api` to the Express server.
 
 ## Importing an existing project
 
-The **Import an existing project** button opens the browser's folder picker in
-both local and server modes. The browser uploads the selected project to
+The import controls accept either a project folder or a Cortex `.ctx` archive
+in both local and server modes. The browser uploads the selected content to
 Cortex, so a remote server never needs direct access to the user's filesystem.
 Imported projects are stored in `projects/` by default and are opened
 immediately. A project must contain `AGENTS.md` or `CLAUDE.md` at its root.

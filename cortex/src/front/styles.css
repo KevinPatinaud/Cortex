@@ -1891,20 +1891,46 @@ main {
   transform: translateY(-1px);
 }
 
+.project-sidebar__import {
+  display: flex;
+  margin-top: 0.52rem;
+  align-items: center;
+  gap: 0.42rem;
+}
+
+.project-sidebar__import > span {
+  display: block;
+  margin: 0;
+  flex: 0 0 auto;
+  color: #56759e;
+  font-size: 0.57rem;
+  font-weight: 750;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+}
+
+.project-sidebar__import-options {
+  display: grid;
+  min-width: 0;
+  flex: 1 1 auto;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.3rem;
+}
+
 .project-sidebar__import-button {
   display: flex;
   width: 100%;
-  min-height: 2.4rem;
-  margin-top: 0.42rem;
-  padding: 0.55rem 0.75rem;
+  min-width: 0;
+  min-height: 2.05rem;
+  padding: 0.4rem 0.45rem;
   align-items: center;
   justify-content: center;
-  gap: 0.48rem;
-  border: 1px solid transparent;
+  gap: 0.32rem;
+  border: 1px solid rgb(99 168 255 / 13%);
   border-radius: 8px;
-  background: transparent;
+  background: rgb(37 99 235 / 4%);
   color: #7897c2;
-  font-size: 0.68rem;
+  font-size: 0.61rem;
   font-weight: 650;
   transition: border-color 160ms ease, background 160ms ease, color 160ms ease;
 }

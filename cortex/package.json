@@ -30,7 +30,8 @@
     "rehype-raw": "^7.0.0",
     "rehype-sanitize": "^6.0.0",
     "remark-gfm": "^4.0.1",
-    "smol-toml": "^1.7.1"
+    "smol-toml": "^1.7.1",
+    "unzipper": "^0.12.5"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
@@ -38,6 +39,7 @@
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
+    "@types/unzipper": "^0.10.11",
     "@vitejs/plugin-react": "^6.0.5",
     "tsx": "^4.23.11",
     "typescript": "^7.0.2",

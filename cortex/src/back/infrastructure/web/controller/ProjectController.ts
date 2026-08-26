@@ -21,6 +21,7 @@ import {
   getCortexArchiveFileName,
   writeCortexProjectArchive
 } from "../../archive/ProjectArchive.ts";
+import { readCortexProjectArchive } from "../../archive/ProjectArchiveReader.ts";
 
 interface ProjectPathRequestBody {
   directoryPath?: unknown;
@@ -50,6 +51,15 @@ const projectUpload = multer({
     parts: 2_002
   }
 }).array("files", 2_000);
+const projectArchiveUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    files: 1,
+    fileSize: 100 * 1024 * 1024,
+    fields: 0,
+    parts: 2
+  }
+}).single("archive");
 
 export function createProjectController(projectUseCase: ProjectUseCase): Router {
   const router = Router();
@@ -116,6 +126,33 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
 
       response.status(201).json({
         message: "The project was imported.",
+        project: result.project,
+        projects: result.projects
+      });
+    }, projectErrorMappings.import)
+  );
+
+  router.post(
+    "/import-archive",
+    asyncRoute(async (request, response) => {
+      assertUploadRequestSize(request);
+      await receiveProjectArchiveUpload(request, response);
+
+      if (!request.file) {
+        throw new ValidationError("The Cortex archive is required.");
+      }
+
+      const archive = await readCortexProjectArchive(
+        request.file.originalname,
+        request.file.buffer
+      );
+      const result = await projectUseCase.importProject(
+        archive.projectName,
+        archive.files
+      );
+
+      response.status(201).json({
+        message: "The Cortex project was imported.",
         project: result.project,
         projects: result.projects
       });
@@ -225,6 +262,27 @@ function receiveProjectUpload(
   });
 }
 
+function receiveProjectArchiveUpload(
+  request: Request,
+  response: Response
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    projectArchiveUpload(request, response, (error: unknown) => {
+      if (error instanceof multer.MulterError) {
+        reject(new ValidationError(getArchiveMulterErrorMessage(error)));
+        return;
+      }
+
+      if (error) {
+        reject(error);
+        return;
+      }
+
+      resolve();
+    });
+  });
+}
+
 function readRelativePaths(value: unknown): string[] {
   if (typeof value !== "string") {
     throw new ValidationError("The uploaded path manifest is required.");
@@ -258,4 +316,16 @@ function getMulterErrorMessage(error: multer.MulterError): string {
   }
 
   return "The project upload is invalid.";
+}
+
+function getArchiveMulterErrorMessage(error: multer.MulterError): string {
+  if (error.code === "LIMIT_FILE_SIZE") {
+    return "The Cortex archive exceeds the 100 MB limit.";
+  }
+
+  if (error.code === "LIMIT_FILE_COUNT" || error.code === "LIMIT_PART_COUNT") {
+    return "Only one Cortex archive can be imported at a time.";
+  }
+
+  return "The Cortex archive upload is invalid.";
 }

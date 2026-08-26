@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { ChevronDown, FolderInput, Plus } from "lucide-react";
+import { ChevronDown, FileArchive, FolderInput, Plus } from "lucide-react";
 import { useTranslation } from "../../../i18n.tsx";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
 import {
@@ -10,6 +10,7 @@ import {
 import {
   createProject,
   getSavedProjects,
+  importProjectArchive,
   importProjectDirectory,
   prepareProjectDirectoryUpload,
   reorderProjects,
@@ -64,6 +65,7 @@ export function ProjectDirectoryManager({
   const [isCreationDialogOpen, setIsCreationDialogOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const directoryInputRef = useRef<HTMLInputElement>(null);
+  const archiveInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     directoryInputRef.current?.setAttribute("webkitdirectory", "");
@@ -183,6 +185,35 @@ export function ProjectDirectoryManager({
     }
   }
 
+  async function handleArchiveSelection(
+    event: ChangeEvent<HTMLInputElement>
+  ): Promise<void> {
+    const archive = event.target.files?.[0];
+    event.target.value = "";
+
+    if (!archive) {
+      return;
+    }
+
+    setIsSelecting(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const result = await importProjectArchive(archive);
+      setProjects(result.projects);
+      const content = await loadAgentProject(result.project.id);
+      setSelectedProjectId(result.project.id);
+      setIsProjectMenuOpen(false);
+      setSaveMessage(t("project.archiveImported"));
+      onProjectLoaded(result.project, content);
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, t("common.unexpectedError")));
+    } finally {
+      setIsSelecting(false);
+    }
+  }
+
   async function handleProjectReorder(nextProjects: Project[]): Promise<void> {
     const previousProjects = projects;
     setProjects(nextProjects);
@@ -294,6 +325,15 @@ export function ProjectDirectoryManager({
             tabIndex={-1}
             onChange={(event) => void handleDirectorySelection(event)}
           />
+          <input
+            ref={archiveInputRef}
+            type="file"
+            accept=".ctx,application/vnd.cortex.project+zip,application/zip"
+            hidden
+            aria-hidden="true"
+            tabIndex={-1}
+            onChange={(event) => void handleArchiveSelection(event)}
+          />
           <div className="project-sidebar__feedback" aria-live="polite">
             {saveMessage && <p className="success-message">{saveMessage}</p>}
             {error && (
@@ -313,15 +353,34 @@ export function ProjectDirectoryManager({
             <Plus aria-hidden="true" size={18} />
             {t("sidebar.newProject")}
           </button>
-          <button
-            className="project-sidebar__import-button"
-            type="button"
-            onClick={() => directoryInputRef.current?.click()}
-            disabled={isSelecting || isCreating || isEditing}
+          <div
+            className="project-sidebar__import"
+            aria-label={t("sidebar.importLabel")}
           >
-            <FolderInput aria-hidden="true" size={16} />
-            {isSelecting ? t("sidebar.importing") : t("sidebar.import")}
-          </button>
+            <span>{isSelecting
+              ? t("sidebar.importing")
+              : t("sidebar.importLabel")}</span>
+            <div className="project-sidebar__import-options">
+              <button
+                className="project-sidebar__import-button"
+                type="button"
+                onClick={() => directoryInputRef.current?.click()}
+                disabled={isSelecting || isCreating || isEditing}
+              >
+                <FolderInput aria-hidden="true" size={15} />
+                {t("sidebar.importFolder")}
+              </button>
+              <button
+                className="project-sidebar__import-button"
+                type="button"
+                onClick={() => archiveInputRef.current?.click()}
+                disabled={isSelecting || isCreating || isEditing}
+              >
+                <FileArchive aria-hidden="true" size={15} />
+                {t("sidebar.importArchive")}
+              </button>
+            </div>
+          </div>
           <AgentEngineStatus projectId={activeProject?.id} />
         </footer>
       </aside>

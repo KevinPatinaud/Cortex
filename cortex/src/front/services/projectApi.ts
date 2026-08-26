@@ -120,6 +120,18 @@ export function importProjectDirectory(
   });
 }
 
+export function importProjectArchive(
+  archive: File
+): Promise<CreateProjectResponse> {
+  const body = new FormData();
+  body.append("archive", archive, archive.name);
+
+  return requestJson("/api/projects/import-archive", {
+    method: "POST",
+    body
+  });
+}
+
 export function prepareProjectDirectoryUpload(
   selectedFiles: File[]
 ): BrowserProjectUpload {
