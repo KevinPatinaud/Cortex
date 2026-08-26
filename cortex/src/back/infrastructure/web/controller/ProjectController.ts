@@ -18,6 +18,10 @@ interface ProjectPathRequestBody {
   directoryPath?: unknown;
 }
 
+interface ProjectSettingsRequestBody {
+  projectsDirectory?: unknown;
+}
+
 interface ImportProjectRequestBody {
   projectName?: unknown;
   relativePaths?: unknown;
@@ -37,6 +41,22 @@ const projectUpload = multer({
 
 export function createProjectController(projectUseCase: ProjectUseCase): Router {
   const router = Router();
+
+  router.get(
+    "/settings",
+    asyncRoute(async (_request, response) => {
+      response.json(await projectUseCase.getProjectSettings());
+    }, projectErrorMappings.settings)
+  );
+
+  router.put(
+    "/settings",
+    asyncRoute<ProjectSettingsRequestBody>(async (request, response) => {
+      response.json(await projectUseCase.saveProjectSettings(
+        request.body.projectsDirectory
+      ));
+    }, projectErrorMappings.settings)
+  );
 
   router.post(
     "/create",

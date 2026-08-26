@@ -61,7 +61,6 @@ export function ProjectList({
           <li
             className={`project-list__item${isSelected ? " project-list__item--selected" : ""}`}
             key={project.id}
-            title={project.directoryPath}
           >
             <button
               className="project-list__select-button"
@@ -94,9 +93,7 @@ export function ProjectList({
                     </span>
                   )}
                 </span>
-                <small>
-                  {isProjectLoading ? t("common.loading") : project.directoryPath}
-                </small>
+                {isProjectLoading && <small>{t("common.loading")}</small>}
               </span>
             </button>
           </li>

@@ -1,10 +1,13 @@
 import {
   Bot,
   Cable,
+  Check,
   ChevronDown,
+  FolderCog,
   Globe2,
   KeyRound,
   RefreshCw,
+  Save,
   TerminalSquare,
   TriangleAlert
 } from "lucide-react";
@@ -20,6 +23,10 @@ import {
   type McpConnectionSummary,
   type McpDiscoveryResult
 } from "../../../services/agentApi.ts";
+import {
+  getProjectSettings,
+  saveProjectSettings
+} from "../../../services/projectApi.ts";
 
 const EMPTY_STATUS: AgentStatus = {
   engine: null,
@@ -48,6 +55,10 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
   const [mcpDiscovery, setMcpDiscovery] = useState(EMPTY_MCP_DISCOVERY);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [projectsDirectory, setProjectsDirectory] = useState("");
+  const [projectsDirectoryDraft, setProjectsDirectoryDraft] = useState("");
+  const [isSavingProjectsDirectory, setIsSavingProjectsDirectory] = useState(false);
+  const [projectsDirectoryMessage, setProjectsDirectoryMessage] = useState("");
   const [isRefreshingMcp, setIsRefreshingMcp] = useState(false);
   const [configurationError, setConfigurationError] = useState("");
 
@@ -56,16 +67,19 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
 
     async function loadStatus(): Promise<void> {
       try {
-        const [agentStatus, agentConfiguration, discoveredMcp] = await Promise.all([
+        const [agentStatus, agentConfiguration, discoveredMcp, projectSettings] = await Promise.all([
           getAgentStatus(),
           getAgentConfiguration(),
-          getMcpConnections(projectId)
+          getMcpConnections(projectId),
+          getProjectSettings()
         ]);
 
         if (isMounted) {
           setStatus(agentStatus);
           setConfiguration(agentConfiguration);
           setMcpDiscovery(discoveredMcp);
+          setProjectsDirectory(projectSettings.projectsDirectory);
+          setProjectsDirectoryDraft(projectSettings.projectsDirectory);
         }
       } catch (error) {
         if (isMounted) {
@@ -134,6 +148,32 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
     }
   }
 
+  async function updateProjectsDirectory(): Promise<void> {
+    const nextDirectory = projectsDirectoryDraft.trim();
+    if (!nextDirectory) {
+      setConfigurationError(t("storage.required"));
+      return;
+    }
+
+    setIsSavingProjectsDirectory(true);
+    setConfigurationError("");
+    setProjectsDirectoryMessage("");
+
+    try {
+      const settings = await saveProjectSettings(nextDirectory);
+      setProjectsDirectory(settings.projectsDirectory);
+      setProjectsDirectoryDraft(settings.projectsDirectory);
+      setProjectsDirectoryMessage(t("storage.saved"));
+    } catch (error) {
+      setConfigurationError(error instanceof Error
+        ? error.message
+        : t("storage.saveError")
+      );
+    } finally {
+      setIsSavingProjectsDirectory(false);
+    }
+  }
+
   return (
     <div className="agent-engine-panel">
       <details
@@ -150,7 +190,7 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
               <span className="agent-engine-status__error">{status.error}</span>
             )}
           </span>
-          {isSaving && (
+          {(isSaving || isSavingProjectsDirectory) && (
             <small className="agent-engine-settings__saving">
               {t("engine.saving")}
             </small>
@@ -206,6 +246,53 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
               })}
             />
           </label>
+          <section className="agent-engine-storage" aria-labelledby="projects-storage-title">
+            <header>
+              <FolderCog aria-hidden="true" size={15} strokeWidth={1.8} />
+              <span>
+                <strong id="projects-storage-title">{t("storage.title")}</strong>
+                <small>{t("storage.help")}</small>
+              </span>
+            </header>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                void updateProjectsDirectory();
+              }}
+            >
+              <input
+                type="text"
+                value={projectsDirectoryDraft}
+                title={projectsDirectoryDraft}
+                aria-label={t("storage.path")}
+                onChange={(event) => {
+                  setProjectsDirectoryDraft(event.target.value);
+                  setProjectsDirectoryMessage("");
+                  setConfigurationError("");
+                }}
+                disabled={isLoading || isSavingProjectsDirectory}
+              />
+              <button
+                type="submit"
+                disabled={
+                  isLoading ||
+                  isSavingProjectsDirectory ||
+                  !projectsDirectoryDraft.trim() ||
+                  projectsDirectoryDraft.trim() === projectsDirectory
+                }
+                title={t("storage.save")}
+                aria-label={t("storage.save")}
+              >
+                <Save aria-hidden="true" size={14} />
+              </button>
+            </form>
+            {projectsDirectoryMessage && (
+              <p className="agent-engine-storage__success" role="status">
+                <Check aria-hidden="true" size={12} />
+                {projectsDirectoryMessage}
+              </p>
+            )}
+          </section>
           <section className="agent-engine-mcp" aria-labelledby="mcp-connections-title">
             <header>
               <span>

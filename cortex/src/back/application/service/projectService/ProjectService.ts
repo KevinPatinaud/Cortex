@@ -17,6 +17,7 @@ import { NotFoundError } from "../../error/NotFoundError.ts";
 interface ProjectConfiguration {
   projects?: unknown;
   directoryPath?: unknown;
+  projectsDirectory?: unknown;
   agentWorkflows?: unknown;
   workflowSchedules?: unknown;
 }
@@ -172,11 +173,49 @@ export class ProjectService {
 
   constructor(
     private readonly configurationFile: string,
-    private readonly managedProjectsDirectory = path.join(
+    private readonly defaultManagedProjectsDirectory = path.join(
       path.dirname(configurationFile),
       "projects"
     )
   ) {}
+
+  async getManagedProjectsDirectory(): Promise<string> {
+    const configuration = await this.readConfiguration();
+    const configuredDirectory = configuration.projectsDirectory;
+
+    return path.resolve(
+      typeof configuredDirectory === "string" && configuredDirectory.trim()
+        ? configuredDirectory.trim()
+        : this.defaultManagedProjectsDirectory
+    );
+  }
+
+  async ensureManagedProjectsDirectory(): Promise<string> {
+    const directory = await this.getManagedProjectsDirectory();
+    await mkdir(directory, { recursive: true });
+    return directory;
+  }
+
+  async saveManagedProjectsDirectory(directoryPath: string): Promise<string> {
+    if (!path.isAbsolute(directoryPath)) {
+      throw new TypeError("The projects directory must be an absolute path.");
+    }
+
+    const directory = path.resolve(directoryPath);
+    await mkdir(directory, { recursive: true });
+
+    const directoryStats = await stat(directory);
+    if (!directoryStats.isDirectory()) {
+      throw new TypeError("The projects location must be a directory.");
+    }
+
+    const configuration = await this.readConfiguration();
+    await this.writeConfiguration({
+      ...configuration,
+      projectsDirectory: directory
+    });
+    return directory;
+  }
 
   async assertProjectCanBeCreated(
     parentDirectory: string,
@@ -258,14 +297,12 @@ export class ProjectService {
   ): Promise<CreateProjectResult> {
     this.validateImportedProject(name, files);
 
-    const projectsDirectory = path.resolve(this.managedProjectsDirectory);
+    const projectsDirectory = await this.ensureManagedProjectsDirectory();
     const projectDirectory = path.join(projectsDirectory, name);
     const temporaryDirectory = path.join(
       projectsDirectory,
       `.cortex-upload-${randomUUID()}`
     );
-
-    await mkdir(projectsDirectory, { recursive: true });
 
     if (await this.pathExists(projectDirectory)) {
       throw new TypeError(

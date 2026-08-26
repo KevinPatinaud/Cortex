@@ -28,6 +28,7 @@ import {
 } from "../../../services/projectApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
 import { ConfirmationDialog } from "../../project_manager/components/ConfirmationDialog.tsx";
+import { MarkdownEditor } from "./MarkdownEditor.tsx";
 
 interface AgentProjectEditorProps {
   project: Project;
@@ -634,19 +635,15 @@ export function AgentProjectEditor({
                     </label>
                   </div>
 
-                  <label className="editor-field editor-field--prompt">
-                    <span>{t("editor.mission")}</span>
-                    <textarea
-                      value={selectedAgent.prompt}
-                      onChange={(event) => updateSelectedAgent({ prompt: event.target.value })}
-                      placeholder={t("editor.promptPlaceholder")}
-                      rows={12}
-                      disabled={isSaving || isImprovingAgent}
-                    />
-                    <small>
-                      {t("editor.promptHelp")}
-                    </small>
-                  </label>
+                  <MarkdownEditor
+                    value={selectedAgent.prompt}
+                    onChange={(prompt) => updateSelectedAgent({ prompt })}
+                    label={t("editor.mission")}
+                    placeholder={t("editor.promptPlaceholder")}
+                    help={t("editor.promptHelp")}
+                    rows={12}
+                    disabled={isSaving || isImprovingAgent}
+                  />
                 </div>
               </>
             ) : (
@@ -670,19 +667,17 @@ export function AgentProjectEditor({
               <p>{t("editor.sharedHelp")}</p>
             </div>
           </header>
-          <label className="editor-field editor-field--prompt">
-            <span>{t("editor.markdown")}</span>
-            <textarea
-              value={instructions}
-              onChange={(event) => {
-                setInstructions(event.target.value);
-                setSaveMessage("");
-              }}
-              rows={22}
-              placeholder={t("editor.contextPlaceholder")}
-              disabled={isSaving || isImprovingAgent}
-            />
-          </label>
+          <MarkdownEditor
+            value={instructions}
+            onChange={(nextInstructions) => {
+              setInstructions(nextInstructions);
+              setSaveMessage("");
+            }}
+            label={t("editor.markdown")}
+            rows={22}
+            placeholder={t("editor.contextPlaceholder")}
+            disabled={isSaving || isImprovingAgent}
+          />
         </section>
       )}
 

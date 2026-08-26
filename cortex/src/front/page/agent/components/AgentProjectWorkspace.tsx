@@ -6,8 +6,6 @@ import {
   type KeyboardEvent
 } from "react";
 import { ArrowDown, Bot, CalendarClock, ChevronDown, FastForward, GitBranch, LoaderCircle, Pause, Pencil, Play, RotateCcw, Send } from "lucide-react";
-import Markdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import {
   loadAgentProject,
   getWorkflowSchedule,
@@ -33,6 +31,7 @@ import {
 import { useTranslation, type Translate } from "../../../i18n.tsx";
 import { ConfirmationDialog } from "../../project_manager/components/ConfirmationDialog.tsx";
 import { WorkflowScheduleDialog } from "./WorkflowScheduleDialog.tsx";
+import { MarkdownContent } from "./MarkdownContent.tsx";
 
 interface AgentProjectWorkspaceProps {
   project: Project | null;
@@ -115,28 +114,6 @@ function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error
     ? error.message
     : fallback;
-}
-
-function MarkdownContent({ content }: { content: string }) {
-  return (
-    <div className="agent-card__markdown">
-      <Markdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          a: ({ node: _node, ...properties }) => (
-            <a
-              {...properties}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(event) => event.stopPropagation()}
-            />
-          )
-        }}
-      >
-        {content}
-      </Markdown>
-    </div>
-  );
 }
 
 function ConversationMessageContent({
@@ -1257,7 +1234,9 @@ function AgentCard({
           </span>
           <ChevronDown aria-hidden="true" size={15} strokeWidth={1.7} />
         </summary>
-        <pre>{agent.prompt || t("agent.noInstruction")}</pre>
+        <div className="agent-card__prompt-content">
+          <MarkdownContent content={agent.prompt || t("agent.noInstruction")} />
+        </div>
       </details>
       <div className="agent-card__run-feedback" aria-live="polite">
         {prerequisiteMessage && (

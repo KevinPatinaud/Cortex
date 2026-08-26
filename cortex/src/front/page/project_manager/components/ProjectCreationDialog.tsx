@@ -19,7 +19,6 @@ import {
 import { useTranslation } from "../../../i18n.tsx";
 
 interface ProjectCreationDialogProps {
-  defaultParentDirectory: string;
   isPending: boolean;
   error?: string;
   onCancel: () => void;
@@ -41,7 +40,6 @@ const engines: Array<{
 ];
 
 export function ProjectCreationDialog({
-  defaultParentDirectory,
   isPending,
   error,
   onCancel,
@@ -53,9 +51,6 @@ export function ProjectCreationDialog({
   const titleId = useId();
   const descriptionId = useId();
   const [name, setName] = useState("");
-  const [parentDirectory, setParentDirectory] = useState(
-    defaultParentDirectory
-  );
   const [engine, setEngine] = useState<CreateProjectInput["engine"] | null>(null);
   const [isDetectingEngine, setIsDetectingEngine] = useState(true);
   const [projectDescription, setProjectDescription] = useState("");
@@ -130,7 +125,6 @@ export function ProjectCreationDialog({
           event.preventDefault();
           if (engine) {
             void onCreate({
-              parentDirectory,
               name,
               engine,
               description: projectDescription
@@ -172,18 +166,6 @@ export function ProjectCreationDialog({
                 required
                 disabled={isPending}
               />
-            </label>
-
-            <label className="editor-field">
-              <span>{t("creation.parentDirectory")}</span>
-              <input
-                value={parentDirectory}
-                onChange={(event) => setParentDirectory(event.target.value)}
-                placeholder="C:\\dev\\projects"
-                required
-                disabled={isPending}
-              />
-              <small>{t("creation.parentHelp")}</small>
             </label>
 
             <fieldset

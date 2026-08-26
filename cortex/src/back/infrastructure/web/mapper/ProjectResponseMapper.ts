@@ -23,6 +23,11 @@ export const projectErrorMappings = {
     fallbackMessage: "Unable to read the saved directories.",
     logMessage: "Unable to read the saved directories:"
   },
+  settings: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to manage the project settings.",
+    logMessage: "Unable to manage the project settings:"
+  },
   delete: {
     fallbackStatus: 500,
     fallbackMessage: "Unable to delete the project.",

@@ -17,6 +17,10 @@ import { ValidationError } from "../error/ValidationError.ts";
 export type ProjectOutput = Project;
 export type ProjectContentOutput = ProjectContent;
 
+export interface ProjectSettingsOutput {
+  projectsDirectory: string;
+}
+
 export interface CreateProjectInput {
   parentDirectory?: unknown;
   name?: unknown;
@@ -49,6 +53,35 @@ export class ProjectUseCase {
 
   getProjects(): Promise<Project[]> {
     return this.projectService.getProjects();
+  }
+
+  async getProjectSettings(): Promise<ProjectSettingsOutput> {
+    return {
+      projectsDirectory: await this.projectService.getManagedProjectsDirectory()
+    };
+  }
+
+  async saveProjectSettings(
+    projectsDirectory: unknown
+  ): Promise<ProjectSettingsOutput> {
+    const directory = this.getRequiredString(
+      projectsDirectory,
+      "The projects directory is required."
+    );
+
+    try {
+      return {
+        projectsDirectory: await this.projectService.saveManagedProjectsDirectory(
+          directory
+        )
+      };
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new ValidationError(error.message);
+      }
+
+      throw error;
+    }
   }
 
   async getProject(projectId: string): Promise<Project> {
@@ -92,10 +125,10 @@ export class ProjectUseCase {
   async createProject(
     input: CreateProjectInput | null | undefined
   ): Promise<CreateProjectResult> {
-    const parentDirectory = this.getRequiredString(
-      input?.parentDirectory,
-      "The parent directory is required."
-    );
+    const parentDirectory = typeof input?.parentDirectory === "string" &&
+      input.parentDirectory.trim()
+      ? input.parentDirectory.trim()
+      : await this.projectService.ensureManagedProjectsDirectory();
     const name = this.getRequiredString(
       input?.name,
       "The project name is required."

@@ -90,6 +90,27 @@ test("importe un dossier envoyé par le navigateur dans le stockage géré", asy
   });
 });
 
+test("enregistre l’emplacement technique des nouveaux projets", async () => {
+  await withProjectService(async (service, parentDirectory, temporaryDirectory) => {
+    const customDirectory = path.join(temporaryDirectory, "stockage-personnalise");
+
+    assert.equal(await service.getManagedProjectsDirectory(), parentDirectory);
+    assert.equal(
+      await service.saveManagedProjectsDirectory(customDirectory),
+      customDirectory
+    );
+    assert.deepEqual(await readdir(customDirectory), []);
+
+    const restoredService = new ProjectService(
+      path.join(temporaryDirectory, "config.json")
+    );
+    assert.equal(
+      await restoredService.getManagedProjectsDirectory(),
+      customDirectory
+    );
+  });
+});
+
 test("refuse les chemins dangereux lors d'un import", async () => {
   await withProjectService(async (service, parentDirectory) => {
     await assert.rejects(

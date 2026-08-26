@@ -889,7 +889,7 @@ main {
   transform: rotate(180deg);
 }
 
-.agent-card__prompt pre {
+.agent-card__prompt-content {
   max-height: 15rem;
   margin: 0.75rem 0 0;
   padding: 0.8rem;
@@ -897,11 +897,13 @@ main {
   border-radius: 8px;
   background: #f1f6ff;
   color: #315078;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.74rem;
   line-height: 1.6;
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.agent-card__prompt-content .agent-card__markdown {
+  font-family: inherit;
 }
 
 .agent-card__actions {
@@ -1648,7 +1650,7 @@ main {
   min-width: 0;
   flex: 1;
   padding: 0.62rem;
-  align-items: flex-start;
+  align-items: center;
   gap: 0.7rem;
   border: 0;
   border-radius: 7px;
@@ -1664,7 +1666,6 @@ main {
 
 .project-list__select-button > svg {
   flex: 0 0 auto;
-  margin-top: 0.08rem;
   color: #68a7ff;
 }
 
@@ -1977,6 +1978,151 @@ main {
 }
 
 .editor-field > small {
+  color: #8293aa;
+  font-size: 0.6rem;
+  line-height: 1.45;
+}
+
+.markdown-editor {
+  display: grid;
+  min-width: 0;
+  gap: 0.38rem;
+}
+
+.markdown-editor__heading {
+  display: flex;
+  min-height: 2rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.markdown-editor__heading > span {
+  color: #4b6384;
+  font-size: 0.68rem;
+  font-weight: 720;
+}
+
+.markdown-editor__modes {
+  display: inline-flex;
+  padding: 0.18rem;
+  gap: 0.12rem;
+  border: 1px solid rgb(62 109 177 / 14%);
+  border-radius: 8px;
+  background: #f3f7fc;
+}
+
+.markdown-editor__modes button {
+  display: inline-flex;
+  min-height: 1.7rem;
+  padding: 0.3rem 0.5rem;
+  align-items: center;
+  gap: 0.3rem;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #7287a3;
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+
+.markdown-editor__modes button.is-active {
+  background: #fff;
+  color: #245db2;
+  box-shadow: 0 1px 4px rgb(38 75 126 / 12%);
+}
+
+.markdown-editor__surface {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgb(62 109 177 / 22%);
+  border-radius: 10px;
+  background: #f9fbff;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.markdown-editor__surface:focus-within {
+  border-color: rgb(37 99 235 / 58%);
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 8%);
+}
+
+.markdown-editor__toolbar {
+  display: flex;
+  min-height: 2.55rem;
+  padding: 0.38rem 0.48rem;
+  align-items: center;
+  gap: 0.16rem;
+  overflow-x: auto;
+  border-bottom: 1px solid rgb(62 109 177 / 14%);
+  background: #f3f7fc;
+}
+
+.markdown-editor__toolbar button {
+  display: grid;
+  width: 2rem;
+  height: 1.9rem;
+  flex: 0 0 auto;
+  padding: 0;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #536d91;
+}
+
+.markdown-editor__toolbar button:hover:not(:disabled) {
+  border-color: rgb(37 99 235 / 17%);
+  background: #fff;
+  color: #245db2;
+}
+
+.markdown-editor__toolbar button:focus-visible,
+.markdown-editor__modes button:focus-visible {
+  outline: 2px solid rgb(37 99 235 / 55%);
+  outline-offset: 1px;
+}
+
+.markdown-editor textarea {
+  display: block;
+  width: 100%;
+  min-height: 14rem;
+  padding: 0.85rem;
+  resize: vertical;
+  border: 0;
+  outline: 0;
+  background: #f9fbff;
+  color: #1d3d67;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.72rem;
+  line-height: 1.65;
+}
+
+.markdown-editor textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.markdown-editor__preview {
+  min-height: 16.55rem;
+  padding: 1rem;
+  overflow: auto;
+  background: #fff;
+  color: #29486f;
+  font-size: 0.76rem;
+  line-height: 1.7;
+}
+
+.markdown-editor__preview .agent-card__markdown {
+  font-family: inherit;
+}
+
+.markdown-editor__empty {
+  margin: 0;
+  color: #8a9bb1;
+  font-style: italic;
+}
+
+.markdown-editor > small {
   color: #8293aa;
   font-size: 0.6rem;
   line-height: 1.45;
@@ -2741,10 +2887,6 @@ main {
   grid-template-columns: minmax(0, 1.3fr) minmax(10rem, 0.7fr);
 }
 
-.agent-inspector .editor-field--prompt textarea {
-  min-height: 14rem;
-}
-
 .agent-improvement__backdrop {
   position: fixed;
   inset: 0;
@@ -2916,12 +3058,17 @@ main {
   font-size: 0.66rem;
 }
 
-.instructions-editor > .editor-field {
+.instructions-editor > .editor-field,
+.instructions-editor > .markdown-editor {
   padding: 1.2rem;
 }
 
-.instructions-editor textarea {
+.instructions-editor .markdown-editor textarea {
   min-height: 29rem;
+}
+
+.instructions-editor .markdown-editor__preview {
+  min-height: 31.55rem;
 }
 
 .project-editor__toast {
@@ -3108,6 +3255,97 @@ main {
 .agent-engine-settings input[type="checkbox"]:disabled {
   cursor: wait;
   opacity: 0.58;
+}
+
+.agent-engine-storage {
+  padding: 0.62rem 0.65rem 0.68rem;
+  border-top: 1px solid rgb(75 143 237 / 10%);
+}
+
+.agent-engine-storage > header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  color: #7ba9e8;
+}
+
+.agent-engine-storage > header > span,
+.agent-engine-storage strong,
+.agent-engine-storage small {
+  display: block;
+}
+
+.agent-engine-storage > header > span {
+  min-width: 0;
+}
+
+.agent-engine-storage strong {
+  color: #dceaff;
+  font-size: 0.7rem;
+}
+
+.agent-engine-storage small {
+  margin-top: 0.15rem;
+  color: #6f89aa;
+  font-size: 0.57rem;
+  line-height: 1.4;
+}
+
+.agent-engine-storage form {
+  display: flex;
+  margin-top: 0.55rem;
+  gap: 0.35rem;
+}
+
+.agent-engine-storage input[type="text"] {
+  width: 100%;
+  min-width: 0;
+  height: 2rem;
+  padding: 0.4rem 0.48rem;
+  border: 1px solid rgb(111 137 170 / 34%);
+  border-radius: 6px;
+  outline: 0;
+  background: #0c2039;
+  color: #b9cee9;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.54rem;
+}
+
+.agent-engine-storage input[type="text"]:focus {
+  border-color: rgb(95 159 245 / 68%);
+  box-shadow: 0 0 0 2px rgb(95 159 245 / 10%);
+}
+
+.agent-engine-storage form button {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(95 159 245 / 40%);
+  border-radius: 6px;
+  background: #174b83;
+  color: #dceaff;
+}
+
+.agent-engine-storage form button:hover:not(:disabled) {
+  background: #1d5c9f;
+}
+
+.agent-engine-storage form button:disabled,
+.agent-engine-storage input[type="text"]:disabled {
+  cursor: not-allowed;
+  opacity: 0.52;
+}
+
+.agent-engine-storage__success {
+  display: flex;
+  margin: 0.42rem 0 0;
+  align-items: center;
+  gap: 0.3rem;
+  color: #73d7bd;
+  font-size: 0.55rem;
 }
 
 .agent-engine-mcp {

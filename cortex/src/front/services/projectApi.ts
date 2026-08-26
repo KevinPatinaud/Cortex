@@ -16,7 +16,6 @@ export interface DeleteProjectResponse {
 }
 
 export interface CreateProjectInput {
-  parentDirectory: string;
   name: string;
   engine: "codex" | "claude" | "copilot";
   description: string;
@@ -24,6 +23,10 @@ export interface CreateProjectInput {
 
 export interface CreateProjectResponse extends SaveProjectResponse {
   project: Project;
+}
+
+export interface ProjectSettings {
+  projectsDirectory: string;
 }
 
 export interface BrowserProjectFile {
@@ -56,6 +59,20 @@ interface ProjectsResponse {
 export async function getSavedProjects(): Promise<Project[]> {
   const data = await requestJson<ProjectsResponse>("/api/projects");
   return data.projects;
+}
+
+export function getProjectSettings(): Promise<ProjectSettings> {
+  return requestJson("/api/projects/settings");
+}
+
+export function saveProjectSettings(
+  projectsDirectory: string
+): Promise<ProjectSettings> {
+  return requestJson("/api/projects/settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ projectsDirectory })
+  });
 }
 
 export function createProject(

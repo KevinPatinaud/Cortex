@@ -16,6 +16,9 @@ function createUseCase(answer: string): {
   const executionCalls: Array<{ prompt: string; options: unknown }> = [];
   const creationCalls: CreateProjectOptions[] = [];
   const projectService = {
+    async ensureManagedProjectsDirectory() {
+      return "C:\\managed-projects";
+    },
     async assertProjectCanBeCreated() {},
     async createProject(options: CreateProjectOptions) {
       creationCalls.push(options);
@@ -43,6 +46,31 @@ function createUseCase(answer: string): {
     creationCalls
   };
 }
+
+test("utilise le stockage technique géré quand aucun emplacement n’est fourni", async () => {
+  const { useCase, executionCalls, creationCalls } = createUseCase(
+    JSON.stringify({
+      instructions: "# Atlas",
+      agents: [{
+        name: "Coordination",
+        description: "Coordonne le projet.",
+        prompt: "Produis le résultat attendu."
+      }]
+    })
+  );
+
+  await useCase.createProject({
+    name: "Atlas",
+    engine: "codex",
+    description: "Créer un projet géré par Cortex."
+  });
+
+  assert.deepEqual(executionCalls[0].options, {
+    persistSession: false,
+    workingDirectory: "C:\\managed-projects"
+  });
+  assert.equal(creationCalls[0].parentDirectory, "C:\\managed-projects");
+});
 
 test("génère les instructions et les agents à partir de la description", async () => {
   const generatedProject = {

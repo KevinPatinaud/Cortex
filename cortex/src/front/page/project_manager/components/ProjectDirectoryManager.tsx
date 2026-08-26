@@ -307,9 +307,6 @@ export function ProjectDirectoryManager({
 
       {isCreationDialogOpen && (
         <ProjectCreationDialog
-          defaultParentDirectory={
-            projects[0]?.directoryPath.replace(/[\\/][^\\/]+$/, "") ?? ""
-          }
           isPending={isCreating}
           error={error || undefined}
           onCancel={() => {
