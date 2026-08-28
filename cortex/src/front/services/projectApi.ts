@@ -23,6 +23,10 @@ export interface CreateProjectInput {
 
 export interface CreateProjectResponse extends SaveProjectResponse {
   project: Project;
+  conversion?: {
+    sourceEngine: CreateProjectInput["engine"];
+    targetEngine: CreateProjectInput["engine"];
+  } | null;
 }
 
 export interface ProjectSettings {

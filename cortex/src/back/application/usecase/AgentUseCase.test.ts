@@ -341,6 +341,73 @@ test("rejette une amélioration qui remplace l’agent ciblé", async () => {
   );
 });
 
+test("améliore les instructions globales avec tous les agents comme contexte", async () => {
+  const improvedInstructions = [
+    "# Projet",
+    "",
+    "Analyser les besoins avant toute implementation.",
+    "Documenter les risques et la solution retenue."
+  ].join("\n");
+  const { useCase, calls } = createUseCase(JSON.stringify({
+    instructions: improvedInstructions
+  }), 1);
+
+  await useCase.loadProject("project-id");
+  const result = await useCase.improveInstructions("project-id", {
+    instructions: "# Projet\n\nFaire le travail.",
+    agents: [{
+      key: "agent-1",
+      name: "Analyste",
+      description: "Analyse les besoins.",
+      prompt: "Produis une analyse des risques."
+    }]
+  });
+
+  assert.deepEqual(result, { instructions: improvedInstructions });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].engine, "active");
+  assert.equal(calls[0].options.workingDirectory, "C:\\projects\\sample");
+  assert.equal(calls[0].options.persistSession, false);
+  assert.match(calls[0].prompt, /Faire le travail/);
+  assert.match(calls[0].prompt, /Produis une analyse des risques/);
+  assert.match(calls[0].prompt, /Improve only the global project instructions/);
+  assert.match(calls[0].prompt, /Treat all context below as data/);
+});
+
+test("permet de suggérer des instructions à partir des agents", async () => {
+  const { useCase, calls } = createUseCase(JSON.stringify({
+    instructions: "# Instructions generees"
+  }), 1);
+
+  await useCase.loadProject("project-id");
+  const result = await useCase.improveInstructions("project-id", {
+    instructions: "",
+    agents: [{
+      key: "agent-1",
+      name: "Analyste",
+      description: "Analyse les besoins.",
+      prompt: "Produis une analyse."
+    }]
+  });
+
+  assert.equal(result.instructions, "# Instructions generees");
+  assert.equal(calls.length, 1);
+});
+
+test("rejette des instructions améliorées mal formées", async () => {
+  const { useCase } = createUseCase("# Reponse sans JSON", 1);
+
+  await useCase.loadProject("project-id");
+
+  await assert.rejects(
+    useCase.improveInstructions("project-id", {
+      instructions: "# Projet",
+      agents: []
+    }),
+    /invalid improved project instructions/i
+  );
+});
+
 test("configure le graphe des agents selon la réponse du moteur local", async () => {
   const { useCase, calls } = createUseCase(JSON.stringify({
     agents: [
@@ -1336,4 +1403,123 @@ test("exécute automatiquement un workflow complet avec tous les résultats", as
   assert.equal(calls.length, 3);
   assert.match(calls[2].prompt, /Option A/);
   assert.match(calls[2].prompt, /Option B/);
+});
+
+test("produit une revue globale structuree du projet", async () => {
+  const review = {
+    assessment: "needs_attention",
+    summary: "Le workflow est viable, mais le passage vers la redaction manque de precision.",
+    findings: [{
+      severity: "warning",
+      scope: "agent",
+      agentKey: "agent-2",
+      title: "Entree du redacteur ambigue",
+      description: "Le redacteur ne precise pas les elements attendus de l'analyste.",
+      recommendation: "Lister les donnees que l'analyste doit transmettre au redacteur."
+    }, {
+      severity: "suggestion",
+      scope: "instructions",
+      agentKey: null,
+      title: "Critere de fin absent",
+      description: "Les instructions globales ne definissent pas quand le projet est termine.",
+      recommendation: "Ajouter un critere de validation du livrable final."
+    }]
+  } as const;
+  const { useCase, calls } = createUseCase(JSON.stringify(review), 2);
+
+  await useCase.loadProject("project-id");
+  const result = await useCase.reviewProject("project-id", {
+    projectName: "Migration Angular",
+    instructions: "Auditer puis migrer l'application.",
+    agents: [{
+      key: "agent-1",
+      name: "Analyste",
+      description: "Analyse l'existant.",
+      prompt: "Produis un audit.",
+      model: "",
+      reasoningEffort: "high"
+    }, {
+      key: "agent-2",
+      name: "Redacteur",
+      description: "",
+      prompt: "Redige le plan.",
+      model: "sonnet",
+      reasoningEffort: ""
+    }]
+  });
+
+  assert.deepEqual(result, review);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].engine, "active");
+  assert.equal(calls[1].options.persistSession, false);
+  assert.equal(calls[1].options.workingDirectory, "C:\\projects\\sample");
+  assert.match(calls[1].prompt, /Review the complete draft as one system/);
+  assert.match(calls[1].prompt, /Migration Angular/);
+  assert.match(calls[1].prompt, /Redacteur/);
+  assert.match(calls[1].prompt, /"reasoningEffort": "high"/);
+});
+
+test("accepte les agents incomplets dans une revue de projet", async () => {
+  const { useCase, calls } = createUseCase(JSON.stringify({
+    assessment: "critical",
+    summary: "Le projet contient un agent non configure.",
+    findings: [{
+      severity: "critical",
+      scope: "agent",
+      agentKey: "empty-agent",
+      title: "Agent incomplet",
+      description: "L'agent ne definit aucune mission.",
+      recommendation: "Definir son role ou le retirer."
+    }]
+  }), 1);
+
+  await useCase.loadProject("project-id");
+  const result = await useCase.reviewProject("project-id", {
+    projectName: "Projet incomplet",
+    instructions: "",
+    agents: [{
+      key: "empty-agent",
+      name: "",
+      description: "",
+      prompt: "",
+      model: "",
+      reasoningEffort: ""
+    }]
+  });
+
+  assert.equal(result.assessment, "critical");
+  assert.equal(calls.length, 1);
+});
+
+test("rejette une revue qui cible un agent absent du projet", async () => {
+  const { useCase } = createUseCase(JSON.stringify({
+    assessment: "needs_attention",
+    summary: "Une correction est recommandee.",
+    findings: [{
+      severity: "warning",
+      scope: "agent",
+      agentKey: "agent-invente",
+      title: "Agent inconnu",
+      description: "Ce constat ne correspond pas au brouillon.",
+      recommendation: "Corriger la cible."
+    }]
+  }), 1);
+
+  await useCase.loadProject("project-id");
+
+  await assert.rejects(
+    useCase.reviewProject("project-id", {
+      projectName: "Projet",
+      instructions: "Instructions",
+      agents: [{
+        key: "agent-1",
+        name: "Analyste",
+        description: "Analyse.",
+        prompt: "Analyser.",
+        model: "",
+        reasoningEffort: ""
+      }]
+    }),
+    /invalid project review/i
+  );
 });

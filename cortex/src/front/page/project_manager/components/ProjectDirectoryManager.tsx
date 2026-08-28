@@ -159,7 +159,10 @@ export function ProjectDirectoryManager({
       const content = await loadAgentProject(result.project.id);
       setSelectedProjectId(result.project.id);
       setIsProjectMenuOpen(false);
-      setSaveMessage(t("project.imported"));
+      setSaveMessage(result.conversion
+        ? t("project.importConverted", result.conversion)
+        : t("project.imported")
+      );
       onProjectLoaded(result.project, content);
     } catch (requestError) {
       setError(getErrorMessage(requestError, t("common.unexpectedError")));
@@ -205,7 +208,10 @@ export function ProjectDirectoryManager({
       const content = await loadAgentProject(result.project.id);
       setSelectedProjectId(result.project.id);
       setIsProjectMenuOpen(false);
-      setSaveMessage(t("project.archiveImported"));
+      setSaveMessage(result.conversion
+        ? t("project.importConverted", result.conversion)
+        : t("project.archiveImported")
+      );
       onProjectLoaded(result.project, content);
     } catch (requestError) {
       setError(getErrorMessage(requestError, t("common.unexpectedError")));

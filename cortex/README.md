@@ -55,6 +55,11 @@ in both local and server modes. The browser uploads the selected content to
 Cortex, so a remote server never needs direct access to the user's filesystem.
 Imported projects are stored in `projects/` by default and are opened
 immediately. A project must contain `AGENTS.md` or `CLAUDE.md` at its root.
+When the imported project uses a different agent engine, Cortex detects the
+active local engine and converts the project automatically. Shared instructions,
+agent names, descriptions, prompts, and non-engine project files are preserved.
+Engine-specific model settings are reset so the target engine can use compatible
+defaults.
 
 Imports are limited to 100 MB, 2,000 files, and 20 MB per file. Generated or
 sensitive content such as `.git`, `node_modules`, build directories, and `.env`

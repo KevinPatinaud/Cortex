@@ -2544,6 +2544,7 @@ main {
   box-shadow: 0 0 0 3px rgb(229 169 59 / 12%);
 }
 
+.project-editor__review,
 .project-editor__delete,
 .project-editor__exit,
 .project-editor__save {
@@ -2556,6 +2557,17 @@ main {
   border-radius: 9px;
   font-size: 0.7rem;
   font-weight: 720;
+}
+
+.project-editor__review {
+  border: 1px solid rgb(79 70 229 / 22%);
+  background: linear-gradient(135deg, #f1f0ff, #ecfbff);
+  color: #4f46c5;
+}
+
+.project-editor__review:hover:not(:disabled) {
+  border-color: rgb(79 70 229 / 40%);
+  background: linear-gradient(135deg, #e8e6ff, #e2f8ff);
 }
 
 .project-editor__delete {
@@ -3156,6 +3168,301 @@ main {
 
 .agent-improvement > footer .agent-improvement__apply:hover:not(:disabled) {
   background: #1d55cb;
+}
+
+.project-review {
+  width: min(58rem, 100%);
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  border: 1px solid rgb(146 178 221 / 55%);
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 30px 90px rgb(7 29 62 / 32%);
+}
+
+.project-review > header {
+  display: flex;
+  padding: 1.15rem 1.3rem;
+  align-items: center;
+  gap: 0.85rem;
+  border-bottom: 1px solid rgb(73 113 174 / 14%);
+  background:
+    radial-gradient(circle at 80% 0%, rgb(99 102 241 / 12%), transparent 18rem),
+    #f6faff;
+}
+
+.project-review > header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.project-review > header > div > span {
+  color: #6f7db7;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.55rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.project-review h2 {
+  margin: 0.16rem 0 0;
+  color: #17365d;
+  font-size: 1.1rem;
+}
+
+.project-review header p {
+  margin: 0.24rem 0 0;
+  color: #7188a8;
+  font-size: 0.67rem;
+  line-height: 1.5;
+}
+
+.project-review__assessment {
+  display: inline-flex;
+  min-height: 2rem;
+  padding: 0.42rem 0.62rem;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.34rem;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.project-review__assessment--healthy {
+  border-color: rgb(36 160 126 / 24%);
+  background: #eafaf5;
+  color: #247c69;
+}
+
+.project-review__assessment--needs_attention {
+  border-color: rgb(218 153 36 / 27%);
+  background: #fff8e7;
+  color: #9a6913;
+}
+
+.project-review__assessment--critical {
+  border-color: rgb(220 91 109 / 25%);
+  background: #fff0f2;
+  color: #b33c50;
+}
+
+.project-review__content {
+  padding: 1.15rem;
+}
+
+.project-review__summary {
+  padding: 0.9rem 1rem;
+  border: 1px solid rgb(79 70 229 / 15%);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #f8f8ff, #f5fcff);
+}
+
+.project-review__summary strong {
+  color: #4f5f98;
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.project-review__summary p {
+  margin: 0.35rem 0 0;
+  color: #395574;
+  font-size: 0.72rem;
+  line-height: 1.6;
+}
+
+.project-review__findings-heading {
+  display: flex;
+  margin: 1rem 0 0.55rem;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.project-review__findings-heading h3 {
+  margin: 0;
+  color: #35577f;
+  font-size: 0.75rem;
+}
+
+.project-review__findings-heading span {
+  display: grid;
+  min-width: 1.3rem;
+  height: 1.3rem;
+  padding: 0 0.25rem;
+  place-items: center;
+  border-radius: 999px;
+  background: #e9effa;
+  color: #60799d;
+  font-size: 0.55rem;
+  font-weight: 750;
+}
+
+.project-review__findings {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  gap: 0.55rem;
+  list-style: none;
+}
+
+.project-review__finding {
+  display: grid;
+  padding: 0.85rem;
+  align-items: start;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.75rem;
+  border: 1px solid rgb(73 113 174 / 14%);
+  border-left-width: 3px;
+  border-radius: 11px;
+  background: #fbfdff;
+}
+
+.project-review__finding--critical {
+  border-left-color: #d9576a;
+}
+
+.project-review__finding--warning {
+  border-left-color: #daa13a;
+}
+
+.project-review__finding--suggestion {
+  border-left-color: #6474dc;
+}
+
+.project-review__finding-icon {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  border-radius: 9px;
+  background: #eef3fb;
+  color: #60799d;
+}
+
+.project-review__finding--critical .project-review__finding-icon {
+  background: #fff0f2;
+  color: #c2495d;
+}
+
+.project-review__finding--warning .project-review__finding-icon {
+  background: #fff7e6;
+  color: #a8771c;
+}
+
+.project-review__finding--suggestion .project-review__finding-icon {
+  background: #f0efff;
+  color: #5d5ac4;
+}
+
+.project-review__finding-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.project-review__finding-meta span,
+.project-review__finding-meta em {
+  color: #7890ae;
+  font-size: 0.54rem;
+  font-style: normal;
+  font-weight: 720;
+}
+
+.project-review__finding-meta span {
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.project-review__finding-meta em {
+  padding-left: 0.45rem;
+  border-left: 1px solid #cbd7e7;
+}
+
+.project-review__finding h4 {
+  margin: 0.25rem 0 0;
+  color: #29496f;
+  font-size: 0.73rem;
+}
+
+.project-review__finding p {
+  margin: 0.25rem 0 0;
+  color: #617894;
+  font-size: 0.65rem;
+  line-height: 1.55;
+}
+
+.project-review__finding aside {
+  margin-top: 0.5rem;
+  color: #45617f;
+  font-size: 0.63rem;
+  line-height: 1.5;
+}
+
+.project-review__finding aside strong {
+  margin-right: 0.35rem;
+  color: #335579;
+}
+
+.project-review__finding > button {
+  display: inline-flex;
+  min-height: 2rem;
+  padding: 0.42rem 0.55rem;
+  align-items: center;
+  gap: 0.25rem;
+  border: 1px solid rgb(37 99 235 / 20%);
+  border-radius: 8px;
+  background: #f1f6ff;
+  color: #3266ad;
+  font-size: 0.58rem;
+  font-weight: 700;
+}
+
+.project-review__empty {
+  display: grid;
+  min-height: 10rem;
+  padding: 1.5rem;
+  place-items: center;
+  align-content: center;
+  border: 1px dashed rgb(36 160 126 / 25%);
+  border-radius: 12px;
+  background: #f5fcfa;
+  color: #418477;
+  text-align: center;
+}
+
+.project-review__empty strong {
+  margin-top: 0.55rem;
+  font-size: 0.74rem;
+}
+
+.project-review__empty p {
+  max-width: 28rem;
+  margin: 0.28rem 0 0;
+  color: #6a9189;
+  font-size: 0.64rem;
+  line-height: 1.5;
+}
+
+.project-review > footer {
+  display: flex;
+  padding: 0.85rem 1.15rem 1.05rem;
+  justify-content: flex-end;
+  border-top: 1px solid rgb(73 113 174 / 12%);
+}
+
+.project-review > footer button {
+  min-height: 2.35rem;
+  padding: 0.55rem 0.85rem;
+  border: 1px solid rgb(73 113 174 / 20%);
+  border-radius: 9px;
+  background: #fff;
+  color: #4d6687;
+  font-size: 0.66rem;
+  font-weight: 700;
 }
 
 .instructions-editor {
@@ -4409,12 +4716,14 @@ dialog input {
 
   .project-editor__topbar-actions {
     width: 100%;
+    flex-wrap: wrap;
   }
 
+  .project-editor__review,
   .project-editor__delete,
   .project-editor__exit,
   .project-editor__save {
-    flex: 1;
+    flex: 1 1 calc(50% - 0.3rem);
   }
 
   .project-editor__summary {
@@ -4478,6 +4787,33 @@ dialog input {
 
   .agent-improvement {
     max-height: calc(100vh - 1.5rem);
+  }
+
+  .project-review {
+    max-height: calc(100vh - 1.5rem);
+  }
+
+  .project-review > header {
+    padding: 1rem;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .project-review > header > div {
+    flex-basis: calc(100% - 7rem);
+  }
+
+  .project-review__assessment {
+    margin-left: 3.65rem;
+  }
+
+  .project-review__finding {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .project-review__finding > button {
+    grid-column: 2;
+    justify-self: start;
   }
 
   .agent-improvement > header {

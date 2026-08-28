@@ -307,3 +307,99 @@ test("persiste la planification cron d'un workflow", async () => {
     );
   });
 });
+
+test("converts a Codex project to Copilot during import", async () => {
+  await withProjectService(async (service, parentDirectory) => {
+    const result = await service.importProject("Atlas Copilot", [
+      {
+        relativePath: "AGENTS.md",
+        content: Buffer.from("# Shared instructions", "utf8")
+      },
+      {
+        relativePath: ".codex/agents/analysis.toml",
+        content: Buffer.from([
+          'name = "Analysis"',
+          'description = "Analyzes data."',
+          'model = "gpt-5.6-sol"',
+          'model_reasoning_effort = "high"',
+          'developer_instructions = "Produce a reliable summary."'
+        ].join("\n"), "utf8")
+      },
+      {
+        relativePath: ".github/workflows/quality.yml",
+        content: Buffer.from("name: Quality", "utf8")
+      },
+      {
+        relativePath: "src/index.ts",
+        content: Buffer.from("export const answer = 42;", "utf8")
+      }
+    ], "copilot");
+    const projectDirectory = path.join(parentDirectory, "Atlas Copilot");
+    const convertedAgent = await readFile(
+      path.join(projectDirectory, ".github", "agents", "analysis.agent.md"),
+      "utf8"
+    );
+
+    assert.deepEqual(result.conversion, {
+      sourceEngine: "codex",
+      targetEngine: "copilot"
+    });
+    assert.match(convertedAgent, /^---\nname: "Analysis"/);
+    assert.match(convertedAgent, /Produce a reliable summary\./);
+    assert.doesNotMatch(convertedAgent, /gpt-5\.6-sol|reasoning-effort/);
+    assert.equal(
+      await readFile(
+        path.join(projectDirectory, ".github", "workflows", "quality.yml"),
+        "utf8"
+      ),
+      "name: Quality"
+    );
+    await assert.rejects(
+      readFile(path.join(projectDirectory, ".codex", "agents", "analysis.toml")),
+      { code: "ENOENT" }
+    );
+  });
+});
+
+test("converts Claude instructions and agents to Codex", async () => {
+  await withProjectService(async (service, parentDirectory) => {
+    const result = await service.importProject("Atlas Codex", [
+      {
+        relativePath: "CLAUDE.md",
+        content: Buffer.from("# Claude context", "utf8")
+      },
+      {
+        relativePath: ".claude/agents/review.md",
+        content: Buffer.from([
+          "---",
+          'name: "Review"',
+          'description: "Checks the deliverable."',
+          'model: "sonnet"',
+          "---",
+          "Check every claim."
+        ].join("\n"), "utf8")
+      }
+    ], "codex");
+    const projectDirectory = path.join(parentDirectory, "Atlas Codex");
+
+    assert.deepEqual(result.conversion, {
+      sourceEngine: "claude",
+      targetEngine: "codex"
+    });
+    assert.equal(
+      await readFile(path.join(projectDirectory, "AGENTS.md"), "utf8"),
+      "# Claude context"
+    );
+    assert.match(
+      await readFile(
+        path.join(projectDirectory, ".codex", "agents", "review.toml"),
+        "utf8"
+      ),
+      /developer_instructions = "Check every claim\."/
+    );
+    await assert.rejects(
+      readFile(path.join(projectDirectory, "CLAUDE.md")),
+      { code: "ENOENT" }
+    );
+  });
+});

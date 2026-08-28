@@ -210,7 +210,7 @@ export class ProjectUseCase {
     }
   }
 
-  importProject(
+  async importProject(
     name: unknown,
     files: UploadedProjectFile[]
   ): Promise<CreateProjectResult> {
@@ -219,15 +219,20 @@ export class ProjectUseCase {
       "The project name is required."
     );
 
-    return this.projectService.importProject(projectName, files).catch(
-      (error: unknown) => {
-        if (error instanceof TypeError) {
-          throw new ValidationError(error.message);
-        }
-
-        throw error;
+    try {
+      const status = await this.agentService.getStatus();
+      return await this.projectService.importProject(
+        projectName,
+        files,
+        status.engine
+      );
+    } catch (error: unknown) {
+      if (error instanceof TypeError) {
+        throw new ValidationError(error.message);
       }
-    );
+
+      throw error;
+    }
   }
 
   saveAgentProject(

@@ -13,6 +13,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { NotFoundError } from "../../error/NotFoundError.ts";
+import { prepareImportedProject } from "./ProjectImportConverter.ts";
 
 interface ProjectConfiguration {
   projects?: unknown;
@@ -80,6 +81,12 @@ export interface CreateProjectOptions {
 export interface CreateProjectResult {
   project: Project;
   projects: Project[];
+  conversion?: ProjectImportConversion;
+}
+
+export interface ProjectImportConversion {
+  sourceEngine: ProjectAgentEngine;
+  targetEngine: ProjectAgentEngine;
 }
 
 export interface UploadedProjectFile {
@@ -279,6 +286,19 @@ export class ProjectService {
       );
     }
 
+    if ((options.agents?.length ?? 0) === 0) {
+      await writeFile(
+        path.join(
+          projectDirectory,
+          fileConfiguration.rootDirectory,
+          "agents",
+          ".gitkeep"
+        ),
+        "",
+        "utf8"
+      );
+    }
+
     const projects = await this.saveProject(projectDirectory);
     const project = projects.find((candidate) =>
       this.pathsAreEqual(candidate.directoryPath, projectDirectory)
@@ -293,9 +313,12 @@ export class ProjectService {
 
   async importProject(
     name: string,
-    files: UploadedProjectFile[]
+    files: UploadedProjectFile[],
+    targetEngine?: ProjectAgentEngine | null
   ): Promise<CreateProjectResult> {
     this.validateImportedProject(name, files);
+    const preparedImport = prepareImportedProject(files, targetEngine);
+    this.validateImportedProject(name, preparedImport.files);
 
     const projectsDirectory = await this.ensureManagedProjectsDirectory();
     const projectDirectory = path.join(projectsDirectory, name);
@@ -313,7 +336,7 @@ export class ProjectService {
     await mkdir(temporaryDirectory);
 
     try {
-      for (const file of files) {
+      for (const file of preparedImport.files) {
         const destination = path.join(
           temporaryDirectory,
           ...file.relativePath.split("/")
@@ -337,7 +360,19 @@ export class ProjectService {
       throw new Error("The imported project could not be saved.");
     }
 
-    return { project, projects };
+    return {
+      project,
+      projects,
+      ...(preparedImport.converted && preparedImport.sourceEngine &&
+        preparedImport.targetEngine
+        ? {
+          conversion: {
+            sourceEngine: preparedImport.sourceEngine,
+            targetEngine: preparedImport.targetEngine
+          }
+        }
+        : {})
+    };
   }
 
   async saveAgentProject(
@@ -422,6 +457,18 @@ export class ProjectService {
       if (!retainedFileNames.has(fileName)) {
         await unlink(path.join(agentsDirectory, fileName));
       }
+    }
+
+    const emptyDirectoryMarker = path.join(agentsDirectory, ".gitkeep");
+
+    if (draft.agents.length === 0) {
+      await writeFile(emptyDirectoryMarker, "", "utf8");
+    } else {
+      await unlink(emptyDirectoryMarker).catch((error: NodeJS.ErrnoException) => {
+        if (error.code !== "ENOENT") {
+          throw error;
+        }
+      });
     }
 
     await writeFile(

@@ -166,3 +166,38 @@ test("demande une architecture minimale et confie le fan-out a Cortex", async ()
   assert.match(prompt, /means exactly two agent definitions/);
   assert.equal(creationCalls[0].agents?.length, 2);
 });
+
+test("uses the active engine as the import conversion target", async () => {
+  const importCalls: Array<{
+    name: string;
+    targetEngine: string | null | undefined;
+  }> = [];
+  const project = { id: "project-id", directoryPath: "C:\\projects\\Atlas" };
+  const projectService = {
+    async importProject(
+      name: string,
+      _files: unknown[],
+      targetEngine: string | null | undefined
+    ) {
+      importCalls.push({ name, targetEngine });
+      return { project, projects: [project] };
+    }
+  } as unknown as ProjectService;
+  const agentService = {
+    async getStatus() {
+      return { engine: "copilot", label: "GitHub Copilot", error: null };
+    }
+  } as unknown as AgentService;
+  const useCase = new ProjectUseCase(
+    projectService,
+    {} as DirectoryPickerService,
+    agentService
+  );
+
+  await useCase.importProject("Atlas", [{
+    relativePath: "AGENTS.md",
+    content: Buffer.from("# Atlas")
+  }]);
+
+  assert.deepEqual(importCalls, [{ name: "Atlas", targetEngine: "copilot" }]);
+});

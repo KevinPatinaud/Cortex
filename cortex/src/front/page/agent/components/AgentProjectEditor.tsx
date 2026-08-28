@@ -1,26 +1,36 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
+  ArrowUpRight,
   Bot,
   Check,
   ChevronRight,
+  CircleAlert,
   FileText,
+  Lightbulb,
   LoaderCircle,
   Plus,
   RotateCcw,
   Save,
+  ScanSearch,
   Settings2,
+  ShieldCheck,
   Sparkles,
+  TriangleAlert,
   Trash2,
   Undo2,
   X
 } from "lucide-react";
 import {
   improveAgent,
+  improveInstructions,
+  reviewProject,
   saveAgentProject,
   type AgentProject,
   type EditableAgentDefinition,
-  type ImproveProjectAgent
+  type ImproveProjectAgent,
+  type ProjectReview,
+  type ProjectReviewFinding
 } from "../../../services/agentApi.ts";
 import {
   deleteProjectDirectory,
@@ -58,6 +68,11 @@ interface ProjectContent {
 interface AgentImprovementPreview {
   original: ImproveProjectAgent;
   improved: ImproveProjectAgent;
+}
+
+interface InstructionsImprovementPreview {
+  original: string;
+  improved: string;
 }
 
 const modelSuggestions = {
@@ -132,6 +147,11 @@ export function AgentProjectEditor({
   const [isImprovingAgent, setIsImprovingAgent] = useState(false);
   const [agentImprovement, setAgentImprovement] =
     useState<AgentImprovementPreview | null>(null);
+  const [isImprovingInstructions, setIsImprovingInstructions] = useState(false);
+  const [instructionsImprovement, setInstructionsImprovement] =
+    useState<InstructionsImprovementPreview | null>(null);
+  const [isReviewingProject, setIsReviewingProject] = useState(false);
+  const [projectReview, setProjectReview] = useState<ProjectReview | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [error, setError] = useState("");
@@ -158,19 +178,21 @@ export function AgentProjectEditor({
   }, [content, project]);
 
   useEffect(() => {
-    if (!agentImprovement) {
+    if (!agentImprovement && !instructionsImprovement && !projectReview) {
       return;
     }
 
     function closeOnEscape(event: KeyboardEvent): void {
       if (event.key === "Escape") {
         setAgentImprovement(null);
+        setInstructionsImprovement(null);
+        setProjectReview(null);
       }
     }
 
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [agentImprovement]);
+  }, [agentImprovement, instructionsImprovement, projectReview]);
 
   const selectedAgent = agents.find(
     (agent) => agent.clientId === selectedAgentId
@@ -180,6 +202,9 @@ export function AgentProjectEditor({
     [agents, instructions, projectName]
   );
   const isDirty = requiresInitialSave || currentDraft !== initialDraft.current;
+  const isImproving = isImprovingAgent ||
+    isImprovingInstructions ||
+    isReviewingProject;
 
   function updateSelectedAgent(changes: Partial<DraftAgent>): void {
     if (!selectedAgentId) {
@@ -306,6 +331,85 @@ export function AgentProjectEditor({
     setSaveMessage(t("editor.improved"));
   }
 
+  async function handleImproveInstructions(): Promise<void> {
+    setIsImprovingInstructions(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const result = await improveInstructions(content.projectId, {
+        instructions,
+        agents: agents.map((agent) => ({
+          key: agent.clientId,
+          name: agent.name,
+          description: agent.description,
+          prompt: agent.prompt
+        }))
+      });
+      setInstructionsImprovement({
+        original: instructions,
+        improved: result.instructions
+      });
+    } catch (requestError) {
+      setError(getErrorMessage(
+        requestError,
+        t("editor.instructionsImproveError")
+      ));
+    } finally {
+      setIsImprovingInstructions(false);
+    }
+  }
+
+  function applyInstructionsImprovement(): void {
+    if (!instructionsImprovement?.improved.trim()) {
+      return;
+    }
+
+    setInstructions(instructionsImprovement.improved.trim());
+    setSection("instructions");
+    setInstructionsImprovement(null);
+    setSaveMessage(t("editor.instructionsImproved"));
+  }
+
+  async function handleReviewProject(): Promise<void> {
+    setIsReviewingProject(true);
+    setError("");
+    setSaveMessage("");
+
+    try {
+      const review = await reviewProject(content.projectId, {
+        projectName: projectName.trim(),
+        instructions,
+        agents: agents.map((agent) => ({
+          key: agent.clientId,
+          name: agent.name,
+          description: agent.description,
+          prompt: agent.prompt,
+          model: agent.model ?? "",
+          reasoningEffort: agent.reasoningEffort ?? ""
+        }))
+      });
+      setProjectReview(review);
+    } catch (requestError) {
+      setError(getErrorMessage(requestError, t("editor.reviewError")));
+    } finally {
+      setIsReviewingProject(false);
+    }
+  }
+
+  function openReviewFinding(finding: ProjectReviewFinding): void {
+    if (finding.scope === "agent" && finding.agentKey) {
+      setSelectedAgentId(finding.agentKey);
+      setSection("agents");
+    } else if (finding.scope === "instructions") {
+      setSection("instructions");
+    } else {
+      return;
+    }
+
+    setProjectReview(null);
+  }
+
   function requestClose(): void {
     if (
       isDirty &&
@@ -357,6 +461,7 @@ export function AgentProjectEditor({
       setDeletedAgent(null);
       setSaveMessage(t("editor.saved"));
       onSaved(savedContent);
+      onClose();
     } catch (requestError) {
       setError(getErrorMessage(requestError, t("common.unexpectedError")));
     } finally {
@@ -399,7 +504,7 @@ export function AgentProjectEditor({
                   setProjectName(event.target.value);
                   setSaveMessage("");
                 }}
-                disabled={isSaving || isImprovingAgent}
+                disabled={isSaving || isImproving}
                 aria-label={t("creation.projectName")}
               />
             </label>
@@ -411,13 +516,33 @@ export function AgentProjectEditor({
             {isDirty ? t("editor.draftChanged") : t("editor.upToDate")}
           </span>
           <button
+            className="project-editor__review"
+            type="button"
+            onClick={() => void handleReviewProject()}
+            disabled={
+              isSaving ||
+              isDeleting ||
+              isImproving ||
+              !projectName.trim()
+            }
+          >
+            {isReviewingProject ? (
+              <LoaderCircle aria-hidden="true" className="spin" size={16} />
+            ) : (
+              <ScanSearch aria-hidden="true" size={16} />
+            )}
+            {isReviewingProject
+              ? t("editor.reviewing")
+              : t("editor.reviewProject")}
+          </button>
+          <button
             className="project-editor__delete"
             type="button"
             onClick={() => {
               setError("");
               setIsDeleteDialogOpen(true);
             }}
-            disabled={isSaving || isDeleting || isImprovingAgent}
+            disabled={isSaving || isDeleting || isImproving}
           >
             <Trash2 aria-hidden="true" size={16} />
             {t("editor.deleteProject")}
@@ -426,7 +551,7 @@ export function AgentProjectEditor({
             className="project-editor__exit"
             type="button"
             onClick={requestClose}
-            disabled={isSaving || isImprovingAgent}
+            disabled={isSaving || isImproving}
           >
             <X aria-hidden="true" size={16} />
             {t("editor.leave")}
@@ -435,14 +560,14 @@ export function AgentProjectEditor({
             className="project-editor__save"
             type="button"
             onClick={() => void handleSave()}
-            disabled={isSaving || isImprovingAgent || !isDirty}
+            disabled={isSaving || isImproving || !isDirty}
           >
             {isSaving ? (
               <LoaderCircle aria-hidden="true" className="spin" size={16} />
             ) : (
               <Save aria-hidden="true" size={16} />
             )}
-            {isSaving ? t("common.saving") : t("common.save")}
+            {isSaving ? t("common.saving") : t("editor.saveAndClose")}
           </button>
         </div>
       </header>
@@ -505,7 +630,7 @@ export function AgentProjectEditor({
               <button
                 type="button"
                 onClick={addAgent}
-                disabled={isSaving || isImprovingAgent}
+                disabled={isSaving || isImproving}
               >
                 <Plus aria-hidden="true" size={16} />
                 {t("common.add")}
@@ -559,7 +684,7 @@ export function AgentProjectEditor({
                     className="agent-inspector__improve"
                     type="button"
                     onClick={() => void handleImproveAgent()}
-                    disabled={isSaving || isDeleting || isImprovingAgent}
+                    disabled={isSaving || isDeleting || isImproving}
                   >
                     {isImprovingAgent ? (
                       <LoaderCircle aria-hidden="true" className="spin" size={16} />
@@ -574,7 +699,7 @@ export function AgentProjectEditor({
                     className="agent-inspector__delete"
                     type="button"
                     onClick={removeSelectedAgent}
-                    disabled={isSaving || isImprovingAgent}
+                    disabled={isSaving || isImproving}
                   >
                     <Trash2 aria-hidden="true" size={16} />
                     {t("common.delete")}
@@ -589,7 +714,7 @@ export function AgentProjectEditor({
                         value={selectedAgent.name}
                         onChange={(event) => updateSelectedAgent({ name: event.target.value })}
                         placeholder={t("editor.namePlaceholder")}
-                        disabled={isSaving || isImprovingAgent}
+                        disabled={isSaving || isImproving}
                       />
                     </label>
                     <label className="editor-field">
@@ -598,7 +723,7 @@ export function AgentProjectEditor({
                         value={selectedAgent.description}
                         onChange={(event) => updateSelectedAgent({ description: event.target.value })}
                         placeholder={t("editor.descriptionPlaceholder")}
-                        disabled={isSaving || isImprovingAgent}
+                        disabled={isSaving || isImproving}
                       />
                     </label>
                   </div>
@@ -611,7 +736,7 @@ export function AgentProjectEditor({
                         onChange={(event) => updateSelectedAgent({ model: event.target.value })}
                         placeholder={t("editor.defaultModel")}
                         list="cortex-model-suggestions"
-                        disabled={isSaving || isImprovingAgent}
+                        disabled={isSaving || isImproving}
                       />
                       {suggestions.length > 0 && (
                         <datalist id="cortex-model-suggestions">
@@ -624,7 +749,7 @@ export function AgentProjectEditor({
                       <select
                         value={selectedAgent.reasoningEffort ?? ""}
                         onChange={(event) => updateSelectedAgent({ reasoningEffort: event.target.value })}
-                        disabled={isSaving || isImprovingAgent}
+                        disabled={isSaving || isImproving}
                       >
                         <option value="">{t("editor.default")}</option>
                         <option value="low">{t("editor.low")}</option>
@@ -642,7 +767,7 @@ export function AgentProjectEditor({
                     placeholder={t("editor.promptPlaceholder")}
                     help={t("editor.promptHelp")}
                     rows={12}
-                    disabled={isSaving || isImprovingAgent}
+                    disabled={isSaving || isImproving}
                   />
                 </div>
               </>
@@ -666,6 +791,21 @@ export function AgentProjectEditor({
               <h2>{content.instructions.fileName}</h2>
               <p>{t("editor.sharedHelp")}</p>
             </div>
+            <button
+              className="agent-inspector__improve"
+              type="button"
+              onClick={() => void handleImproveInstructions()}
+              disabled={isSaving || isDeleting || isImproving}
+            >
+              {isImprovingInstructions ? (
+                <LoaderCircle aria-hidden="true" className="spin" size={16} />
+              ) : (
+                <Sparkles aria-hidden="true" size={16} />
+              )}
+              {isImprovingInstructions
+                ? t("editor.improving")
+                : t("editor.improveWithAi")}
+            </button>
           </header>
           <MarkdownEditor
             value={instructions}
@@ -676,7 +816,7 @@ export function AgentProjectEditor({
             label={t("editor.markdown")}
             rows={22}
             placeholder={t("editor.contextPlaceholder")}
-            disabled={isSaving || isImprovingAgent}
+            disabled={isSaving || isImproving}
           />
         </section>
       )}
@@ -719,6 +859,126 @@ export function AgentProjectEditor({
           }}
           onConfirm={() => void handleDeleteProject()}
         />
+      )}
+
+      {projectReview && (
+        <div
+          className="agent-improvement__backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setProjectReview(null);
+            }
+          }}
+        >
+          <section
+            className="project-review"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="project-review-title"
+          >
+            <header>
+              <span className="agent-improvement__icon" aria-hidden="true">
+                <ScanSearch size={21} />
+              </span>
+              <div>
+                <span>{t("editor.projectReviewEyebrow")}</span>
+                <h2 id="project-review-title">{t("editor.projectReviewTitle")}</h2>
+                <p>{t("editor.projectReviewHelp")}</p>
+              </div>
+              <span className={`project-review__assessment project-review__assessment--${projectReview.assessment}`}>
+                {projectReview.assessment === "healthy" && (
+                  <ShieldCheck aria-hidden="true" size={15} />
+                )}
+                {projectReview.assessment === "needs_attention" && (
+                  <TriangleAlert aria-hidden="true" size={15} />
+                )}
+                {projectReview.assessment === "critical" && (
+                  <CircleAlert aria-hidden="true" size={15} />
+                )}
+                {t(`editor.reviewAssessment.${projectReview.assessment}`)}
+              </span>
+              <button
+                className="agent-improvement__close"
+                type="button"
+                aria-label={t("common.close")}
+                onClick={() => setProjectReview(null)}
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </header>
+
+            <div className="project-review__content">
+              <section className="project-review__summary">
+                <strong>{t("editor.reviewSummary")}</strong>
+                <p>{projectReview.summary}</p>
+              </section>
+
+              <div className="project-review__findings-heading">
+                <h3>{t("editor.reviewFindings")}</h3>
+                <span>{projectReview.findings.length}</span>
+              </div>
+
+              {projectReview.findings.length > 0 ? (
+                <ol className="project-review__findings">
+                  {projectReview.findings.map((finding, index) => {
+                    const targetLabel = finding.scope === "agent"
+                      ? agents.find((agent) => agent.clientId === finding.agentKey)
+                        ?.name || t("editor.unnamedAgent")
+                      : finding.scope === "instructions"
+                        ? t("workspace.instructionsTab")
+                        : t("editor.reviewWholeProject");
+
+                    return (
+                      <li
+                        className={`project-review__finding project-review__finding--${finding.severity}`}
+                        key={`${finding.scope}-${finding.agentKey ?? "project"}-${index}`}
+                      >
+                        <span className="project-review__finding-icon" aria-hidden="true">
+                          {finding.severity === "critical" && <CircleAlert size={18} />}
+                          {finding.severity === "warning" && <TriangleAlert size={18} />}
+                          {finding.severity === "suggestion" && <Lightbulb size={18} />}
+                        </span>
+                        <div>
+                          <div className="project-review__finding-meta">
+                            <span>{t(`editor.reviewSeverity.${finding.severity}`)}</span>
+                            <em>{targetLabel}</em>
+                          </div>
+                          <h4>{finding.title}</h4>
+                          <p>{finding.description}</p>
+                          <aside>
+                            <strong>{t("editor.reviewRecommendation")}</strong>
+                            {finding.recommendation}
+                          </aside>
+                        </div>
+                        {finding.scope !== "project" && (
+                          <button
+                            type="button"
+                            onClick={() => openReviewFinding(finding)}
+                          >
+                            {t("editor.reviewOpenTarget")}
+                            <ArrowUpRight aria-hidden="true" size={14} />
+                          </button>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <div className="project-review__empty">
+                  <ShieldCheck aria-hidden="true" size={25} />
+                  <strong>{t("editor.reviewNoFinding")}</strong>
+                  <p>{t("editor.reviewNoFindingHelp")}</p>
+                </div>
+              )}
+            </div>
+
+            <footer>
+              <button type="button" onClick={() => setProjectReview(null)}>
+                {t("common.close")}
+              </button>
+            </footer>
+          </section>
+        </div>
       )}
 
       {agentImprovement && (
@@ -823,6 +1083,93 @@ export function AgentProjectEditor({
               >
                 <Check aria-hidden="true" size={15} />
                 {t("editor.useImprovedAgent")}
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
+
+      {instructionsImprovement && (
+        <div
+          className="agent-improvement__backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setInstructionsImprovement(null);
+            }
+          }}
+        >
+          <section
+            className="agent-improvement"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="instructions-improvement-title"
+          >
+            <header>
+              <span className="agent-improvement__icon" aria-hidden="true">
+                <Sparkles size={21} />
+              </span>
+              <div>
+                <span>{t("editor.aiSuggestion")}</span>
+                <h2 id="instructions-improvement-title">
+                  {t("editor.instructionsImprovementTitle")}
+                </h2>
+                <p>{t("editor.instructionsImprovementHelp")}</p>
+              </div>
+              <button
+                className="agent-improvement__close"
+                type="button"
+                aria-label={t("common.close")}
+                onClick={() => setInstructionsImprovement(null)}
+              >
+                <X aria-hidden="true" size={18} />
+              </button>
+            </header>
+
+            <div className="agent-improvement__comparison">
+              <section className="agent-improvement__version">
+                <h3>{t("editor.currentInstructions")}</h3>
+                <label className="editor-field">
+                  <span>{t("editor.markdown")}</span>
+                  <textarea
+                    value={instructionsImprovement.original}
+                    rows={18}
+                    readOnly
+                  />
+                </label>
+              </section>
+
+              <section className="agent-improvement__version agent-improvement__version--improved">
+                <h3>{t("editor.improvedInstructions")}</h3>
+                <label className="editor-field">
+                  <span>{t("editor.markdown")}</span>
+                  <textarea
+                    value={instructionsImprovement.improved}
+                    onChange={(event) => setInstructionsImprovement({
+                      ...instructionsImprovement,
+                      improved: event.target.value
+                    })}
+                    rows={18}
+                  />
+                </label>
+              </section>
+            </div>
+
+            <footer>
+              <button
+                type="button"
+                onClick={() => setInstructionsImprovement(null)}
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                className="agent-improvement__apply"
+                type="button"
+                onClick={applyInstructionsImprovement}
+                disabled={!instructionsImprovement.improved.trim()}
+              >
+                <Check aria-hidden="true" size={15} />
+                {t("editor.useImprovedInstructions")}
               </button>
             </footer>
           </section>

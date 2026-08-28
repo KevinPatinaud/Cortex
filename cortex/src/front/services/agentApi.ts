@@ -111,6 +111,45 @@ export interface ImproveAgentInput {
   agents: ImproveProjectAgent[];
 }
 
+export interface ImproveInstructionsInput {
+  instructions: string;
+  agents: ImproveProjectAgent[];
+}
+
+export interface ImproveInstructionsResult {
+  instructions: string;
+}
+
+export type ProjectReviewAssessment = "healthy" | "needs_attention" | "critical";
+export type ProjectReviewSeverity = "critical" | "warning" | "suggestion";
+export type ProjectReviewScope = "project" | "instructions" | "agent";
+
+export interface ReviewProjectAgent extends ImproveProjectAgent {
+  model: string;
+  reasoningEffort: string;
+}
+
+export interface ReviewProjectInput {
+  projectName: string;
+  instructions: string;
+  agents: ReviewProjectAgent[];
+}
+
+export interface ProjectReviewFinding {
+  severity: ProjectReviewSeverity;
+  scope: ProjectReviewScope;
+  agentKey: string | null;
+  title: string;
+  description: string;
+  recommendation: string;
+}
+
+export interface ProjectReview {
+  assessment: ProjectReviewAssessment;
+  summary: string;
+  findings: ProjectReviewFinding[];
+}
+
 export function getAgentStatus(): Promise<AgentStatus> {
   return requestJson("/api/agents/status");
 }
@@ -176,6 +215,34 @@ export async function improveAgent(
 ): Promise<ImproveProjectAgent> {
   return requestJson<ImproveProjectAgent>(
     `/api/agents/projects/${encodeURIComponent(projectId)}/agents/improve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export async function improveInstructions(
+  projectId: string,
+  input: ImproveInstructionsInput
+): Promise<ImproveInstructionsResult> {
+  return requestJson<ImproveInstructionsResult>(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/instructions/improve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export async function reviewProject(
+  projectId: string,
+  input: ReviewProjectInput
+): Promise<ProjectReview> {
+  return requestJson<ProjectReview>(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/review`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

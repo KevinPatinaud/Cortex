@@ -3,6 +3,8 @@ import type {
   AgentConfigurationInput,
   AgentUseCase,
   ImproveAgentInput,
+  ImproveInstructionsInput,
+  ReviewProjectInput,
   RunAgentInput
 } from "../../../application/usecase/AgentUseCase.ts";
 import type { EditAgentProjectInput } from "../../../application/usecase/ProjectUseCase.ts";
@@ -48,6 +50,32 @@ export function createAgentController(
         request.body
       ));
     }, agentErrorMappings.improveAgent)
+  );
+
+  router.post(
+    "/projects/:projectId/instructions/improve",
+    asyncRoute<ImproveInstructionsInput, { projectId: string }>(async (
+      request,
+      response
+    ) => {
+      response.json(await agentUseCase.improveInstructions(
+        request.params.projectId,
+        request.body
+      ));
+    }, agentErrorMappings.improveInstructions)
+  );
+
+  router.post(
+    "/projects/:projectId/review",
+    asyncRoute<ReviewProjectInput, { projectId: string }>(async (
+      request,
+      response
+    ) => {
+      response.json(await agentUseCase.reviewProject(
+        request.params.projectId,
+        request.body
+      ));
+    }, agentErrorMappings.reviewProject)
   );
 
   router.get(

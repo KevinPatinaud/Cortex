@@ -127,7 +127,8 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
       response.status(201).json({
         message: "The project was imported.",
         project: result.project,
-        projects: result.projects
+        projects: result.projects,
+        conversion: result.conversion ?? null
       });
     }, projectErrorMappings.import)
   );
@@ -154,7 +155,8 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
       response.status(201).json({
         message: "The Cortex project was imported.",
         project: result.project,
-        projects: result.projects
+        projects: result.projects,
+        conversion: result.conversion ?? null
       });
     }, projectErrorMappings.import)
   );

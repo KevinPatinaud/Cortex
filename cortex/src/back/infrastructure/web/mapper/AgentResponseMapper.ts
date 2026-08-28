@@ -47,6 +47,18 @@ export const agentErrorMappings = {
     logMessage: "Unable to improve the agent:",
     exposeUnexpectedError: true
   },
+  improveInstructions: {
+    fallbackStatus: 503,
+    fallbackMessage: "Unable to improve the project instructions.",
+    logMessage: "Unable to improve the project instructions:",
+    exposeUnexpectedError: true
+  },
+  reviewProject: {
+    fallbackStatus: 503,
+    fallbackMessage: "Unable to review the project.",
+    logMessage: "Unable to review the project:",
+    exposeUnexpectedError: true
+  },
   runAgent: {
     fallbackStatus: 503,
     fallbackMessage: "Unable to run the agent.",
