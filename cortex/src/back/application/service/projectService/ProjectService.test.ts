@@ -292,12 +292,17 @@ test("persiste la planification cron d'un workflow", async () => {
 
     await service.saveWorkflowScheduleConfiguration(project.id, {
       cron: "0 7 * * 1-5",
-      enabled: true
+      enabled: true,
+      parameterValues: { target: "20" }
     });
 
     assert.deepEqual(
       await service.getWorkflowScheduleConfiguration(project.id),
-      { cron: "0 7 * * 1-5", enabled: true }
+      {
+        cron: "0 7 * * 1-5",
+        enabled: true,
+        parameterValues: { target: "20" }
+      }
     );
 
     await service.deleteProject(project.directoryPath);

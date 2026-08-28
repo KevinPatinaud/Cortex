@@ -82,6 +82,20 @@ closed, as long as the Cortex server is running. Each occurrence starts a fresh
 workflow and automatically passes the selected branch results to downstream
 agents. An occurrence is skipped when the same project is already running.
 
+## Workflow parameters
+
+For multi-agent projects, Cortex analyzes the project instructions and agent
+definitions together with the execution graph to identify the information that
+must be supplied before the workflow starts. The **Workflow parameters** panel
+lists required and optional values, blocks root agents until all required
+values are complete, and passes the validated context to every new agent
+session. Values are locked once execution begins and can be edited again after
+resetting the workflow.
+
+Scheduled workflows store their validated parameter values in the local Cortex
+configuration so they can run while the browser is closed. Parameters must
+never be used for passwords, API keys, tokens, or other secrets.
+
 ## MCP connections
 
 The engine settings panel discovers MCP servers configured for Codex, Claude,

@@ -1,5 +1,14 @@
 import { requestJson } from "./apiClient.ts";
 import type { McpDiscoveryResult } from "../../shared/McpConnection.ts";
+import type {
+  WorkflowParameterDefinition,
+  WorkflowParameterValues
+} from "../../shared/WorkflowParameter.ts";
+
+export type {
+  WorkflowParameterDefinition,
+  WorkflowParameterValues
+} from "../../shared/WorkflowParameter.ts";
 
 export type {
   McpConnectionSummary,
@@ -52,6 +61,7 @@ export interface AgentProject {
   engine: AgentEngine;
   agents: AgentDefinition[];
   instructions: ProjectInstructions;
+  parameters: WorkflowParameterDefinition[];
 }
 
 export interface AgentRunResult {
@@ -80,6 +90,7 @@ export interface WorkflowSchedule {
   lastRunAt: string | null;
   lastRunStatus: "succeeded" | "failed" | "skipped" | null;
   lastRunError: string | null;
+  parameterValues: WorkflowParameterValues;
 }
 
 export interface EditableAgentDefinition {
@@ -256,7 +267,8 @@ export async function runAgent(
   agentId: string,
   additionalInstructions: string,
   upstreamAgentResults?: UpstreamAgentResult[],
-  threadId?: string
+  threadId?: string,
+  workflowParameterValues?: WorkflowParameterValues
 ): Promise<AgentRunResult> {
   const data = await requestJson<AgentRunResult>(
     `/api/agents/projects/${encodeURIComponent(projectId)}/agents/run`,
@@ -268,6 +280,9 @@ export async function runAgent(
         ...(threadId ? { threadId } : {}),
         ...(additionalInstructions.trim()
           ? { additionalInstructions: additionalInstructions.trim() }
+          : {}),
+        ...(workflowParameterValues
+          ? { workflowParameterValues }
           : {}),
         ...(upstreamAgentResults && upstreamAgentResults.length > 0
           ? { upstreamAgentResults }
@@ -303,7 +318,7 @@ export function getWorkflowSchedule(
 
 export function saveWorkflowSchedule(
   projectId: string,
-  schedule: Pick<WorkflowSchedule, "cron" | "enabled">
+  schedule: Pick<WorkflowSchedule, "cron" | "enabled" | "parameterValues">
 ): Promise<WorkflowSchedule> {
   return requestJson(
     `/api/agents/projects/${encodeURIComponent(projectId)}/workflow/schedule`,

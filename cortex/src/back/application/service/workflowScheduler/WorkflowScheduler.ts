@@ -22,11 +22,13 @@ export interface WorkflowScheduleOutput {
   lastRunAt: string | null;
   lastRunStatus: WorkflowScheduleLastRunStatus | null;
   lastRunError: string | null;
+  parameterValues: Record<string, string>;
 }
 
 export interface WorkflowScheduleInput {
   cron?: unknown;
   enabled?: unknown;
+  parameterValues?: unknown;
 }
 
 interface WorkflowScheduleRuntimeState {
@@ -41,7 +43,7 @@ const DEFAULT_CRON_EXPRESSION = "0 9 * * 1-5";
 export class WorkflowScheduler {
   private readonly schedules = new Map<
     string,
-    { cron: string; enabled: boolean }
+    { cron: string; enabled: boolean; parameterValues: Record<string, string> }
   >();
   private readonly runtimeStates = new Map<
     string,
@@ -97,7 +99,11 @@ export class WorkflowScheduler {
     if (!schedule) {
       schedule = await this.projectUseCase.getWorkflowScheduleConfiguration(
         normalizedProjectId
-      ) ?? { cron: DEFAULT_CRON_EXPRESSION, enabled: false };
+      ) ?? {
+        cron: DEFAULT_CRON_EXPRESSION,
+        enabled: false,
+        parameterValues: {}
+      };
       this.schedules.set(normalizedProjectId, schedule);
     }
 
@@ -114,9 +120,16 @@ export class WorkflowScheduler {
       throw new ValidationError("The schedule enabled option must be a boolean.");
     }
 
+    const parameterValues = await this.agentUseCase
+      .validateWorkflowParameterValues(
+        normalizedProjectId,
+        input.parameterValues,
+        input.enabled
+      );
     const schedule = {
       cron: normalizeCronExpression(input.cron),
-      enabled: input.enabled
+      enabled: input.enabled,
+      parameterValues
     };
     await this.projectUseCase.saveWorkflowScheduleConfiguration(
       normalizedProjectId,
@@ -175,7 +188,11 @@ export class WorkflowScheduler {
         return;
       }
 
-      await this.agentUseCase.runWorkflow(projectId);
+      const schedule = this.schedules.get(projectId);
+      await this.agentUseCase.runWorkflow(
+        projectId,
+        schedule?.parameterValues ?? {}
+      );
       runtime.lastRunStatus = "succeeded";
     } catch (error) {
       runtime.lastRunStatus = "failed";
@@ -208,12 +225,17 @@ export class WorkflowScheduler {
 
   private toOutput(
     projectId: string,
-    schedule: { cron: string; enabled: boolean }
+    schedule: {
+      cron: string;
+      enabled: boolean;
+      parameterValues: Record<string, string>;
+    }
   ): WorkflowScheduleOutput {
     const runtime = this.getRuntimeState(projectId);
 
     return {
       ...schedule,
+      parameterValues: { ...schedule.parameterValues },
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "local",
       nextRunAt: schedule.enabled
         ? getNextCronOccurrence(schedule.cron, this.now()).toISOString()

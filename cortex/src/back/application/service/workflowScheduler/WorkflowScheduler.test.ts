@@ -5,8 +5,13 @@ import type { ProjectUseCase } from "../../usecase/ProjectUseCase.ts";
 import { WorkflowScheduler } from "./WorkflowScheduler.ts";
 
 test("déclenche une seule exécution par minute correspondante", async () => {
-  const schedules = new Map<string, { cron: string; enabled: boolean }>();
+  const schedules = new Map<string, {
+    cron: string;
+    enabled: boolean;
+    parameterValues: Record<string, string>;
+  }>();
   let runCount = 0;
+  let lastParameterValues: unknown;
   const projectUseCase = {
     async getProjects() {
       return [{ id: "project-id", directoryPath: "C:\\project" }];
@@ -16,15 +21,23 @@ test("déclenche une seule exécution par minute correspondante", async () => {
     },
     async saveWorkflowScheduleConfiguration(
       projectId: string,
-      schedule: { cron: string; enabled: boolean }
+      schedule: {
+        cron: string;
+        enabled: boolean;
+        parameterValues: Record<string, string>;
+      }
     ) {
       schedules.set(projectId, schedule);
     }
   } as unknown as ProjectUseCase;
   const agentUseCase = {
     isProjectRunning: () => false,
-    async runWorkflow() {
+    async validateWorkflowParameterValues(_projectId: string, value: unknown) {
+      return value as Record<string, string>;
+    },
+    async runWorkflow(_projectId: string, parameterValues: unknown) {
       runCount += 1;
+      lastParameterValues = parameterValues;
       return { executedAgentIds: ["agent"], skippedAgentIds: [] };
     }
   } as unknown as AgentUseCase;
@@ -33,13 +46,15 @@ test("déclenche une seule exécution par minute correspondante", async () => {
 
   await scheduler.saveSchedule("project-id", {
     cron: "* * * * *",
-    enabled: true
+    enabled: true,
+    parameterValues: { target: "20" }
   });
   scheduler.checkDueSchedules(now);
   scheduler.checkDueSchedules(new Date(2026, 7, 14, 10, 0, 50));
   await new Promise((resolve) => setImmediate(resolve));
 
   assert.equal(runCount, 1);
+  assert.deepEqual(lastParameterValues, { target: "20" });
   assert.equal(
     (await scheduler.getSchedule("project-id")).lastRunStatus,
     "succeeded"
@@ -62,6 +77,9 @@ test("saute une occurrence lorsqu'une exécution est déjà active", async () =>
   } as unknown as ProjectUseCase;
   const agentUseCase = {
     isProjectRunning: () => true,
+    async validateWorkflowParameterValues() {
+      return {};
+    },
     async runWorkflow() {
       throw new Error("ne doit pas être appelé");
     }

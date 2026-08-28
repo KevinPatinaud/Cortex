@@ -5,7 +5,7 @@ import {
   useState,
   type KeyboardEvent
 } from "react";
-import { ArrowDown, Bot, CalendarClock, ChevronDown, Download, FastForward, GitBranch, LoaderCircle, Pause, Pencil, Play, RotateCcw, Send } from "lucide-react";
+import { AlertCircle, ArrowDown, Bot, CalendarClock, CheckCircle2, ChevronDown, Download, FastForward, GitBranch, LoaderCircle, LockKeyhole, Pause, Pencil, Play, RotateCcw, Send, SlidersHorizontal } from "lucide-react";
 import {
   loadAgentProject,
   getWorkflowSchedule,
@@ -16,6 +16,8 @@ import {
   type AgentDefinition,
   type AgentProject,
   type UpstreamAgentResult,
+  type WorkflowParameterDefinition,
+  type WorkflowParameterValues,
   type WorkflowSchedule
 } from "../../../services/agentApi.ts";
 import {
@@ -250,6 +252,151 @@ interface AgentResultState {
   responses: AgentResponsePayload[];
   selectedItemIndexes: number[];
   isInvalidated: boolean;
+}
+
+function getMissingWorkflowParameters(
+  parameters: WorkflowParameterDefinition[],
+  values: WorkflowParameterValues
+): WorkflowParameterDefinition[] {
+  return parameters.filter(
+    (parameter) => parameter.required && !values[parameter.id]?.trim()
+  );
+}
+
+function WorkflowParametersPanel({
+  parameters,
+  values,
+  locked,
+  onChange
+}: {
+  parameters: WorkflowParameterDefinition[];
+  values: WorkflowParameterValues;
+  locked: boolean;
+  onChange: (parameterId: string, value: string) => void;
+}) {
+  const { t } = useTranslation();
+  const panelId = useId();
+  const missingParameters = getMissingWorkflowParameters(parameters, values);
+  const requiredCount = parameters.filter((parameter) => parameter.required).length;
+  const completedRequiredCount = requiredCount - missingParameters.length;
+  const isReady = missingParameters.length === 0;
+
+  return (
+    <section
+      className={`workflow-parameters${
+        locked ? " workflow-parameters--locked" : ""
+      }`}
+      aria-labelledby={`${panelId}-title`}
+    >
+      <header className="workflow-parameters__header">
+        <span className="workflow-parameters__icon" aria-hidden="true">
+          <SlidersHorizontal size={21} strokeWidth={1.8} />
+        </span>
+        <div>
+          <span className="workflow-parameters__eyebrow">
+            {t("parameters.eyebrow")}
+          </span>
+          <h2 id={`${panelId}-title`}>{t("parameters.title")}</h2>
+          <p>{t("parameters.description")}</p>
+        </div>
+        <div
+          className={`workflow-parameters__status workflow-parameters__status--${
+            isReady ? "ready" : "missing"
+          }`}
+          role="status"
+        >
+          {isReady ? (
+            <CheckCircle2 aria-hidden="true" size={17} />
+          ) : (
+            <AlertCircle aria-hidden="true" size={17} />
+          )}
+          <span>
+            {requiredCount > 0
+              ? t("parameters.progress", {
+                completed: completedRequiredCount,
+                total: requiredCount
+              })
+              : t("parameters.ready")}
+          </span>
+        </div>
+      </header>
+
+      <div className="workflow-parameters__grid">
+        {parameters.map((parameter) => {
+          const inputId = `${panelId}-${parameter.id}`;
+          const fieldValue = values[parameter.id] ?? "";
+
+          return (
+            <label
+              className={`workflow-parameters__field workflow-parameters__field--${parameter.inputType}`}
+              htmlFor={inputId}
+              key={parameter.id}
+            >
+              <span className="workflow-parameters__label">
+                <strong>{parameter.label}</strong>
+                <small className={parameter.required
+                  ? "workflow-parameters__required"
+                  : "workflow-parameters__optional"
+                }>
+                  {t(parameter.required
+                    ? "parameters.required"
+                    : "parameters.optional")}
+                </small>
+              </span>
+              {parameter.inputType === "textarea" ? (
+                <textarea
+                  id={inputId}
+                  value={fieldValue}
+                  onChange={(event) => onChange(parameter.id, event.target.value)}
+                  placeholder={parameter.placeholder}
+                  disabled={locked}
+                  required={parameter.required}
+                  rows={3}
+                />
+              ) : parameter.inputType === "select" ? (
+                <select
+                  id={inputId}
+                  value={fieldValue}
+                  onChange={(event) => onChange(parameter.id, event.target.value)}
+                  disabled={locked}
+                  required={parameter.required}
+                >
+                  <option value="">{t("parameters.selectPlaceholder")}</option>
+                  {parameter.options.map((option) => (
+                    <option value={option} key={option}>{option}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id={inputId}
+                  type="text"
+                  value={fieldValue}
+                  onChange={(event) => onChange(parameter.id, event.target.value)}
+                  placeholder={parameter.placeholder}
+                  disabled={locked}
+                  required={parameter.required}
+                  autoComplete="off"
+                />
+              )}
+              {parameter.description && <small>{parameter.description}</small>}
+            </label>
+          );
+        })}
+      </div>
+
+      <footer className={`workflow-parameters__footer workflow-parameters__footer--${
+        locked ? "locked" : isReady ? "ready" : "missing"
+      }`}>
+        {locked ? (
+          <><LockKeyhole aria-hidden="true" size={15} /> {t("parameters.locked")}</>
+        ) : isReady ? (
+          <><CheckCircle2 aria-hidden="true" size={15} /> {t("parameters.ready")}</>
+        ) : (
+          <><AlertCircle aria-hidden="true" size={15} /> {t("parameters.missing")}</>
+        )}
+      </footer>
+    </section>
+  );
 }
 
 type AgentResultStates = Record<string, AgentResultState>;
@@ -803,6 +950,8 @@ interface AgentCardProps {
   showContinueButton: boolean;
   canContinue: boolean;
   prerequisiteMessage: string | null;
+  missingWorkflowParameterLabels: string[];
+  workflowParameterValues?: WorkflowParameterValues;
   projectId: string;
   selectedItemIndexes: number[];
   onResponseChange: (
@@ -1056,6 +1205,8 @@ function AgentCard({
   showContinueButton,
   canContinue,
   prerequisiteMessage,
+  missingWorkflowParameterLabels,
+  workflowParameterValues,
   projectId,
   selectedItemIndexes,
   onResponseChange,
@@ -1076,7 +1227,14 @@ function AgentCard({
   const [error, setError] = useState(agent.executionError ?? "");
   const [additionalInstructions, setAdditionalInstructions] = useState("");
   const isRunning = runningThreadId !== null || agent.executionStatus === "running";
-  const canRun = Boolean(agent.prompt.trim()) && !prerequisiteMessage;
+  const parameterPrerequisiteMessage = missingWorkflowParameterLabels.length > 0
+    ? t("parameters.missingForAgent", {
+      names: missingWorkflowParameterLabels.join(", ")
+    })
+    : null;
+  const canRun = Boolean(agent.prompt.trim()) &&
+    !prerequisiteMessage &&
+    !parameterPrerequisiteMessage;
   const isUnavailable = !canRun;
   const isDisabled = isUnavailable || isFrozen;
   const shouldShowRunButton =
@@ -1125,7 +1283,8 @@ function AgentCard({
         agent.id,
         submittedInstructions,
         upstreamAgentResults,
-        threadId
+        threadId,
+        workflowParameterValues
       );
       setThreads(result.threads);
       setHasSession(result.hasSession);
@@ -1256,6 +1415,11 @@ function AgentCard({
             {prerequisiteMessage}
           </p>
         )}
+        {parameterPrerequisiteMessage && (
+          <p className="agent-card__run-prerequisite">
+            {parameterPrerequisiteMessage}
+          </p>
+        )}
         {error && (
           <p className="agent-card__run-error" role="alert">{error}</p>
         )}
@@ -1359,7 +1523,7 @@ function AgentCard({
                   disabled={isRunning || !canRun || isFrozen}
                   title={isFrozen
                     ? t("agent.frozen")
-                    : prerequisiteMessage || (canRun
+                    : prerequisiteMessage || parameterPrerequisiteMessage || (canRun
                       ? t(hasSession ? "agent.rerunTitle" : "agent.runTitle", { name: agent.name })
                       : t("agent.emptyInstruction")
                     )
@@ -1440,6 +1604,9 @@ export function AgentProjectWorkspace({
   const [exportError, setExportError] = useState("");
   const [workflowSchedule, setWorkflowSchedule] =
     useState<WorkflowSchedule | null>(null);
+  const [workflowParameterValues, setWorkflowParameterValues] =
+    useState<WorkflowParameterValues>({});
+  const hydratedParameterProjectIds = useRef(new Set<string>());
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
   const [handoffEnabledAgentIdsByProject, setHandoffEnabledAgentIdsByProject] =
     useState<HandoffEnabledAgentIdsByProject>(loadHandoffPreferences);
@@ -1456,10 +1623,24 @@ export function AgentProjectWorkspace({
     setIsResetDialogOpen(false);
     setIsScheduleDialogOpen(false);
     setWorkflowSchedule(null);
+    setWorkflowParameterValues({});
     setResetError("");
     setExportError("");
     setReleasedAutomaticAgentIds(new Set());
   }, [content?.projectId]);
+
+  useEffect(() => {
+    if (
+      !content ||
+      !workflowSchedule ||
+      hydratedParameterProjectIds.current.has(content.projectId)
+    ) {
+      return;
+    }
+
+    hydratedParameterProjectIds.current.add(content.projectId);
+    setWorkflowParameterValues(workflowSchedule.parameterValues ?? {});
+  }, [content, workflowSchedule]);
 
   useEffect(() => {
     if (!content) {
@@ -1692,6 +1873,13 @@ export function AgentProjectWorkspace({
   const agentsTabId = `${tabsId}-agents-tab`;
   const agentsPanelId = `${tabsId}-agents-panel`;
   const workflowAgents = [...content.agents];
+  const workflowParameters = content.parameters ?? [];
+  const missingWorkflowParameters = getMissingWorkflowParameters(
+    workflowParameters,
+    workflowParameterValues
+  );
+  const workflowParametersLocked = launchedAgentIds.size > 0 ||
+    content.agents.some((agent) => agent.executionStatus === "running");
   const agentsById = new Map(workflowAgents.map((agent) => [agent.id, agent]));
   const workflowFeedbackEdgeKeys = getWorkflowFeedbackEdgeKeys(workflowAgents);
   const workflowFeedbackEdges = workflowAgents.flatMap((agent) =>
@@ -2143,7 +2331,10 @@ export function AgentProjectWorkspace({
                 }`}
                 type="button"
                 onClick={() => setIsScheduleDialogOpen(true)}
-                disabled={!workflowSchedule}
+                disabled={!workflowSchedule || (
+                  missingWorkflowParameters.length > 0 &&
+                  !workflowSchedule.enabled
+                )}
                 title={workflowSchedule?.enabled
                   ? t("schedule.edit")
                   : t("schedule.configure")}
@@ -2228,13 +2419,27 @@ export function AgentProjectWorkspace({
               {t("workspace.noAgents")}
             </p>
           ) : (
-            <div
-              className={`agent-project__workflow${
-                workflowFeedbackLoopPlacements.length > 0
-                  ? " agent-project__workflow--has-feedback"
-                  : ""
-              }`}
-            >
+            <>
+              {workflowParameters.length > 0 && (
+                <WorkflowParametersPanel
+                  parameters={workflowParameters}
+                  values={workflowParameterValues}
+                  locked={workflowParametersLocked}
+                  onChange={(parameterId, value) => {
+                    setWorkflowParameterValues((currentValues) => ({
+                      ...currentValues,
+                      [parameterId]: value
+                    }));
+                  }}
+                />
+              )}
+              <div
+                className={`agent-project__workflow${
+                  workflowFeedbackLoopPlacements.length > 0
+                    ? " agent-project__workflow--has-feedback"
+                    : ""
+                }`}
+              >
               {workflowFeedbackLoopPlacements.map((placement) => (
                 <WorkflowFeedbackLoop
                   key={placement.key}
@@ -2293,6 +2498,9 @@ export function AgentProjectWorkspace({
                     key={levelIndex}
                     style={{ gridRow: levelIndex + 1 }}
                   >
+                    <div className="agent-project__workflow-level-label" aria-hidden="true">
+                      <span>{t("workspace.step", { number: levelIndex + 1 })}</span>
+                    </div>
                     <ol className={`agent-project__workflow-cards${
                       usesFlowLanes
                         ? " agent-project__workflow-cards--lanes"
@@ -2309,6 +2517,7 @@ export function AgentProjectWorkspace({
                         const upstreamAgents = workflowAgents.filter(
                           (candidate) => candidate.nextAgentIds.includes(agent.id)
                         );
+                        const isRootAgent = upstreamAgents.length === 0;
                         const prerequisiteMessage = getPrerequisiteMessage(
                           upstreamAgents,
                           agent.id,
@@ -2410,6 +2619,18 @@ export function AgentProjectWorkspace({
                               }
                               canContinue={readyAutomaticSuccessorIds.length > 0}
                               prerequisiteMessage={prerequisiteMessage}
+                              missingWorkflowParameterLabels={
+                                isRootAgent && !agent.hasSession
+                                  ? missingWorkflowParameters.map(
+                                    (parameter) => parameter.label
+                                  )
+                                  : []
+                              }
+                              workflowParameterValues={
+                                isRootAgent && !agent.hasSession
+                                  ? workflowParameterValues
+                                  : undefined
+                              }
                               projectId={content.projectId}
                               selectedItemIndexes={
                                 agentResultStates[agent.id]?.selectedItemIndexes ?? []
@@ -2500,7 +2721,8 @@ export function AgentProjectWorkspace({
                   </section>
                 );
               })}
-            </div>
+              </div>
+            </>
           )}
         </section>
       )}
@@ -2529,6 +2751,7 @@ export function AgentProjectWorkspace({
           projectId={projectId}
           projectName={projectName}
           schedule={workflowSchedule}
+          parameterValues={workflowParameterValues}
           onCancel={() => setIsScheduleDialogOpen(false)}
           onSaved={(schedule) => {
             setWorkflowSchedule(schedule);

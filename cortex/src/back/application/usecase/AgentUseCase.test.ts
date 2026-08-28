@@ -1523,3 +1523,91 @@ test("rejette une revue qui cible un agent absent du projet", async () => {
     /invalid project review/i
   );
 });
+
+test("detects, validates, and propagates workflow parameters", async () => {
+  const sourceAgentId = ".claude/agents/implementation.md";
+  const targetAgentId = ".claude/agents/analysis.md";
+  const workflowAnswer = JSON.stringify({
+    agents: [
+      {
+        id: sourceAgentId,
+        nextAgentIds: [targetAgentId],
+        inputMode: "separate"
+      },
+      {
+        id: targetAgentId,
+        nextAgentIds: [],
+        inputMode: "separate"
+      }
+    ],
+    parameters: [
+      {
+        id: "repository_path",
+        label: "Repository path",
+        description: "Absolute path to the repository.",
+        required: true,
+        inputType: "text",
+        placeholder: "C:\\projects\\application",
+        options: []
+      },
+      {
+        id: "target_version",
+        label: "Target version",
+        description: "Version to reach.",
+        required: true,
+        inputType: "select",
+        placeholder: "",
+        options: ["19", "20"]
+      }
+    ]
+  });
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: workflowAnswer },
+    {
+      answer: createAgentAnswer(
+        ["Audit ready"],
+        false,
+        null,
+        null,
+        [targetAgentId]
+      ),
+      sessionId: "source-session"
+    },
+    {
+      answer: createAgentAnswer(["Done"], false, null, null, []),
+      sessionId: "target-session"
+    }
+  ]);
+
+  const project = await useCase.loadProject("project-id");
+
+  assert.deepEqual(
+    project.parameters.map(({ id }) => id),
+    ["repository_path", "target_version"]
+  );
+  await assert.rejects(
+    useCase.runAgent("project-id", { agentId: sourceAgentId }),
+    /Repository path, Target version/
+  );
+
+  const parameterValues = {
+    repository_path: "C:\\projects\\application",
+    target_version: "20"
+  };
+  await useCase.runAgent("project-id", {
+    agentId: sourceAgentId,
+    workflowParameterValues: parameterValues
+  });
+  await useCase.runAgent("project-id", {
+    agentId: targetAgentId,
+    upstreamAgentResults: [{
+      agentId: sourceAgentId,
+      selectedItemIndexes: [0]
+    }]
+  });
+
+  assert.match(calls[1].prompt, /repository_path/);
+  assert.match(calls[1].prompt, /projects.*application/);
+  assert.match(calls[2].prompt, /target_version/);
+  assert.match(calls[2].prompt, /"20"/);
+});

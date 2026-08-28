@@ -12,6 +12,7 @@ import {
   writeFile
 } from "node:fs/promises";
 import path from "node:path";
+import type { WorkflowParameterDefinition } from "../../../../shared/WorkflowParameter.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
 import { prepareImportedProject } from "./ProjectImportConverter.ts";
 
@@ -35,11 +36,13 @@ export interface AgentWorkflowConfiguration {
     nextAgentIds: string[];
     inputMode: "separate" | "aggregate";
   }>;
+  parameters: WorkflowParameterDefinition[];
 }
 
 export interface WorkflowScheduleConfiguration {
   cron: string;
   enabled: boolean;
+  parameterValues: Record<string, string>;
 }
 
 export interface Project {
@@ -613,7 +616,7 @@ export class ProjectService {
     const schedule = storedSchedules?.[projectId];
 
     return this.isWorkflowScheduleConfiguration(schedule)
-      ? { ...schedule }
+      ? { ...schedule, parameterValues: { ...schedule.parameterValues } }
       : null;
   }
 
@@ -638,7 +641,10 @@ export class ProjectService {
       ...configuration,
       workflowSchedules: {
         ...storedSchedules,
-        [projectId]: { ...schedule }
+        [projectId]: {
+          ...schedule,
+          parameterValues: { ...schedule.parameterValues }
+        }
       }
     });
   }
@@ -912,6 +918,10 @@ export class ProjectService {
       agents: workflow.agents.map((agent) => ({
         ...agent,
         nextAgentIds: [...agent.nextAgentIds]
+      })),
+      parameters: workflow.parameters.map((parameter) => ({
+        ...parameter,
+        options: [...parameter.options]
       }))
     };
   }
@@ -1127,6 +1137,22 @@ export class ProjectService {
         Array.isArray(agent.nextAgentIds) &&
         agent.nextAgentIds.every((agentId) => typeof agentId === "string") &&
         (agent.inputMode === "separate" || agent.inputMode === "aggregate")
+      ) &&
+      Array.isArray(value.parameters) &&
+      value.parameters.every((parameter) =>
+        this.isRecord(parameter) &&
+        typeof parameter.id === "string" &&
+        typeof parameter.label === "string" &&
+        typeof parameter.description === "string" &&
+        typeof parameter.required === "boolean" &&
+        (
+          parameter.inputType === "text" ||
+          parameter.inputType === "textarea" ||
+          parameter.inputType === "select"
+        ) &&
+        typeof parameter.placeholder === "string" &&
+        Array.isArray(parameter.options) &&
+        parameter.options.every((option) => typeof option === "string")
       );
   }
 
@@ -1135,7 +1161,16 @@ export class ProjectService {
   ): value is WorkflowScheduleConfiguration {
     return this.isRecord(value) &&
       typeof value.cron === "string" &&
-      typeof value.enabled === "boolean";
+      typeof value.enabled === "boolean" &&
+      (
+        value.parameterValues === undefined ||
+        (
+          this.isRecord(value.parameterValues) &&
+          Object.values(value.parameterValues).every(
+            (parameterValue) => typeof parameterValue === "string"
+          )
+        )
+      );
   }
 
   private isStoredProject(value: unknown): value is StoredProject {

@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { CalendarClock, LoaderCircle, X } from "lucide-react";
 import {
   saveWorkflowSchedule,
+  type WorkflowParameterValues,
   type WorkflowSchedule
 } from "../../../services/agentApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
@@ -11,6 +12,7 @@ interface WorkflowScheduleDialogProps {
   projectId: string;
   projectName: string;
   schedule: WorkflowSchedule;
+  parameterValues: WorkflowParameterValues;
   onCancel: () => void;
   onSaved: (schedule: WorkflowSchedule) => void;
 }
@@ -19,6 +21,7 @@ export function WorkflowScheduleDialog({
   projectId,
   projectName,
   schedule,
+  parameterValues,
   onCancel,
   onSaved
 }: WorkflowScheduleDialogProps) {
@@ -54,7 +57,11 @@ export function WorkflowScheduleDialog({
     setError("");
 
     try {
-      onSaved(await saveWorkflowSchedule(projectId, { cron, enabled }));
+      onSaved(await saveWorkflowSchedule(projectId, {
+        cron,
+        enabled,
+        parameterValues
+      }));
     } catch (requestError) {
       setError(requestError instanceof Error
         ? requestError.message

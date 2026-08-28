@@ -94,6 +94,7 @@ export interface AgentProjectResponse {
   engine: AgentProject["engine"];
   agents: AgentProject["agents"];
   instructions: AgentProject["instructions"];
+  parameters: AgentProject["parameters"];
 }
 
 export interface AgentRunResponse {
@@ -121,7 +122,8 @@ export function toAgentProjectResponse(
     directoryPath: project.directoryPath,
     engine: project.engine,
     agents: project.agents,
-    instructions: project.instructions
+    instructions: project.instructions,
+    parameters: project.parameters
   };
 }
 
