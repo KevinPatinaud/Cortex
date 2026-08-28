@@ -526,51 +526,16 @@ main {
   min-width: 0;
 }
 
-.agent-project__workflow-level-label {
-  display: flex;
-  width: 100%;
-  margin: 0 0 0.62rem;
-  align-items: center;
-  gap: 0.7rem;
-  color: #5d7597;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.56rem;
-  font-weight: 750;
-  letter-spacing: 0.11em;
-  text-transform: uppercase;
-}
-
-.agent-project__workflow-level-label span {
-  display: inline-flex;
-  min-height: 1.55rem;
-  padding: 0.3rem 0.58rem;
-  flex: 0 0 auto;
-  align-items: center;
-  border: 1px solid rgb(72 126 202 / 20%);
-  border-radius: 999px;
-  background: rgb(238 245 255 / 92%);
-  box-shadow: 0 0.28rem 0.8rem rgb(38 79 138 / 7%);
-}
-
-.agent-project__workflow-level-label::after {
-  height: 1px;
-  flex: 1;
-  background: linear-gradient(90deg, rgb(91 135 196 / 24%), transparent);
-  content: "";
-}
-
 .agent-project__workflow--has-feedback .agent-project__workflow-level {
   grid-column: 2;
 }
 
 .agent-project__feedback-grid-loop {
-  position: relative;
+  position: absolute;
   z-index: 2;
-  grid-column: 1 / -1;
-  min-width: 0;
-  min-height: 0;
-  color: #778394;
-  opacity: 0.64;
+  inset: 0;
+  color: #7890ad;
+  opacity: 0.78;
   pointer-events: none;
 }
 
@@ -592,17 +557,19 @@ main {
 }
 
 .agent-project__feedback-grid-loop-path {
-  stroke-width: 1.5;
-  stroke-dasharray: 5 8;
+  stroke-width: 1.55;
+  stroke-dasharray: 6 8;
 }
 
 .agent-project__feedback-grid-loop-arrow {
-  stroke-width: 1.65;
+  stroke-width: 1.9;
 }
 
-.agent-project__feedback-grid-loop-path--compact,
-.agent-project__feedback-grid-loop-arrow--compact {
-  display: none;
+.agent-project__feedback-grid-loop-source {
+  fill: #f2f6fc;
+  stroke: currentcolor;
+  stroke-width: 1.7;
+  vector-effect: non-scaling-stroke;
 }
 
 .agent-project__lane-transition {
@@ -637,6 +604,53 @@ main {
 
 .agent-project__workflow-cards--lanes .agent-project__workflow-step--parallel {
   grid-column: 2;
+}
+
+.agent-project__workflow-lane-continuation {
+  display: flex;
+  min-height: 11rem;
+  margin-top: calc(-1 * var(--workflow-lane-gap));
+  align-items: stretch;
+  justify-content: center;
+  color: rgb(61 118 186 / 72%);
+  list-style: none;
+  pointer-events: none;
+}
+
+.agent-project__workflow-lane-continuation--cycle {
+  grid-column: 1;
+}
+
+.agent-project__workflow-lane-continuation--parallel {
+  grid-column: 2;
+  color: rgb(31 132 143 / 72%);
+}
+
+.agent-project__workflow-lane-continuation span {
+  display: flex;
+  min-height: 100%;
+  padding-top: 1rem;
+  flex: 1;
+  align-items: center;
+  flex-direction: column;
+}
+
+.agent-project__workflow-lane-continuation span::before {
+  width: 2px;
+  min-height: 6rem;
+  flex: 1;
+  border-radius: 999px;
+  background: linear-gradient(180deg, transparent, currentcolor 12%, currentcolor);
+  box-shadow: 0 0 0.8rem rgb(37 99 235 / 12%);
+  content: "";
+}
+
+.agent-project__workflow-lane-continuation svg {
+  width: 2.15rem;
+  height: 2.15rem;
+  margin-top: -0.55rem;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0.25rem 0.35rem rgb(37 99 235 / 14%));
 }
 
 .agent-project__workflow-connector {
@@ -5152,17 +5166,7 @@ dialog input {
   }
 
   .agent-project__workflow--has-feedback {
-    grid-template-columns: 1.75rem minmax(0, 1fr);
-  }
-
-  .agent-project__feedback-grid-loop-path--desktop,
-  .agent-project__feedback-grid-loop-arrow--desktop {
-    display: none;
-  }
-
-  .agent-project__feedback-grid-loop-path--compact,
-  .agent-project__feedback-grid-loop-arrow--compact {
-    display: block;
+    grid-template-columns: 3.25rem minmax(0, 1fr);
   }
 
   .agent-project__workflow-cards--lanes,
@@ -5173,6 +5177,10 @@ dialog input {
   .agent-project__workflow-cards--lanes .agent-project__workflow-step--cycle,
   .agent-project__workflow-cards--lanes .agent-project__workflow-step--parallel {
     grid-column: 1;
+  }
+
+  .agent-project__workflow-lane-continuation {
+    display: none;
   }
 
   .agent-project__workflow-connector--split {
