@@ -8,6 +8,8 @@ import type { AgentService } from "../service/iaService/AgentService.ts";
 import type { AgentWorkflowConfiguration } from "../service/projectService/ProjectService.ts";
 import type { ProjectContentOutput } from "./ProjectUseCase.ts";
 import type { ProjectUseCase } from "./ProjectUseCase.ts";
+import { WorkflowAuditService } from "../service/workflowAudit/WorkflowAuditService.ts";
+import { SqliteWorkflowAuditRepository } from "../../infrastructure/audit/SqliteWorkflowAuditRepository.ts";
 import { AgentUseCase } from "./AgentUseCase.ts";
 
 interface ExecutionCall {
@@ -150,7 +152,8 @@ function createUseCase(
 
 function createSequentialUseCase(
   results: AgentExecutionResult[],
-  agentCount = 2
+  agentCount = 2,
+  workflowAuditService?: WorkflowAuditService
 ): { useCase: AgentUseCase; calls: ExecutionCall[] } {
   const calls: ExecutionCall[] = [];
   const storedAgentWorkflows = new Map<string, AgentWorkflowConfiguration>();
@@ -190,7 +193,11 @@ function createSequentialUseCase(
   } as unknown as ProjectUseCase;
 
   return {
-    useCase: new AgentUseCase(agentService, projectUseCase),
+    useCase: new AgentUseCase(
+      agentService,
+      projectUseCase,
+      workflowAuditService
+    ),
     calls
   };
 }
@@ -588,6 +595,8 @@ test("configure et ordonne un workflow cyclique", async () => {
 });
 
 test("démarre un cycle par son entrée puis accepte l'arête de retour", async () => {
+  const auditRepository = new SqliteWorkflowAuditRepository(":memory:");
+  const auditService = new WorkflowAuditService(auditRepository);
   const implementationId = ".claude/agents/implementation.md";
   const analysisId = ".claude/agents/analysis.md";
   const reviewId = ".claude/agents/review.md";
@@ -644,12 +653,14 @@ test("démarre un cycle par son entrée puis accepte l'arête de retour", async 
       answer: createAgentAnswer(["ANALYSE_2"], null, null, null, [reviewId]),
       sessionId: "analysis-session-2"
     }
-  ], 4);
+  ], 4, auditService);
   const project = await useCase.loadProject("project-id");
   const byId = new Map(project.agents.map((agent) => [agent.id, agent]));
 
-  await useCase.runAgent("project-id", { agentId: implementationId });
-  await useCase.runAgent("project-id", {
+  const firstPass = await useCase.runAgent("project-id", {
+    agentId: implementationId
+  });
+  const secondAnalysisPass = await useCase.runAgent("project-id", {
     agentId: analysisId,
     upstreamAgentResults: [{
       agentId: implementationId,
@@ -681,6 +692,18 @@ test("démarre un cycle par son entrée puis accepte l'arête de retour", async 
   assert.equal(byId.get(analysisId)?.hasSession, true);
   assert.match(calls[5].prompt, /CONTEXTE_INITIAL/);
   assert.match(calls[5].prompt, /RETOUR_CYCLE/);
+  assert.equal(secondAnalysisPass.auditRunId, firstPass.auditRunId);
+  const auditDetail = useCase.getWorkflowAuditRun(
+    "project-id",
+    firstPass.auditRunId ?? ""
+  );
+  assert.equal(auditDetail.executions.length, 5);
+  assert.equal(
+    auditDetail.executions.filter((execution) => execution.agentId === analysisId)
+      .length,
+    2
+  );
+  auditRepository.close();
 });
 
 test("configure directement un agent unique comme fin de workflow", async () => {
@@ -1403,6 +1426,45 @@ test("exécute automatiquement un workflow complet avec tous les résultats", as
   assert.equal(calls.length, 3);
   assert.match(calls[2].prompt, /Option A/);
   assert.match(calls[2].prompt, /Option B/);
+});
+
+test("audite le prompt effectif et les entrées de chaque agent du workflow", async () => {
+  const repository = new SqliteWorkflowAuditRepository(":memory:");
+  const auditService = new WorkflowAuditService(repository);
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: createWorkflowAnswer() },
+    {
+      answer: createAgentAnswer(["Option auditée"], false),
+      sessionId: "session-source"
+    },
+    {
+      answer: createAgentAnswer(["Résultat final"], false, null, null, []),
+      sessionId: "session-target"
+    }
+  ], 2, auditService);
+
+  try {
+    const result = await useCase.runWorkflow("project-id", {}, "scheduled");
+    const page = useCase.listWorkflowAuditRuns("project-id");
+    const detail = useCase.getWorkflowAuditRun(
+      "project-id",
+      result.auditRunId ?? ""
+    );
+
+    assert.equal(page.total, 1);
+    assert.equal(detail.status, "succeeded");
+    assert.equal(detail.trigger, "scheduled");
+    assert.equal(detail.scope, "workflow");
+    assert.equal(detail.executions.length, 2);
+    assert.equal(detail.executions[0].prompt, calls[1].prompt);
+    assert.equal(detail.executions[0].response?.includes("Option auditée"), true);
+    assert.equal(
+      detail.executions[1].input.upstreamItems[0].content,
+      "Option auditée"
+    );
+  } finally {
+    repository.close();
+  }
 });
 
 test("produit une revue globale structuree du projet", async () => {

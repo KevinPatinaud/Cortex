@@ -96,6 +96,21 @@ Scheduled workflows store their validated parameter values in the local Cortex
 configuration so they can run while the browser is closed. Parameters must
 never be used for passwords, API keys, tokens, or other secrets.
 
+## Workflow audit history
+
+The **History** tab records manual and scheduled workflow runs in a local
+SQLite database. Each run includes its trigger, parameters, timestamps, status,
+and every agent thread. Agent details contain the upstream data, additional
+instructions, exact effective prompt sent to the engine, raw response, selected
+branches, session ID, model, reasoning effort, duration, and error when present.
+
+The database is stored in `data/audit/cortex-audit.sqlite` by default and is
+excluded from project archives and version control. Set
+`CORTEX_AUDIT_DATABASE` to an alternate file path when the audit data must live
+on a dedicated or backed-up volume. Because prompts and responses can contain
+sensitive project data, protect the Cortex server with authentication whenever
+it is reachable outside the local machine.
+
 ## MCP connections
 
 The engine settings panel discovers MCP servers configured for Codex, Claude,
@@ -132,6 +147,7 @@ This command runs strict TypeScript type checking, all Node.js tests, and the pr
 | `CORTEX_PASSWORD` | none | Optional access password, at least 12 characters when set |
 | `CORTEX_SECURE_COOKIE` | `false` | Set to `true` when Cortex is served over HTTPS |
 | `CORTEX_PROJECTS_DIRECTORY` | `<workspace>/projects` | Directory used to store projects uploaded through the browser |
+| `CORTEX_AUDIT_DATABASE` | `<workspace>/data/audit/cortex-audit.sqlite` | SQLite file used for persistent workflow audit history |
 | `CORTEX_COPILOT_MCP_CONFIG` | `<COPILOT_HOME>/mcp-config.json` | Optional Copilot MCP configuration file override |
 | `CORTEX_CLAUDE_MCP_CONFIG` | `~/.claude.json` | Optional Claude MCP configuration file override |
 

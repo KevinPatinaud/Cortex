@@ -79,6 +79,16 @@ export const agentErrorMappings = {
     fallbackStatus: 500,
     fallbackMessage: "Unable to save the workflow schedule.",
     logMessage: "Unable to save the workflow schedule:"
+  },
+  listWorkflowAuditRuns: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to load the workflow audit history.",
+    logMessage: "Unable to load the workflow audit history:"
+  },
+  getWorkflowAuditRun: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to load the workflow audit run.",
+    logMessage: "Unable to load the workflow audit run:"
   }
 } satisfies Record<string, ErrorMappingOptions>;
 
@@ -99,6 +109,7 @@ export interface AgentProjectResponse {
 
 export interface AgentRunResponse {
   answer: string;
+  auditRunId?: string;
   hasSession: boolean;
   conversation: AgentRunOutput["conversation"];
   threads: AgentRunOutput["threads"];
@@ -130,6 +141,7 @@ export function toAgentProjectResponse(
 export function toAgentRunResponse(result: AgentRunOutput): AgentRunResponse {
   return {
     answer: result.answer,
+    ...(result.auditRunId ? { auditRunId: result.auditRunId } : {}),
     hasSession: result.hasSession,
     conversation: result.conversation,
     threads: result.threads

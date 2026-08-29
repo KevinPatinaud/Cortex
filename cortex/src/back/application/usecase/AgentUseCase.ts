@@ -8,6 +8,7 @@ import type {
   AgentService,
   AgentStatus
 } from "../service/iaService/AgentService.ts";
+import { NotFoundError } from "../error/NotFoundError.ts";
 import { ValidationError } from "../error/ValidationError.ts";
 import { toClaudeAgentDefinitions } from "../mapper/agent/ClaudeAgentMapper.ts";
 import { toCodexAgentDefinitions } from "../mapper/agent/CodexAgentMapper.ts";
@@ -30,6 +31,14 @@ import type {
   WorkflowParameterDefinition,
   WorkflowParameterValues
 } from "../../../shared/WorkflowParameter.ts";
+import type {
+  WorkflowAuditRunDetail,
+  WorkflowAuditRunPage,
+  WorkflowAuditRunScope,
+  WorkflowAuditRunStatus,
+  WorkflowAuditTrigger
+} from "../../../shared/WorkflowAudit.ts";
+import type { WorkflowAuditService } from "../service/workflowAudit/WorkflowAuditService.ts";
 
 export type AgentStatusOutput = AgentStatus;
 
@@ -142,14 +151,21 @@ export interface AgentProject {
 
 export interface AgentRunOutput {
   answer: string;
+  auditRunId?: string;
   hasSession: boolean;
   conversation: AgentConversationMessage[];
   threads: AgentConversationThread[];
 }
 
 export interface WorkflowRunOutput {
+  auditRunId?: string;
   executedAgentIds: string[];
   skippedAgentIds: string[];
+}
+
+interface WorkflowRunAuditContext {
+  runId: string;
+  trigger: WorkflowAuditTrigger;
 }
 
 interface AgentWorkflowThreadState {
@@ -323,10 +339,12 @@ export class AgentUseCase {
     string,
     WorkflowParameterValues
   >();
+  private readonly activeManualAuditRunIds = new Map<string, string>();
 
   constructor(
     private readonly agentService: AgentService,
-    private readonly projectUseCase: ProjectUseCase
+    private readonly projectUseCase: ProjectUseCase,
+    private readonly workflowAuditService?: WorkflowAuditService
   ) {}
 
   getStatus(): Promise<AgentStatus> {
@@ -478,7 +496,8 @@ export class AgentUseCase {
 
   async runAgent(
     projectId: string,
-    input: RunAgentInput
+    input: RunAgentInput,
+    workflowAuditContext?: WorkflowRunAuditContext
   ): Promise<AgentRunOutput> {
     const normalizedProjectId = projectId.trim();
     const agentId = typeof input.agentId === "string"
@@ -611,6 +630,15 @@ export class AgentUseCase {
       );
     }
 
+    const auditContext = workflowAuditContext ?? this.getOrCreateManualAuditRun(
+      normalizedProjectId,
+      loadedProject.project,
+      activeParameterValues,
+      this.workflowIsComplete(normalizedProjectId, loadedProject.project)
+        ? "agent"
+        : "workflow"
+    );
+
     this.setAgentExecution(normalizedProjectId, agentId, { status: "running" });
 
     const settledExecutions = await Promise.allSettled(
@@ -639,46 +667,93 @@ export class AgentUseCase {
           taskPrompt,
           agent
         );
-        const result = await this.agentService.execute(
-          loadedProject.project.engine,
-          this.withAgentResponseFormat(
-            randomizedTaskPrompt,
-            agent,
-            loadedProject.project
-          ),
-          {
+        const effectivePrompt = this.withAgentResponseFormat(
+          randomizedTaskPrompt,
+          agent,
+          loadedProject.project
+        );
+        const auditExecutionId = auditContext && this.workflowAuditService
+          ? this.workflowAuditService.startExecution({
+            runId: auditContext.runId,
+            agentId: agent.id,
+            agentName: agent.name,
+            threadId: id,
+            engine: loadedProject.project.engine,
             ...(agent.model ? { model: agent.model } : {}),
             ...(agent.reasoningEffort
               ? { reasoningEffort: agent.reasoningEffort }
               : {}),
-            persistSession: true,
-            ...(sessionId ? { sessionId } : {}),
-            workingDirectory: loadedProject.directoryPath
-          }
-        );
-        this.validateAgentResponseRouting(result.answer, agent);
-        const effectiveSessionId = result.sessionId || sessionId;
+            input: {
+              workflowParameterValues: { ...activeParameterValues },
+              additionalInstructions,
+              upstreamItems: upstreamItems.map((item) => ({ ...item }))
+            },
+            prompt: effectivePrompt
+          })
+          : null;
+        let rawResponse: string | undefined;
+        let returnedSessionId: string | undefined;
 
-        if (!effectiveSessionId) {
-          throw new Error(
-            "The AI engine did not return a session ID."
+        try {
+          const result = await this.agentService.execute(
+            loadedProject.project.engine,
+            effectivePrompt,
+            {
+              ...(agent.model ? { model: agent.model } : {}),
+              ...(agent.reasoningEffort
+                ? { reasoningEffort: agent.reasoningEffort }
+                : {}),
+              persistSession: true,
+              ...(sessionId ? { sessionId } : {}),
+              workingDirectory: loadedProject.directoryPath
+            }
           );
+          rawResponse = result.answer;
+          returnedSessionId = result.sessionId;
+          this.validateAgentResponseRouting(result.answer, agent);
+          const effectiveSessionId = result.sessionId || sessionId;
+
+          if (!effectiveSessionId) {
+            throw new Error(
+              "The AI engine did not return a session ID."
+            );
+          }
+
+          const parsedResponse = parseAgentResponse(result.answer);
+
+          if (auditExecutionId && this.workflowAuditService) {
+            this.workflowAuditService.completeExecution(auditExecutionId, {
+              response: result.answer,
+              nextAgentIds: parsedResponse?.nextAgentIds ?? null,
+              sessionId: effectiveSessionId
+            });
+          }
+
+          const conversation: AgentConversationMessage[] = [
+            ...(workflow?.conversation ?? []),
+            ...(executionContext
+              ? [{ role: "user" as const, content: executionContext }]
+              : []),
+            { role: "agent", content: result.answer }
+          ];
+
+          return {
+            id,
+            sessionId: effectiveSessionId,
+            conversation,
+            upstreamItems: [...upstreamItems]
+          } satisfies AgentWorkflowThreadState;
+        } catch (error) {
+          if (auditExecutionId && this.workflowAuditService) {
+            this.workflowAuditService.failExecution(
+              auditExecutionId,
+              this.getErrorMessage(error, "The agent execution failed."),
+              rawResponse,
+              returnedSessionId ?? sessionId
+            );
+          }
+          throw error;
         }
-
-        const conversation: AgentConversationMessage[] = [
-          ...(workflow?.conversation ?? []),
-          ...(executionContext
-            ? [{ role: "user" as const, content: executionContext }]
-            : []),
-          { role: "agent", content: result.answer }
-        ];
-
-        return {
-          id,
-          sessionId: effectiveSessionId,
-          conversation,
-          upstreamItems: [...upstreamItems]
-        } satisfies AgentWorkflowThreadState;
       })
     );
     const failedExecution = settledExecutions.find(
@@ -694,6 +769,14 @@ export class AgentUseCase {
           ? error.message
           : "The agent execution failed."
       });
+      if (!workflowAuditContext && auditContext) {
+        this.completeManualAuditRun(
+          normalizedProjectId,
+          auditContext.runId,
+          "failed",
+          this.getErrorMessage(error, "The agent execution failed.")
+        );
+      }
       throw error;
     }
 
@@ -721,9 +804,27 @@ export class AgentUseCase {
     agent.conversation = [...conversation];
     agent.threads = threads;
     this.setAgentExecution(normalizedProjectId, agentId, { status: "idle" });
+    this.invalidateDownstreamAgentWorkflows(
+      normalizedProjectId,
+      loadedProject.project,
+      agent.id
+    );
+
+    if (
+      !workflowAuditContext &&
+      auditContext &&
+      this.workflowIsComplete(normalizedProjectId, loadedProject.project)
+    ) {
+      this.completeManualAuditRun(
+        normalizedProjectId,
+        auditContext.runId,
+        "succeeded"
+      );
+    }
 
     return {
       answer,
+      ...(auditContext ? { auditRunId: auditContext.runId } : {}),
       hasSession: true,
       conversation: [...conversation],
       threads
@@ -732,7 +833,8 @@ export class AgentUseCase {
 
   async runWorkflow(
     projectId: string,
-    workflowParameterValues?: unknown
+    workflowParameterValues?: unknown,
+    trigger: WorkflowAuditTrigger = "scheduled"
   ): Promise<WorkflowRunOutput> {
     const normalizedProjectId = projectId.trim();
 
@@ -744,11 +846,37 @@ export class AgentUseCase {
       throw new ValidationError("The workflow is already running.");
     }
 
+    const activeManualAuditRunId = this.activeManualAuditRunIds.get(
+      normalizedProjectId
+    );
+
+    if (activeManualAuditRunId) {
+      this.completeManualAuditRun(
+        normalizedProjectId,
+        activeManualAuditRunId,
+        "cancelled",
+        "A complete workflow execution replaced the unfinished manual run."
+      );
+    }
+
     this.runningWorkflows.add(normalizedProjectId);
+    let auditRunId: string | undefined;
 
     try {
       const project = await this.loadProject(normalizedProjectId, false);
       this.clearWorkflowState(normalizedProjectId);
+      const normalizedParameterValues = await this.validateWorkflowParameterValues(
+        normalizedProjectId,
+        workflowParameterValues
+      );
+      auditRunId = this.workflowAuditService?.createRun({
+        projectId: normalizedProjectId,
+        trigger,
+        scope: "workflow",
+        parameterValues: normalizedParameterValues,
+        workflowSnapshot: this.createWorkflowAuditSnapshot(project)
+      });
+      const auditContext = auditRunId ? { runId: auditRunId, trigger } : undefined;
       const executedAgentIds: string[] = [];
       const skippedAgentIds: string[] = [];
 
@@ -758,22 +886,47 @@ export class AgentUseCase {
             "skipped"
         ) {
           skippedAgentIds.push(agent.id);
+          if (auditRunId) {
+            this.workflowAuditService?.addEvent(
+              auditRunId,
+              null,
+              "agent.skipped",
+              { agentId: agent.id, agentName: agent.name }
+            );
+          }
           continue;
         }
 
         await this.runAgent(normalizedProjectId, {
           agentId: agent.id,
-          workflowParameterValues,
+          workflowParameterValues: normalizedParameterValues,
           upstreamAgentResults: this.getAutomaticUpstreamAgentResults(
             normalizedProjectId,
             project,
             agent
           )
-        });
+        }, auditContext);
         executedAgentIds.push(agent.id);
       }
 
-      return { executedAgentIds, skippedAgentIds };
+      if (auditRunId) {
+        this.workflowAuditService?.completeRun(auditRunId, "succeeded");
+      }
+
+      return {
+        ...(auditRunId ? { auditRunId } : {}),
+        executedAgentIds,
+        skippedAgentIds
+      };
+    } catch (error) {
+      if (auditRunId) {
+        this.workflowAuditService?.completeRun(
+          auditRunId,
+          "failed",
+          this.getErrorMessage(error, "The workflow execution failed.")
+        );
+      }
+      throw error;
     } finally {
       this.runningWorkflows.delete(normalizedProjectId);
     }
@@ -822,7 +975,78 @@ export class AgentUseCase {
       );
     }
 
+    const activeAuditRunId = this.activeManualAuditRunIds.get(
+      normalizedProjectId
+    );
+
+    if (activeAuditRunId) {
+      this.completeManualAuditRun(
+        normalizedProjectId,
+        activeAuditRunId,
+        "cancelled",
+        "The workflow was reset before it completed."
+      );
+    }
+
     this.clearWorkflowState(normalizedProjectId);
+  }
+
+  listWorkflowAuditRuns(
+    projectId: string,
+    limit = 20,
+    offset = 0,
+    scope?: WorkflowAuditRunScope
+  ): WorkflowAuditRunPage {
+    const normalizedProjectId = projectId.trim();
+
+    if (!normalizedProjectId) {
+      throw new ValidationError("The project is required.");
+    }
+
+    const normalizedLimit = Number.isInteger(limit)
+      ? Math.min(Math.max(limit, 1), 100)
+      : 20;
+    const normalizedOffset = Number.isInteger(offset)
+      ? Math.max(offset, 0)
+      : 0;
+    const normalizedScope = scope === "workflow" || scope === "agent"
+      ? scope
+      : undefined;
+
+    return this.workflowAuditService?.listRuns(
+      normalizedProjectId,
+      normalizedLimit,
+      normalizedOffset,
+      normalizedScope
+    ) ?? {
+      items: [],
+      total: 0,
+      limit: normalizedLimit,
+      offset: normalizedOffset
+    };
+  }
+
+  getWorkflowAuditRun(
+    projectId: string,
+    runId: string
+  ): WorkflowAuditRunDetail {
+    const normalizedProjectId = projectId.trim();
+    const normalizedRunId = runId.trim();
+
+    if (!normalizedProjectId || !normalizedRunId) {
+      throw new ValidationError("The project and audit run are required.");
+    }
+
+    const run = this.workflowAuditService?.getRun(
+      normalizedProjectId,
+      normalizedRunId
+    );
+
+    if (!run) {
+      throw new NotFoundError("The workflow audit run could not be found.");
+    }
+
+    return run;
   }
 
   async saveProject(
@@ -2176,6 +2400,53 @@ Use only these results as input data.`;
     projectWorkflows.set(agentId, workflowThreads);
   }
 
+  private invalidateDownstreamAgentWorkflows(
+    projectId: string,
+    project: AgentProject,
+    sourceAgentId: string
+  ): void {
+    const feedbackEdgeKeys = getWorkflowFeedbackEdgeKeys(project.agents);
+    const invalidatedAgentIds = new Set<string>();
+    const visitedAgentIds = new Set([sourceAgentId]);
+    const pendingAgentIds = [
+      ...(project.agents.find((agent) => agent.id === sourceAgentId)
+        ?.nextAgentIds ?? [])
+    ];
+
+    while (pendingAgentIds.length > 0) {
+      const agentId = pendingAgentIds.shift()!;
+
+      if (visitedAgentIds.has(agentId)) {
+        continue;
+      }
+
+      visitedAgentIds.add(agentId);
+      invalidatedAgentIds.add(agentId);
+      const agent = project.agents.find((candidate) => candidate.id === agentId);
+      pendingAgentIds.push(...(agent?.nextAgentIds ?? []).filter(
+        (nextAgentId) => !feedbackEdgeKeys.has(
+          getWorkflowEdgeKey(agentId, nextAgentId)
+        )
+      ));
+    }
+
+    const projectWorkflows = this.agentWorkflows.get(projectId);
+
+    for (const invalidatedAgentId of invalidatedAgentIds) {
+      projectWorkflows?.delete(invalidatedAgentId);
+      this.setAgentExecution(projectId, invalidatedAgentId, { status: "idle" });
+      const invalidatedAgent = project.agents.find(
+        (agent) => agent.id === invalidatedAgentId
+      );
+
+      if (invalidatedAgent) {
+        invalidatedAgent.hasSession = false;
+        invalidatedAgent.conversation = [];
+        invalidatedAgent.threads = [];
+      }
+    }
+  }
+
   private toConversationThreads(
     workflowThreads: AgentWorkflowThreadState[]
   ): AgentConversationThread[] {
@@ -2256,6 +2527,78 @@ Use only these results as input data.`;
 
   private getAgentExecutionKey(projectId: string, agentId: string): string {
     return `${projectId}:${agentId}`;
+  }
+
+  private getOrCreateManualAuditRun(
+    projectId: string,
+    project: AgentProject,
+    parameterValues: WorkflowParameterValues,
+    scope: WorkflowAuditRunScope
+  ): WorkflowRunAuditContext | undefined {
+    if (!this.workflowAuditService) {
+      return undefined;
+    }
+
+    let runId = this.activeManualAuditRunIds.get(projectId);
+
+    if (!runId) {
+      runId = this.workflowAuditService.createRun({
+        projectId,
+        trigger: "manual",
+        scope,
+        parameterValues: { ...parameterValues },
+        workflowSnapshot: this.createWorkflowAuditSnapshot(project)
+      });
+      this.activeManualAuditRunIds.set(projectId, runId);
+    }
+
+    return { runId, trigger: "manual" };
+  }
+
+  private completeManualAuditRun(
+    projectId: string,
+    runId: string,
+    status: WorkflowAuditRunStatus,
+    error?: string
+  ): void {
+    this.workflowAuditService?.completeRun(runId, status, error);
+
+    if (this.activeManualAuditRunIds.get(projectId) === runId) {
+      this.activeManualAuditRunIds.delete(projectId);
+    }
+  }
+
+  private workflowIsComplete(
+    projectId: string,
+    project: AgentProject
+  ): boolean {
+    return project.agents.every((agent) => {
+      const progress = this.getAgentProgressState(projectId, project, agent);
+      return progress === "completed" || progress === "skipped";
+    });
+  }
+
+  private createWorkflowAuditSnapshot(project: AgentProject) {
+    return {
+      engine: project.engine,
+      instructions: project.instructions.content,
+      agents: project.agents.map((agent) => ({
+        id: agent.id,
+        name: agent.name,
+        description: agent.description,
+        nextAgentIds: [...agent.nextAgentIds],
+        inputMode: agent.inputMode,
+        ...(agent.model ? { model: agent.model } : {}),
+        ...(agent.reasoningEffort
+          ? { reasoningEffort: agent.reasoningEffort }
+          : {}),
+        prompt: agent.prompt
+      }))
+    };
+  }
+
+  private getErrorMessage(error: unknown, fallback: string): string {
+    return error instanceof Error ? error.message : fallback;
   }
 
   private withAdditionalInstructions(

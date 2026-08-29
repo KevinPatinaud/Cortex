@@ -37,6 +37,7 @@ import { useTranslation, type Translate } from "../../../i18n.tsx";
 import { ConfirmationDialog } from "../../project_manager/components/ConfirmationDialog.tsx";
 import { WorkflowScheduleDialog } from "./WorkflowScheduleDialog.tsx";
 import { MarkdownContent } from "./MarkdownContent.tsx";
+import { WorkflowAuditPanel } from "./WorkflowAuditPanel.tsx";
 
 interface AgentProjectWorkspaceProps {
   project: Project | null;
@@ -1637,7 +1638,10 @@ export function AgentProjectWorkspace({
   const tabsId = useId();
   const instructionsTabRef = useRef<HTMLButtonElement>(null);
   const agentsTabRef = useRef<HTMLButtonElement>(null);
-  const [activeTab, setActiveTab] = useState<"instructions" | "agents">(
+  const auditTabRef = useRef<HTMLButtonElement>(null);
+  const [activeTab, setActiveTab] = useState<
+    "instructions" | "agents" | "audit"
+  >(
     "agents"
   );
   const [agentResultStates, setAgentResultStates] = useState<AgentResultStates>(
@@ -1927,6 +1931,8 @@ export function AgentProjectWorkspace({
   const instructionsPanelId = `${tabsId}-instructions-panel`;
   const agentsTabId = `${tabsId}-agents-tab`;
   const agentsPanelId = `${tabsId}-agents-panel`;
+  const auditTabId = `${tabsId}-audit-tab`;
+  const auditPanelId = `${tabsId}-audit-panel`;
   const workflowAgents = [...content.agents];
   const workflowParameters = content.parameters ?? [];
   const missingWorkflowParameters = getMissingWorkflowParameters(
@@ -2004,14 +2010,17 @@ export function AgentProjectWorkspace({
   function handleTabKeyDown(
     event: KeyboardEvent<HTMLButtonElement>
   ): void {
-    let nextTab: "instructions" | "agents" | null = null;
+    const tabs = ["instructions", "agents", "audit"] as const;
+    let nextTab: typeof tabs[number] | null = null;
 
     if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-      nextTab = activeTab === "instructions" ? "agents" : "instructions";
+      const direction = event.key === "ArrowRight" ? 1 : -1;
+      const currentIndex = tabs.indexOf(activeTab);
+      nextTab = tabs[(currentIndex + direction + tabs.length) % tabs.length];
     } else if (event.key === "Home") {
       nextTab = "instructions";
     } else if (event.key === "End") {
-      nextTab = "agents";
+      nextTab = "audit";
     }
 
     if (!nextTab) {
@@ -2020,10 +2029,12 @@ export function AgentProjectWorkspace({
 
     event.preventDefault();
     setActiveTab(nextTab);
-    (nextTab === "instructions"
+    const nextRef = nextTab === "instructions"
       ? instructionsTabRef
-      : agentsTabRef
-    ).current?.focus();
+      : nextTab === "agents"
+        ? agentsTabRef
+        : auditTabRef;
+    nextRef.current?.focus();
   }
 
   function handleGlobalHandoffChange(enabled: boolean): void {
@@ -2380,6 +2391,22 @@ export function AgentProjectWorkspace({
             >
               {agentsTabLabel}
             </button>
+            <button
+              className={`agent-project__tab${
+                activeTab === "audit" ? " agent-project__tab--active" : ""
+              }`}
+              id={auditTabId}
+              ref={auditTabRef}
+              type="button"
+              role="tab"
+              aria-controls={auditPanelId}
+              aria-selected={activeTab === "audit"}
+              tabIndex={activeTab === "audit" ? 0 : -1}
+              onClick={() => setActiveTab("audit")}
+              onKeyDown={handleTabKeyDown}
+            >
+              {t("workspace.auditTab")}
+            </button>
           </div>
           <div className="agent-project__tab-actions">
             {activeTab === "agents" && content.agents.length > 0 && (
@@ -2477,6 +2504,15 @@ export function AgentProjectWorkspace({
             </p>
           )}
         </section>
+      ) : activeTab === "audit" ? (
+        <div
+          id={auditPanelId}
+          role="tabpanel"
+          aria-labelledby={auditTabId}
+          tabIndex={0}
+        >
+          <WorkflowAuditPanel projectId={projectId} />
+        </div>
       ) : (
         <section
           className="agent-project__agents-panel"

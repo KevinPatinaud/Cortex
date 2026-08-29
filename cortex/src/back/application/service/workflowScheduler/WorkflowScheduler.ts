@@ -2,6 +2,7 @@ import type { AgentUseCase } from "../../usecase/AgentUseCase.ts";
 import type { ProjectUseCase } from "../../usecase/ProjectUseCase.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
 import { ValidationError } from "../../error/ValidationError.ts";
+import type { WorkflowAuditService } from "../workflowAudit/WorkflowAuditService.ts";
 import {
   cronMatchesDate,
   getNextCronOccurrence,
@@ -56,7 +57,8 @@ export class WorkflowScheduler {
   constructor(
     private readonly projectUseCase: ProjectUseCase,
     private readonly agentUseCase: AgentUseCase,
-    private readonly now: () => Date = () => new Date()
+    private readonly now: () => Date = () => new Date(),
+    private readonly workflowAuditService?: WorkflowAuditService
   ) {}
 
   async start(): Promise<void> {
@@ -157,9 +159,17 @@ export class WorkflowScheduler {
       const runtime = this.getRuntimeState(projectId);
 
       if (runtime.running || this.agentUseCase.isProjectRunning(projectId)) {
+        const reason = "The previous workflow execution is still running.";
         runtime.lastRunAt = new Date(date);
         runtime.lastRunStatus = "skipped";
-        runtime.lastRunError = "The previous workflow execution is still running.";
+        runtime.lastRunError = reason;
+        this.workflowAuditService?.recordSkippedRun({
+          projectId,
+          trigger: "scheduled",
+          scope: "workflow",
+          parameterValues: { ...schedule.parameterValues },
+          workflowSnapshot: null
+        }, reason);
         continue;
       }
 

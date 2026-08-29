@@ -21,6 +21,7 @@
   "dependencies": {
     "@github/copilot-sdk": "^1.0.9",
     "archiver": "^8.0.0",
+    "better-sqlite3": "^12.10.1",
     "express": "^5.2.1",
     "lucide-react": "^1.29.0",
     "multer": "^2.2.0",
@@ -34,6 +35,7 @@
     "unzipper": "^0.12.5"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.2.0",
     "@types/node": "^26.1.2",

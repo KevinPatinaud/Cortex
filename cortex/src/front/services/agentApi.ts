@@ -1,4 +1,4 @@
-import { requestJson } from "./apiClient.ts";
+import { requestBlob, requestJson } from "./apiClient.ts";
 import type { McpDiscoveryResult } from "../../shared/McpConnection.ts";
 import type {
   WorkflowParameterDefinition,
@@ -15,6 +15,16 @@ export type {
   McpDiscoveryIssue,
   McpDiscoveryResult
 } from "../../shared/McpConnection.ts";
+
+export type {
+  WorkflowAuditAgentExecution,
+  WorkflowAuditRunDetail,
+  WorkflowAuditRunPage,
+  WorkflowAuditRunScope,
+  WorkflowAuditRunStatus,
+  WorkflowAuditRunSummary,
+  WorkflowAuditTrigger
+} from "../../shared/WorkflowAudit.ts";
 
 export type AgentEngine = "codex" | "claude" | "copilot";
 
@@ -66,6 +76,7 @@ export interface AgentProject {
 
 export interface AgentRunResult {
   answer: string;
+  auditRunId?: string;
   hasSession: boolean;
   conversation: AgentConversationMessage[];
   threads: AgentConversationThread[];
@@ -293,6 +304,7 @@ export async function runAgent(
 
   return {
     answer: data.answer,
+    ...(data.auditRunId ? { auditRunId: data.auditRunId } : {}),
     hasSession: data.hasSession,
     conversation: data.conversation,
     threads: data.threads
@@ -327,5 +339,36 @@ export function saveWorkflowSchedule(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(schedule)
     }
+  );
+}
+
+export function getWorkflowAuditRuns(
+  projectId: string,
+  scope: import("../../shared/WorkflowAudit.ts").WorkflowAuditRunScope,
+  limit = 20,
+  offset = 0
+) {
+  const query = new URLSearchParams({
+    scope,
+    limit: String(limit),
+    offset: String(offset)
+  });
+  return requestJson<import("../../shared/WorkflowAudit.ts").WorkflowAuditRunPage>(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/audit/runs?${query}`
+  );
+}
+
+export function getWorkflowAuditRun(projectId: string, runId: string) {
+  return requestJson<import("../../shared/WorkflowAudit.ts").WorkflowAuditRunDetail>(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/audit/runs/${encodeURIComponent(runId)}`
+  );
+}
+
+export function exportWorkflowAuditRun(
+  projectId: string,
+  runId: string
+): Promise<Blob> {
+  return requestBlob(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/audit/runs/${encodeURIComponent(runId)}/export`
   );
 }

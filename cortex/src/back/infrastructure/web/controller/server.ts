@@ -14,6 +14,8 @@ import { ProjectService } from "../../../application/service/projectService/Proj
 import { AgentUseCase } from "../../../application/usecase/AgentUseCase.ts";
 import { ProjectUseCase } from "../../../application/usecase/ProjectUseCase.ts";
 import { WorkflowScheduler } from "../../../application/service/workflowScheduler/WorkflowScheduler.ts";
+import { WorkflowAuditService } from "../../../application/service/workflowAudit/WorkflowAuditService.ts";
+import { SqliteWorkflowAuditRepository } from "../../audit/SqliteWorkflowAuditRepository.ts";
 import { httpErrorMiddleware } from "../middleware/HttpErrorMiddleware.ts";
 import {
   createAuthenticationRouter,
@@ -33,6 +35,13 @@ const directoryName = path.dirname(fileURLToPath(import.meta.url));
 const workspaceDirectory = path.resolve(directoryName, "../../../../..");
 const clientDirectory = path.join(workspaceDirectory, "dist");
 const configurationFile = path.join(workspaceDirectory, "config.json");
+const auditDatabaseFile = process.env.CORTEX_AUDIT_DATABASE?.trim() ||
+  path.join(
+    workspaceDirectory,
+    "data",
+    "audit",
+    "cortex-audit.sqlite"
+  );
 const managedProjectsDirectory = process.env.CORTEX_PROJECTS_DIRECTORY?.trim() ||
   path.join(workspaceDirectory, "projects");
 const shouldOpenBrowser = process.argv.includes("--open");
@@ -65,8 +74,21 @@ const projectUseCase = new ProjectUseCase(
   directoryPickerService,
   agentService
 );
-const agentUseCase = new AgentUseCase(agentService, projectUseCase);
-const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase);
+const workflowAuditRepository = new SqliteWorkflowAuditRepository(
+  auditDatabaseFile
+);
+const workflowAuditService = new WorkflowAuditService(workflowAuditRepository);
+const agentUseCase = new AgentUseCase(
+  agentService,
+  projectUseCase,
+  workflowAuditService
+);
+const workflowScheduler = new WorkflowScheduler(
+  projectUseCase,
+  agentUseCase,
+  () => new Date(),
+  workflowAuditService
+);
 
 app.disable("x-powered-by");
 app.use((_request, response, next) => {

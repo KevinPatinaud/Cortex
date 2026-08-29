@@ -10,6 +10,7 @@ config.json
 
 # Sorties locales
 coverage/
+data/
 *.log
 .DS_Store
 Thumbs.db

@@ -129,6 +129,54 @@ export function createAgentController(
     }, agentErrorMappings.status)
   );
 
+  router.get(
+    "/projects/:projectId/audit/runs",
+    asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+      const limit = Number(request.query.limit ?? 20);
+      const offset = Number(request.query.offset ?? 0);
+      const scope = request.query.scope === "workflow" || request.query.scope === "agent"
+        ? request.query.scope
+        : undefined;
+      response.json(agentUseCase.listWorkflowAuditRuns(
+        request.params.projectId,
+        limit,
+        offset,
+        scope
+      ));
+    }, agentErrorMappings.listWorkflowAuditRuns)
+  );
+
+  router.get(
+    "/projects/:projectId/audit/runs/:runId/export",
+    asyncRoute<unknown, { projectId: string; runId: string }>(async (
+      request,
+      response
+    ) => {
+      const run = agentUseCase.getWorkflowAuditRun(
+        request.params.projectId,
+        request.params.runId
+      );
+      response.setHeader(
+        "Content-Disposition",
+        `attachment; filename="cortex-audit-${run.id}.json"`
+      );
+      response.type("application/json").send(JSON.stringify(run, null, 2));
+    }, agentErrorMappings.getWorkflowAuditRun)
+  );
+
+  router.get(
+    "/projects/:projectId/audit/runs/:runId",
+    asyncRoute<unknown, { projectId: string; runId: string }>(async (
+      request,
+      response
+    ) => {
+      response.json(agentUseCase.getWorkflowAuditRun(
+        request.params.projectId,
+        request.params.runId
+      ));
+    }, agentErrorMappings.getWorkflowAuditRun)
+  );
+
   router.put(
     "/projects/:projectId",
     asyncRoute<EditAgentProjectInput, { projectId: string }>(async (
