@@ -4044,6 +4044,206 @@ main {
   font-size: 0.55rem;
 }
 
+.agent-engine-plugins {
+  border-top: 1px solid rgb(75 143 237 / 10%);
+}
+
+.agent-engine-plugins > header,
+.agent-engine-plugins > header > span,
+.agent-engine-plugins__list li,
+.agent-engine-plugins__installed {
+  display: flex;
+  align-items: center;
+}
+
+.agent-engine-plugins > header {
+  min-height: 3.1rem;
+  padding: 0.5rem 0.65rem;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+
+.agent-engine-plugins > header > span {
+  min-width: 0;
+  gap: 0.55rem;
+  color: #7ba9e8;
+}
+
+.agent-engine-plugins > header > span > span,
+.agent-engine-plugins > header strong,
+.agent-engine-plugins > header small {
+  display: block;
+}
+
+.agent-engine-plugins > header strong {
+  color: #dceaff;
+  font-size: 0.7rem;
+}
+
+.agent-engine-plugins > header small {
+  margin-top: 0.15rem;
+  color: #6f89aa;
+  font-size: 0.57rem;
+}
+
+.agent-engine-plugins > header > button,
+.agent-engine-plugins__installed button {
+  display: grid;
+  width: 1.8rem;
+  height: 1.8rem;
+  padding: 0;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(111 137 170 / 30%);
+  border-radius: 6px;
+  background: #102641;
+  color: #8eb8f1;
+}
+
+.agent-engine-plugins > header > button:hover:not(:disabled),
+.agent-engine-plugins__installed button:hover:not(:disabled) {
+  border-color: rgb(95 159 245 / 55%);
+  color: #dceaff;
+}
+
+.agent-engine-plugins > header > button:disabled,
+.agent-engine-plugins__installed button:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+.agent-engine-plugins__help {
+  margin: 0;
+  padding: 0 0.65rem 0.55rem 2.75rem;
+  color: #617b9d;
+  font-size: 0.53rem;
+  line-height: 1.4;
+}
+
+.agent-engine-plugins__error {
+  display: flex;
+  margin: 0;
+  padding: 0.5rem 0.65rem;
+  align-items: flex-start;
+  gap: 0.4rem;
+  border-top: 1px solid rgb(220 91 109 / 12%);
+  background: rgb(220 91 109 / 5%);
+  color: #e99aaa;
+  font-size: 0.55rem;
+  line-height: 1.4;
+}
+
+.agent-engine-plugins__error svg {
+  margin-top: 0.05rem;
+  flex: 0 0 auto;
+}
+
+.agent-engine-plugins__list {
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid rgb(75 143 237 / 8%);
+  list-style: none;
+}
+
+.agent-engine-plugins__list li {
+  min-height: 2.8rem;
+  padding: 0.42rem 0.65rem 0.42rem 2.75rem;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
+.agent-engine-plugins__list li + li {
+  border-top: 1px solid rgb(75 143 237 / 8%);
+}
+
+.agent-engine-plugins__plugin {
+  min-width: 0;
+}
+
+.agent-engine-plugins__plugin strong,
+.agent-engine-plugins__plugin small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-engine-plugins__plugin strong {
+  color: #dceaff;
+  font-size: 0.64rem;
+}
+
+.agent-engine-plugins__plugin small {
+  margin-top: 0.1rem;
+  color: #6f89aa;
+  font-size: 0.52rem;
+}
+
+.agent-engine-plugins__install,
+.agent-engine-plugins__other button {
+  display: inline-flex;
+  min-height: 1.75rem;
+  padding: 0.32rem 0.5rem;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  border: 1px solid rgb(69 190 166 / 34%);
+  border-radius: 6px;
+  background: rgb(35 130 114 / 18%);
+  color: #71d7c3;
+  font-size: 0.54rem;
+  font-weight: 700;
+}
+
+.agent-engine-plugins__install:hover:not(:disabled),
+.agent-engine-plugins__other button:hover:not(:disabled) {
+  border-color: rgb(69 190 166 / 58%);
+  background: rgb(35 130 114 / 28%);
+  color: #a6eddf;
+}
+
+.agent-engine-plugins__install:disabled,
+.agent-engine-plugins__other button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
+.agent-engine-plugins__installed {
+  flex: 0 0 auto;
+  gap: 0.3rem;
+  color: #71d7c3;
+}
+
+.agent-engine-plugins__installed button:hover:not(:disabled) {
+  border-color: rgb(220 91 109 / 45%);
+  color: #f2a2af;
+}
+
+.agent-engine-plugins__other {
+  display: flex;
+  padding: 0.55rem 0.65rem;
+  gap: 0.35rem;
+  border-top: 1px solid rgb(75 143 237 / 8%);
+}
+
+.agent-engine-plugins__other select {
+  width: 100%;
+  min-width: 0;
+  height: 1.9rem;
+  padding: 0.32rem 0.45rem;
+  border: 1px solid rgb(111 137 170 / 34%);
+  border-radius: 6px;
+  outline: 0;
+  background: #0c2039;
+  color: #b9cee9;
+  font-size: 0.54rem;
+}
+
+.agent-engine-plugins__other select:focus {
+  border-color: rgb(95 159 245 / 68%);
+}
+
 .agent-engine-mcp {
   border-top: 1px solid rgb(75 143 237 / 10%);
 }
@@ -4086,7 +4286,14 @@ main {
   line-height: 1.35;
 }
 
-.agent-engine-mcp__refresh {
+.agent-engine-mcp__header-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.3rem;
+}
+
+.agent-engine-mcp__refresh,
+.agent-engine-mcp__add {
   display: grid;
   width: 1.8rem;
   height: 1.8rem;
@@ -4100,14 +4307,29 @@ main {
   cursor: pointer;
 }
 
-.agent-engine-mcp__refresh:hover:not(:disabled) {
+.agent-engine-mcp__refresh:hover:not(:disabled),
+.agent-engine-mcp__add:hover:not(:disabled) {
   border-color: rgb(95 159 245 / 55%);
   color: #dceaff;
 }
 
-.agent-engine-mcp__refresh:disabled {
+.agent-engine-mcp__refresh:disabled,
+.agent-engine-mcp__add:disabled {
   cursor: wait;
   opacity: 0.58;
+}
+
+.agent-engine-mcp__add {
+  border-color: rgb(69 190 166 / 34%);
+  color: #71d7c3;
+}
+
+.agent-engine-mcp__help {
+  margin: 0;
+  padding: 0 0.65rem 0.5rem 2.75rem;
+  color: #617b9d;
+  font-size: 0.53rem;
+  line-height: 1.4;
 }
 
 .agent-engine-mcp__list {
@@ -4175,6 +4397,46 @@ main {
   color: #e2b766;
 }
 
+.agent-engine-mcp__item-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.agent-engine-mcp__item-actions button {
+  display: grid;
+  width: 1.65rem;
+  height: 1.65rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgb(111 137 170 / 22%);
+  border-radius: 5px;
+  background: #102641;
+  color: #8eb8f1;
+}
+
+.agent-engine-mcp__item-actions button:hover:not(:disabled) {
+  border-color: rgb(95 159 245 / 50%);
+  color: #dceaff;
+}
+
+.agent-engine-mcp__item-actions .agent-engine-mcp__delete:hover:not(:disabled) {
+  border-color: rgb(220 91 109 / 45%);
+  color: #f2a2af;
+}
+
+.agent-engine-mcp__item-actions button:disabled {
+  cursor: wait;
+  opacity: 0.48;
+}
+
+.agent-engine-mcp__read-only {
+  color: #657f9f;
+  font-size: 0.5rem;
+  text-transform: uppercase;
+}
+
 .agent-engine-mcp__empty {
   margin: 0;
   padding: 0.65rem;
@@ -4202,6 +4464,32 @@ main {
 .agent-engine-mcp__issues svg {
   margin-top: 0.05rem;
   flex: 0 0 auto;
+}
+
+.mcp-connection-dialog {
+  width: min(46rem, calc(100% - 2rem));
+}
+
+.mcp-connection-dialog__fields {
+  display: grid;
+  padding: 1.25rem 1.5rem 1.35rem;
+  gap: 0.9rem;
+}
+
+.mcp-connection-dialog__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.75rem;
+}
+
+.mcp-connection-dialog .editor-field textarea {
+  min-height: 5.8rem;
+}
+
+@media (max-width: 700px) {
+  .mcp-connection-dialog__row {
+    grid-template-columns: 1fr;
+  }
 }
 
 .agent-engine-settings__error {

@@ -26,6 +26,43 @@ export const agentErrorMappings = {
     fallbackMessage: "Unable to discover MCP connections.",
     logMessage: "Unable to discover MCP connections:"
   },
+  getCodexPlugins: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to load Codex plugins.",
+    logMessage: "Unable to load Codex plugins:"
+  },
+  installCodexPlugin: {
+    fallbackStatus: 503,
+    fallbackMessage: "Unable to install the Codex plugin.",
+    logMessage: "Unable to install the Codex plugin:",
+    exposeUnexpectedError: true
+  },
+  removeCodexPlugin: {
+    fallbackStatus: 503,
+    fallbackMessage: "Unable to remove the Codex plugin.",
+    logMessage: "Unable to remove the Codex plugin:",
+    exposeUnexpectedError: true
+  },
+  getMachineMcpConnection: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to load the machine MCP connection.",
+    logMessage: "Unable to load the machine MCP connection:"
+  },
+  createMachineMcpConnection: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to create the machine MCP connection.",
+    logMessage: "Unable to create the machine MCP connection:"
+  },
+  updateMachineMcpConnection: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to update the machine MCP connection.",
+    logMessage: "Unable to update the machine MCP connection:"
+  },
+  deleteMachineMcpConnection: {
+    fallbackStatus: 500,
+    fallbackMessage: "Unable to delete the machine MCP connection.",
+    logMessage: "Unable to delete the machine MCP connection:"
+  },
   saveConfiguration: {
     fallbackStatus: 500,
     fallbackMessage: "Unable to save the agent configuration.",

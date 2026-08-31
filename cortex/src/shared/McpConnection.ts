@@ -15,6 +15,29 @@ export interface McpConnectionSummary {
   configuredFor: McpConnectionEngine[];
   compatibleEngines: McpConnectionEngine[];
   hasAuthentication: boolean;
+  manageable: boolean;
+}
+
+export interface McpMachineConnectionDetail {
+  engine: McpConnectionEngine;
+  name: string;
+  transport: McpConnectionTransport;
+  command: string;
+  args: string[];
+  url: string;
+  environmentKeys: string[];
+  headerNames: string[];
+}
+
+export interface McpMachineConnectionInput {
+  engine?: unknown;
+  name?: unknown;
+  transport?: unknown;
+  command?: unknown;
+  args?: unknown;
+  url?: unknown;
+  environment?: unknown;
+  headers?: unknown;
 }
 
 export interface McpDiscoveryIssue {

@@ -6,9 +6,12 @@ import {
   FolderCog,
   Globe2,
   KeyRound,
+  Pencil,
+  Plus,
   RefreshCw,
   Save,
   TerminalSquare,
+  Trash2,
   TriangleAlert
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -18,8 +21,10 @@ import {
   getMcpConnections,
   getAgentStatus,
   saveAgentConfiguration,
+  deleteMachineMcpConnection,
   type AgentConfiguration,
   type AgentStatus,
+  type McpConnectionEngine,
   type McpConnectionSummary,
   type McpDiscoveryResult
 } from "../../../services/agentApi.ts";
@@ -27,6 +32,8 @@ import {
   getProjectSettings,
   saveProjectSettings
 } from "../../../services/projectApi.ts";
+import { McpConnectionDialog } from "./McpConnectionDialog.tsx";
+import { CodexPluginPanel } from "./CodexPluginPanel.tsx";
 
 const EMPTY_STATUS: AgentStatus = {
   engine: null,
@@ -60,6 +67,9 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
   const [isSavingProjectsDirectory, setIsSavingProjectsDirectory] = useState(false);
   const [projectsDirectoryMessage, setProjectsDirectoryMessage] = useState("");
   const [isRefreshingMcp, setIsRefreshingMcp] = useState(false);
+  const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
+  const [editedMcpConnection, setEditedMcpConnection] = useState<McpConnectionSummary | null>(null);
+  const [pendingMcpConnectionId, setPendingMcpConnectionId] = useState("");
   const [configurationError, setConfigurationError] = useState("");
 
   useEffect(() => {
@@ -145,6 +155,30 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
       });
     } finally {
       setIsRefreshingMcp(false);
+    }
+  }
+
+  async function deleteMcpConnection(
+    connection: McpConnectionSummary
+  ): Promise<void> {
+    if (!window.confirm(t("mcp.deleteConfirm", { name: connection.name }))) {
+      return;
+    }
+
+    setPendingMcpConnectionId(connection.id);
+    setConfigurationError("");
+    try {
+      await deleteMachineMcpConnection(
+        connection.source as McpConnectionEngine,
+        connection.name
+      );
+      await refreshMcpConnections();
+    } catch (error) {
+      setConfigurationError(error instanceof Error
+        ? error.message
+        : t("mcp.deleteError"));
+    } finally {
+      setPendingMcpConnectionId("");
     }
   }
 
@@ -293,6 +327,7 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
               </p>
             )}
           </section>
+          <CodexPluginPanel onChanged={() => void refreshMcpConnections()} />
           <section className="agent-engine-mcp" aria-labelledby="mcp-connections-title">
             <header>
               <span>
@@ -304,21 +339,36 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
                   })}</small>
                 </span>
               </span>
-              <button
-                type="button"
-                className="agent-engine-mcp__refresh"
-                onClick={() => void refreshMcpConnections()}
-                disabled={isRefreshingMcp}
-                title={t("mcp.refresh")}
-                aria-label={t("mcp.refresh")}
-              >
-                <RefreshCw
-                  className={isRefreshingMcp ? "spin" : undefined}
-                  aria-hidden="true"
-                  size={14}
-                />
-              </button>
+              <span className="agent-engine-mcp__header-actions">
+                <button
+                  type="button"
+                  className="agent-engine-mcp__add"
+                  onClick={() => {
+                    setEditedMcpConnection(null);
+                    setMcpDialogOpen(true);
+                  }}
+                  title={t("mcp.add")}
+                  aria-label={t("mcp.add")}
+                >
+                  <Plus aria-hidden="true" size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="agent-engine-mcp__refresh"
+                  onClick={() => void refreshMcpConnections()}
+                  disabled={isRefreshingMcp}
+                  title={t("mcp.refresh")}
+                  aria-label={t("mcp.refresh")}
+                >
+                  <RefreshCw
+                    className={isRefreshingMcp ? "spin" : undefined}
+                    aria-hidden="true"
+                    size={14}
+                  />
+                </button>
+              </span>
             </header>
+            <p className="agent-engine-mcp__help">{t("mcp.machineOnly")}</p>
             {mcpDiscovery.issues.length > 0 && (
               <div className="agent-engine-mcp__issues" role="status">
                 {mcpDiscovery.issues.map((issue) => (
@@ -334,7 +384,16 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
             ) : (
               <ul className="agent-engine-mcp__list">
                 {mcpDiscovery.connections.map((connection) => (
-                  <McpConnectionItem key={connection.id} connection={connection} />
+                  <McpConnectionItem
+                    key={connection.id}
+                    connection={connection}
+                    isPending={pendingMcpConnectionId === connection.id}
+                    onEdit={() => {
+                      setEditedMcpConnection(connection);
+                      setMcpDialogOpen(true);
+                    }}
+                    onDelete={() => void deleteMcpConnection(connection)}
+                  />
                 ))}
               </ul>
             )}
@@ -346,14 +405,26 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
           )}
         </div>
       </details>
+      <McpConnectionDialog
+        connection={editedMcpConnection}
+        isOpen={mcpDialogOpen}
+        onClose={() => setMcpDialogOpen(false)}
+        onSaved={() => void refreshMcpConnections()}
+      />
     </div>
   );
 }
 
 function McpConnectionItem({
-  connection
+  connection,
+  isPending,
+  onEdit,
+  onDelete
 }: {
   connection: McpConnectionSummary;
+  isPending: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
 }) {
   const { t } = useTranslation();
   const sourceLabel = connection.source === "shared"
@@ -380,13 +451,42 @@ function McpConnectionItem({
         <small>{sourceLabel} · {scopeLabel} · {configuredFor}</small>
         <code title={connection.endpoint}>{connection.endpoint}</code>
       </span>
-      {connection.hasAuthentication && (
-        <KeyRound
-          className="agent-engine-mcp__authentication"
-          aria-label={t("mcp.authentication")}
-          size={13}
-        />
-      )}
+      <span className="agent-engine-mcp__item-actions">
+        {connection.hasAuthentication && (
+          <KeyRound
+            className="agent-engine-mcp__authentication"
+            aria-label={t("mcp.authentication")}
+            size={13}
+          />
+        )}
+        {connection.manageable ? (
+          <>
+            <button
+              type="button"
+              onClick={onEdit}
+              disabled={isPending}
+              title={t("mcp.edit")}
+              aria-label={`${t("mcp.edit")} ${connection.name}`}
+            >
+              <Pencil aria-hidden="true" size={13} />
+            </button>
+            <button
+              type="button"
+              className="agent-engine-mcp__delete"
+              onClick={onDelete}
+              disabled={isPending}
+              title={t("mcp.delete")}
+              aria-label={`${t("mcp.delete")} ${connection.name}`}
+            >
+              <Trash2 aria-hidden="true" size={13} />
+            </button>
+          </>
+        ) : (
+          <span className="agent-engine-mcp__read-only" title={t("mcp.readOnly")}>
+            {t("mcp.scope.project")}
+          </span>
+        )}
+      </span>
     </li>
   );
 }

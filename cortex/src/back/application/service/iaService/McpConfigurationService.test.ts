@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -9,7 +9,11 @@ async function withFixture(
   assertion: (
     service: McpConfigurationService,
     projectDirectory: string,
-    files: { copilotConfigurationFile: string }
+    files: {
+      codexConfigurationFile: string;
+      claudeConfigurationFile: string;
+      copilotConfigurationFile: string;
+    }
   ) => Promise<void>
 ): Promise<void> {
   const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-mcp-"));
@@ -61,7 +65,11 @@ async function withFixture(
       codexConfigurationFile,
       claudeConfigurationFile,
       copilotConfigurationFile
-    }), projectDirectory, { copilotConfigurationFile });
+    }), projectDirectory, {
+      codexConfigurationFile,
+      claudeConfigurationFile,
+      copilotConfigurationFile
+    });
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -116,5 +124,87 @@ test("signale un fichier invalide sans bloquer les autres sources", async () => 
     assert.ok(result.connections.some((connection) =>
       connection.name === "context7"
     ));
+  });
+});
+
+test("administre une connexion Codex machine sans exposer ses secrets", async () => {
+  await withFixture(async (service, _projectDirectory, files) => {
+    const created = await service.createMachineConnection({
+      engine: "codex",
+      name: "calendar",
+      transport: "http",
+      url: "https://calendar.example/mcp?token=secret",
+      headers: { Authorization: "Bearer secret" }
+    });
+
+    assert.equal(created.name, "calendar");
+    assert.equal(created.manageable, true);
+    assert.equal(created.endpoint, "https://calendar.example/mcp");
+
+    const detail = await service.getMachineConnection("codex", "calendar");
+    assert.equal(detail.url, "https://calendar.example/mcp");
+    assert.deepEqual(detail.headerNames, ["Authorization"]);
+    assert.equal(JSON.stringify(detail).includes("secret"), false);
+
+    await service.updateMachineConnection("codex", "calendar", {
+      engine: "codex",
+      name: "google-calendar",
+      transport: "http",
+      url: detail.url,
+      headers: { Authorization: null }
+    });
+
+    const configuration = await readFile(files.codexConfigurationFile, "utf8");
+    const backup = await readFile(
+      `${files.codexConfigurationFile}.cortex-backup`,
+      "utf8"
+    );
+    assert.match(configuration, /google-calendar/);
+    assert.match(configuration, /Bearer secret/);
+    assert.match(configuration, /token=secret/);
+    assert.doesNotMatch(configuration, /mcp_servers\.calendar\]/);
+    assert.match(backup, /mcp_servers\.calendar/);
+
+    await service.deleteMachineConnection("codex", "google-calendar");
+    const deletedConfiguration = await readFile(
+      files.codexConfigurationFile,
+      "utf8"
+    );
+    assert.doesNotMatch(deletedConfiguration, /google-calendar/);
+    assert.match(deletedConfiguration, /context7/);
+  });
+});
+
+test("administre les connexions machine Claude et Copilot", async () => {
+  await withFixture(async (service, _projectDirectory, files) => {
+    await service.createMachineConnection({
+      engine: "claude",
+      name: "filesystem",
+      transport: "stdio",
+      command: "npx",
+      args: ["-y", "@modelcontextprotocol/server-filesystem"],
+      environment: { ROOT: "/workspace" }
+    });
+    await service.createMachineConnection({
+      engine: "copilot",
+      name: "remote",
+      transport: "sse",
+      url: "https://example.test/sse",
+      headers: {}
+    });
+
+    const claude = JSON.parse(await readFile(
+      files.claudeConfigurationFile,
+      "utf8"
+    ));
+    const copilot = JSON.parse(await readFile(
+      files.copilotConfigurationFile,
+      "utf8"
+    ));
+
+    assert.equal(claude.mcpServers.filesystem.command, "npx");
+    assert.equal(claude.mcpServers.filesystem.env.ROOT, "/workspace");
+    assert.equal(copilot.mcpServers.remote.type, "sse");
+    assert.equal(copilot.mcpServers.remote.url, "https://example.test/sse");
   });
 });

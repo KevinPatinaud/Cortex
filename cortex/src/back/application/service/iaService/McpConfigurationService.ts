@@ -1,15 +1,27 @@
-import { readFile } from "node:fs/promises";
+import {
+  copyFile,
+  mkdir,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { MCPServerConfig } from "@github/copilot-sdk";
-import { parse } from "smol-toml";
+import { parse, stringify } from "smol-toml";
+import { NotFoundError } from "../../error/NotFoundError.ts";
+import { ValidationError } from "../../error/ValidationError.ts";
 import type {
   McpConnectionEngine,
   McpConnectionScope,
   McpConnectionSummary,
   McpConnectionTransport,
   McpDiscoveryIssue,
-  McpDiscoveryResult
+  McpDiscoveryResult,
+  McpMachineConnectionDetail,
+  McpMachineConnectionInput
 } from "../../../../shared/McpConnection.ts";
 
 type JsonRecord = Record<string, unknown>;
@@ -34,6 +46,7 @@ const ALL_ENGINES: McpConnectionEngine[] = ["codex", "claude", "copilot"];
 
 export class McpConfigurationService {
   private readonly paths: McpConfigurationPaths;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(paths: Partial<McpConfigurationPaths> = {}) {
     const homeDirectory = os.homedir();
@@ -88,6 +101,139 @@ export class McpConfigurationService {
         !projectServerNames.has(name)
       )
     );
+  }
+
+  async getMachineConnection(
+    engine: McpConnectionEngine,
+    name: string
+  ): Promise<McpMachineConnectionDetail> {
+    const normalizedEngine = normalizeEngine(engine);
+    const normalizedName = normalizeName(name);
+    const configuration = await this.readEngineConfiguration(normalizedEngine);
+    const servers = getEngineServers(configuration, normalizedEngine);
+    const server = servers[normalizedName];
+
+    if (!isRecord(server)) {
+      throw new NotFoundError(`The MCP connection ${normalizedName} was not found.`);
+    }
+
+    const transport = getTransport(server);
+    const command = transport === "stdio"
+      ? requiredString(
+        server.command,
+        `The MCP server ${normalizedName} must define a command.`
+      )
+      : "";
+    const rawUrl = transport === "stdio"
+      ? ""
+      : requiredString(
+        server.url,
+        `The MCP server ${normalizedName} must define a URL.`
+      );
+
+    return {
+      engine: normalizedEngine,
+      name: normalizedName,
+      transport,
+      command,
+      args: transport === "stdio"
+        ? optionalStringArray(
+          server.args,
+          `The MCP server ${normalizedName} args`
+        ) ?? []
+        : [],
+      url: redactUrl(rawUrl),
+      environmentKeys: Object.keys(asRecord(server.env)).sort(),
+      headerNames: Object.keys(getServerHeaders(server, normalizedEngine)).sort()
+    };
+  }
+
+  async createMachineConnection(
+    input: McpMachineConnectionInput | null | undefined
+  ): Promise<McpConnectionSummary> {
+    const draft = parseMachineConnectionInput(input);
+
+    return this.withWriteLock(async () => {
+      const configuration = await this.readEngineConfiguration(draft.engine);
+      const servers = getEngineServers(configuration, draft.engine);
+
+      if (servers[draft.name] !== undefined) {
+        throw new ValidationError(
+          `The MCP connection ${draft.name} already exists for ${draft.engine}.`
+        );
+      }
+
+      servers[draft.name] = toRawServer(draft.engine, draft);
+      setEngineServers(configuration, draft.engine, servers);
+      await this.writeEngineConfiguration(draft.engine, configuration);
+
+      return this.getRequiredMachineConnectionSummary(draft.engine, draft.name);
+    });
+  }
+
+  async updateMachineConnection(
+    engine: McpConnectionEngine,
+    currentName: string,
+    input: McpMachineConnectionInput | null | undefined
+  ): Promise<McpConnectionSummary> {
+    const normalizedEngine = normalizeEngine(engine);
+    const normalizedCurrentName = normalizeName(currentName);
+    const draft = parseMachineConnectionInput(input, normalizedEngine);
+
+    return this.withWriteLock(async () => {
+      const configuration = await this.readEngineConfiguration(normalizedEngine);
+      const servers = getEngineServers(configuration, normalizedEngine);
+      const existing = servers[normalizedCurrentName];
+
+      if (!isRecord(existing)) {
+        throw new NotFoundError(
+          `The MCP connection ${normalizedCurrentName} was not found.`
+        );
+      }
+
+      if (
+        draft.name !== normalizedCurrentName &&
+        servers[draft.name] !== undefined
+      ) {
+        throw new ValidationError(
+          `The MCP connection ${draft.name} already exists for ${normalizedEngine}.`
+        );
+      }
+
+      const updated = toRawServer(normalizedEngine, draft, existing);
+      delete servers[normalizedCurrentName];
+      servers[draft.name] = updated;
+      setEngineServers(configuration, normalizedEngine, servers);
+      await this.writeEngineConfiguration(normalizedEngine, configuration);
+
+      return this.getRequiredMachineConnectionSummary(
+        normalizedEngine,
+        draft.name
+      );
+    });
+  }
+
+  async deleteMachineConnection(
+    engine: McpConnectionEngine,
+    name: string
+  ): Promise<void> {
+    const normalizedEngine = normalizeEngine(engine);
+    const normalizedName = normalizeName(name);
+
+    await this.withWriteLock(async () => {
+      const configuration = await this.readEngineConfiguration(normalizedEngine);
+      const servers = getEngineServers(configuration, normalizedEngine);
+
+      if (servers[normalizedName] === undefined) {
+        throw new NotFoundError(
+          `The MCP connection ${normalizedName} was not found.`
+        );
+      }
+
+      delete servers[normalizedName];
+      setEngineServers(configuration, normalizedEngine, servers);
+      await this.writeEngineConfiguration(normalizedEngine, configuration);
+    });
   }
 
   private getSources(workingDirectory?: string): ConfigurationSource[] {
@@ -297,6 +443,366 @@ export class McpConfigurationService {
       throw error;
     }
   }
+
+  private async readEngineConfiguration(
+    engine: McpConnectionEngine
+  ): Promise<JsonRecord> {
+    const file = this.getEngineConfigurationFile(engine);
+    const configuration = engine === "codex"
+      ? await this.readTomlFile(file)
+      : await this.readJsonFile(file);
+
+    return configuration ?? {};
+  }
+
+  private async writeEngineConfiguration(
+    engine: McpConnectionEngine,
+    configuration: JsonRecord
+  ): Promise<void> {
+    const file = this.getEngineConfigurationFile(engine);
+    const content = engine === "codex"
+      ? `${stringify(configuration)}\n`
+      : `${JSON.stringify(configuration, null, 2)}\n`;
+
+    await atomicWriteFile(file, content);
+  }
+
+  private getEngineConfigurationFile(engine: McpConnectionEngine): string {
+    return engine === "codex"
+      ? this.paths.codexConfigurationFile
+      : engine === "claude"
+        ? this.paths.claudeConfigurationFile
+        : this.paths.copilotConfigurationFile;
+  }
+
+  private async getRequiredMachineConnectionSummary(
+    engine: McpConnectionEngine,
+    name: string
+  ): Promise<McpConnectionSummary> {
+    const result = await this.discover();
+    const connection = result.connections.find((candidate) =>
+      candidate.source === engine &&
+      candidate.scope === "user" &&
+      candidate.name === name
+    );
+
+    if (!connection) {
+      throw new Error(`The MCP connection ${name} could not be reloaded.`);
+    }
+
+    return connection;
+  }
+
+  private async withWriteLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.writeQueue;
+    let release!: () => void;
+    this.writeQueue = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
+  }
+}
+
+interface ParsedMachineConnectionInput {
+  engine: McpConnectionEngine;
+  name: string;
+  transport: McpConnectionTransport;
+  command: string;
+  args: string[];
+  url: string;
+  environment: Record<string, string | null>;
+  headers: Record<string, string | null>;
+}
+
+function parseMachineConnectionInput(
+  input: McpMachineConnectionInput | null | undefined,
+  requiredEngine?: McpConnectionEngine
+): ParsedMachineConnectionInput {
+  if (!input || !isRecord(input)) {
+    throw new ValidationError("The MCP connection is required.");
+  }
+
+  const engine = normalizeEngine(input.engine);
+  if (requiredEngine && engine !== requiredEngine) {
+    throw new ValidationError("The MCP connection engine cannot be changed.");
+  }
+
+  const name = normalizeName(input.name);
+  const transport = normalizeTransport(input.transport);
+  if (engine === "codex" && transport === "sse") {
+    throw new ValidationError("Codex does not support legacy SSE MCP servers.");
+  }
+
+  const command = typeof input.command === "string" ? input.command.trim() : "";
+  const url = typeof input.url === "string" ? input.url.trim() : "";
+  const args = optionalStringArray(input.args, "The MCP server arguments") ?? [];
+  const environment = nullableStringRecord(
+    input.environment,
+    "The MCP server environment"
+  );
+  const headers = nullableStringRecord(input.headers, "The MCP server headers");
+
+  if (transport === "stdio" && !command) {
+    throw new ValidationError("The MCP server command is required.");
+  }
+
+  if (transport !== "stdio") {
+    if (!url) {
+      throw new ValidationError("The MCP server URL is required.");
+    }
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch {
+      throw new ValidationError("The MCP server URL is invalid.");
+    }
+
+    if (parsedUrl.protocol !== "http:" && parsedUrl.protocol !== "https:") {
+      throw new ValidationError("The MCP server URL must use HTTP or HTTPS.");
+    }
+  }
+
+  if (name.length > 80 || command.length > 4_096 || url.length > 8_192) {
+    throw new ValidationError("The MCP connection contains an oversized field.");
+  }
+
+  return {
+    engine,
+    name,
+    transport,
+    command,
+    args,
+    url,
+    environment,
+    headers
+  };
+}
+
+function normalizeEngine(value: unknown): McpConnectionEngine {
+  if (value === "codex" || value === "claude" || value === "copilot") {
+    return value;
+  }
+
+  throw new ValidationError("The MCP connection engine is invalid.");
+}
+
+function normalizeTransport(value: unknown): McpConnectionTransport {
+  if (value === "stdio" || value === "http" || value === "sse") {
+    return value;
+  }
+
+  throw new ValidationError("The MCP connection transport is invalid.");
+}
+
+function normalizeName(value: unknown): string {
+  if (typeof value !== "string") {
+    throw new ValidationError("The MCP connection name is required.");
+  }
+
+  const name = value.trim();
+  if (!name) {
+    throw new ValidationError("The MCP connection name is required.");
+  }
+
+  if (!/^[a-zA-Z0-9_-]+$/.test(name) || name.length > 80) {
+    throw new ValidationError(
+      "The MCP connection name may only contain letters, numbers, dashes, and underscores."
+    );
+  }
+
+  return name;
+}
+
+function getEngineServers(
+  configuration: JsonRecord,
+  engine: McpConnectionEngine
+): JsonRecord {
+  const value = engine === "codex"
+    ? configuration.mcp_servers
+    : configuration.mcpServers;
+
+  if (value === undefined) {
+    return {};
+  }
+
+  if (!isRecord(value)) {
+    throw new ValidationError(
+      `The ${engine} MCP server collection must be an object.`
+    );
+  }
+
+  return value;
+}
+
+function setEngineServers(
+  configuration: JsonRecord,
+  engine: McpConnectionEngine,
+  servers: JsonRecord
+): void {
+  if (engine === "codex") {
+    configuration.mcp_servers = servers;
+    return;
+  }
+
+  configuration.mcpServers = servers;
+}
+
+function toRawServer(
+  engine: McpConnectionEngine,
+  input: ParsedMachineConnectionInput,
+  existing: JsonRecord = {}
+): JsonRecord {
+  const server: JsonRecord = { ...existing };
+
+  delete server.command;
+  delete server.args;
+  delete server.env;
+  delete server.workingDirectory;
+  delete server.cwd;
+  delete server.url;
+  delete server.headers;
+  delete server.http_headers;
+
+  if (input.transport === "stdio") {
+    if (engine === "codex") {
+      delete server.type;
+    } else {
+      server.type = "stdio";
+    }
+    server.command = input.command;
+    if (input.args.length > 0) {
+      server.args = input.args;
+    }
+    const environment = mergeSecretRecord(
+      asRecord(existing.env),
+      input.environment,
+      "environment variable"
+    );
+    if (Object.keys(environment).length > 0) {
+      server.env = environment;
+    }
+    return server;
+  }
+
+  server.type = input.transport;
+  if (engine === "codex") {
+    delete server.type;
+  }
+  server.url = preserveRedactedUrl(existing.url, input.url);
+  const existingHeaders = getServerHeaders(existing, engine);
+  const headers = mergeSecretRecord(
+    existingHeaders,
+    input.headers,
+    "HTTP header"
+  );
+  if (Object.keys(headers).length > 0) {
+    server[engine === "codex" ? "http_headers" : "headers"] = headers;
+  }
+  return server;
+}
+
+function preserveRedactedUrl(existing: unknown, next: string): string {
+  if (typeof existing !== "string") {
+    return next;
+  }
+
+  return redactUrl(existing) === next ? existing : next;
+}
+
+function getServerHeaders(
+  server: JsonRecord,
+  engine: McpConnectionEngine
+): JsonRecord {
+  return asRecord(engine === "codex"
+    ? server.http_headers ?? server.headers
+    : server.headers);
+}
+
+function mergeSecretRecord(
+  existing: JsonRecord,
+  next: Record<string, string | null>,
+  label: string
+): Record<string, string> {
+  return Object.fromEntries(Object.entries(next).map(([key, value]) => {
+    if (value !== null) {
+      return [key, value];
+    }
+
+    const current = existing[key];
+    if (typeof current !== "string") {
+      throw new ValidationError(
+        `The ${label} ${key} has no existing value to preserve.`
+      );
+    }
+
+    return [key, current];
+  }));
+}
+
+function nullableStringRecord(
+  value: unknown,
+  label: string
+): Record<string, string | null> {
+  if (value === undefined) {
+    return {};
+  }
+
+  if (
+    !isRecord(value) ||
+    Object.entries(value).some(([key, item]) =>
+      !key.trim() ||
+      key.length > 256 ||
+      (typeof item !== "string" && item !== null) ||
+      (typeof item === "string" && item.length > 20_000)
+    )
+  ) {
+    throw new ValidationError(`${label} must be an object of strings.`);
+  }
+
+  return value as Record<string, string | null>;
+}
+
+async function atomicWriteFile(file: string, content: string): Promise<void> {
+  await mkdir(path.dirname(file), { recursive: true });
+  const temporaryFile = path.join(
+    path.dirname(file),
+    `.${path.basename(file)}.${process.pid}.${Date.now()}.tmp`
+  );
+  let mode: number | undefined;
+
+  try {
+    mode = (await stat(file)).mode;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  await writeFile(temporaryFile, content, {
+    encoding: "utf8",
+    ...(mode === undefined ? {} : { mode })
+  });
+
+  try {
+    if (mode !== undefined) {
+      await copyFile(file, `${file}.cortex-backup`);
+    }
+    await rename(temporaryFile, file);
+  } catch (error) {
+    try {
+      await unlink(temporaryFile);
+    } catch {
+      // Best effort cleanup after a failed atomic replacement.
+    }
+    throw error;
+  }
 }
 
 function selectJsonMcpServers(configuration: JsonRecord): unknown {
@@ -332,7 +838,8 @@ function toConnectionSummary(
     compatibleEngines: transport === "sse"
       ? ["claude", "copilot"]
       : [...ALL_ENGINES],
-    hasAuthentication: hasAuthenticationConfiguration(value)
+    hasAuthentication: hasAuthenticationConfiguration(value),
+    manageable: source.scope === "user" && source.source !== "shared"
   };
 }
 
@@ -354,8 +861,11 @@ function getTransport(value: JsonRecord): McpConnectionTransport {
 
 function hasAuthenticationConfiguration(value: JsonRecord): boolean {
   return Object.keys(asRecord(value.headers)).length > 0 ||
+    Object.keys(asRecord(value.http_headers)).length > 0 ||
+    Object.keys(asRecord(value.env_http_headers)).length > 0 ||
     typeof value.bearer_token_env_var === "string" ||
-    typeof value.oauth_client_id === "string";
+    typeof value.oauth_client_id === "string" ||
+    Object.keys(asRecord(value.oauth)).length > 0;
 }
 
 function redactUrl(value: string): string {

@@ -8,7 +8,15 @@ import type {
 } from "./AgentProvider.ts";
 import type { AgentConfigurationService } from "./AgentConfigurationService.ts";
 import type { McpConfigurationService } from "./McpConfigurationService.ts";
-import type { McpDiscoveryResult } from "../../../../shared/McpConnection.ts";
+import type { CodexPluginService } from "./CodexPluginService.ts";
+import type { CodexPluginCatalog } from "../../../../shared/CodexPlugin.ts";
+import type {
+  McpConnectionEngine,
+  McpConnectionSummary,
+  McpDiscoveryResult,
+  McpMachineConnectionDetail,
+  McpMachineConnectionInput
+} from "../../../../shared/McpConnection.ts";
 
 export interface AgentStatus {
   engine: AgentEngine | null;
@@ -23,12 +31,85 @@ export class AgentService {
   constructor(
     private readonly providers: AgentProvider[],
     private readonly configurationService: AgentConfigurationService,
-    private readonly mcpConfigurationService?: McpConfigurationService
+    private readonly mcpConfigurationService?: McpConfigurationService,
+    private readonly codexPluginService?: CodexPluginService
   ) {}
+
+  getCodexPlugins(): Promise<CodexPluginCatalog> {
+    return this.codexPluginService?.getCatalog() ?? Promise.resolve({
+      available: false,
+      plugins: [],
+      error: "Codex plugin management is unavailable."
+    });
+  }
+
+  installCodexPlugin(pluginId: string): Promise<CodexPluginCatalog> {
+    if (!this.codexPluginService) {
+      return Promise.reject(new Error("Codex plugin management is unavailable."));
+    }
+
+    return this.codexPluginService.install(pluginId);
+  }
+
+  removeCodexPlugin(pluginId: string): Promise<CodexPluginCatalog> {
+    if (!this.codexPluginService) {
+      return Promise.reject(new Error("Codex plugin management is unavailable."));
+    }
+
+    return this.codexPluginService.remove(pluginId);
+  }
 
   getMcpConnections(workingDirectory?: string): Promise<McpDiscoveryResult> {
     return this.mcpConfigurationService?.discover(workingDirectory) ??
       Promise.resolve({ connections: [], issues: [] });
+  }
+
+  getMachineMcpConnection(
+    engine: McpConnectionEngine,
+    name: string
+  ): Promise<McpMachineConnectionDetail> {
+    if (!this.mcpConfigurationService) {
+      return Promise.reject(new Error("MCP configuration is unavailable."));
+    }
+
+    return this.mcpConfigurationService.getMachineConnection(engine, name);
+  }
+
+  createMachineMcpConnection(
+    input: McpMachineConnectionInput | null | undefined
+  ): Promise<McpConnectionSummary> {
+    if (!this.mcpConfigurationService) {
+      return Promise.reject(new Error("MCP configuration is unavailable."));
+    }
+
+    return this.mcpConfigurationService.createMachineConnection(input);
+  }
+
+  updateMachineMcpConnection(
+    engine: McpConnectionEngine,
+    name: string,
+    input: McpMachineConnectionInput | null | undefined
+  ): Promise<McpConnectionSummary> {
+    if (!this.mcpConfigurationService) {
+      return Promise.reject(new Error("MCP configuration is unavailable."));
+    }
+
+    return this.mcpConfigurationService.updateMachineConnection(
+      engine,
+      name,
+      input
+    );
+  }
+
+  deleteMachineMcpConnection(
+    engine: McpConnectionEngine,
+    name: string
+  ): Promise<void> {
+    if (!this.mcpConfigurationService) {
+      return Promise.reject(new Error("MCP configuration is unavailable."));
+    }
+
+    return this.mcpConfigurationService.deleteMachineConnection(engine, name);
   }
 
   getConfiguration(): Promise<AgentConfiguration> {

@@ -1,5 +1,15 @@
 import { requestBlob, requestJson } from "./apiClient.ts";
-import type { McpDiscoveryResult } from "../../shared/McpConnection.ts";
+import type {
+  McpConnectionEngine,
+  McpConnectionSummary,
+  McpDiscoveryResult,
+  McpMachineConnectionDetail,
+  McpMachineConnectionInput
+} from "../../shared/McpConnection.ts";
+import type {
+  CodexPluginCatalog,
+  CodexPluginSummary
+} from "../../shared/CodexPlugin.ts";
 import type {
   WorkflowParameterDefinition,
   WorkflowParameterValues
@@ -11,10 +21,19 @@ export type {
 } from "../../shared/WorkflowParameter.ts";
 
 export type {
+  McpConnectionEngine,
   McpConnectionSummary,
   McpDiscoveryIssue,
-  McpDiscoveryResult
+  McpDiscoveryResult,
+  McpMachineConnectionDetail,
+  McpMachineConnectionInput
 } from "../../shared/McpConnection.ts";
+
+export type {
+  CodexPluginAuthPolicy,
+  CodexPluginCatalog,
+  CodexPluginSummary
+} from "../../shared/CodexPlugin.ts";
 
 export type {
   WorkflowAuditAgentExecution,
@@ -184,6 +203,72 @@ export function getMcpConnections(
     : "";
 
   return requestJson(`/api/agents/mcp-connections${query}`);
+}
+
+export function getCodexPlugins(): Promise<CodexPluginCatalog> {
+  return requestJson("/api/agents/codex-plugins");
+}
+
+export function installCodexPlugin(
+  pluginId: CodexPluginSummary["id"]
+): Promise<CodexPluginCatalog> {
+  return requestJson(
+    `/api/agents/codex-plugins/${encodeURIComponent(pluginId)}/install`,
+    { method: "POST" }
+  );
+}
+
+export function removeCodexPlugin(
+  pluginId: CodexPluginSummary["id"]
+): Promise<CodexPluginCatalog> {
+  return requestJson(
+    `/api/agents/codex-plugins/${encodeURIComponent(pluginId)}`,
+    { method: "DELETE" }
+  );
+}
+
+export function getMachineMcpConnection(
+  engine: McpConnectionEngine,
+  name: string
+): Promise<McpMachineConnectionDetail> {
+  return requestJson(
+    `/api/agents/mcp-connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`
+  );
+}
+
+export function createMachineMcpConnection(
+  input: McpMachineConnectionInput
+): Promise<McpConnectionSummary> {
+  return requestJson("/api/agents/mcp-connections", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+}
+
+export function updateMachineMcpConnection(
+  engine: McpConnectionEngine,
+  name: string,
+  input: McpMachineConnectionInput
+): Promise<McpConnectionSummary> {
+  return requestJson(
+    `/api/agents/mcp-connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input)
+    }
+  );
+}
+
+export async function deleteMachineMcpConnection(
+  engine: McpConnectionEngine,
+  name: string
+): Promise<void> {
+  await requestJson<{ message: string }>(
+    `/api/agents/mcp-connections/${encodeURIComponent(engine)}/${encodeURIComponent(name)}`,
+    { method: "DELETE" }
+  );
 }
 
 export async function getAgentConfiguration(): Promise<AgentConfiguration> {

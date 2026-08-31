@@ -6,6 +6,7 @@ import { AgentService } from "../../../application/service/iaService/AgentServic
 import { AgentConfigurationService } from "../../../application/service/iaService/AgentConfigurationService.ts";
 import { createDefaultAgentToolRegistry } from "../../../application/service/iaService/iaTools/AgentToolRegistry.ts";
 import { McpConfigurationService } from "../../../application/service/iaService/McpConfigurationService.ts";
+import { CodexPluginService } from "../../../application/service/iaService/CodexPluginService.ts";
 import { ClaudeAgentProvider } from "../../../application/service/iaService/providers/ClaudeAgentProvider.ts";
 import { CodexAgentProvider } from "../../../application/service/iaService/providers/CodexAgentProvider.ts";
 import { CopilotAgentProvider } from "../../../application/service/iaService/providers/CopilotAgentProvider.ts";
@@ -56,6 +57,7 @@ const authentication = accessPassword === null
   });
 const agentToolRegistry = createDefaultAgentToolRegistry();
 const mcpConfigurationService = new McpConfigurationService();
+const codexPluginService = new CodexPluginService();
 const agentConfigurationService = new AgentConfigurationService(
   configurationFile
 );
@@ -63,7 +65,7 @@ const agentService = new AgentService([
   new CodexAgentProvider(workspaceDirectory),
   new ClaudeAgentProvider(workspaceDirectory),
   new CopilotAgentProvider(agentToolRegistry, mcpConfigurationService)
-], agentConfigurationService, mcpConfigurationService);
+], agentConfigurationService, mcpConfigurationService, codexPluginService);
 const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(
   configurationFile,

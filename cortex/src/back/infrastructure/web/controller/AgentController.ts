@@ -12,6 +12,10 @@ import type {
   WorkflowScheduleInput,
   WorkflowScheduler
 } from "../../../application/service/workflowScheduler/WorkflowScheduler.ts";
+import type {
+  McpConnectionEngine,
+  McpMachineConnectionInput
+} from "../../../../shared/McpConnection.ts";
 import {
   agentErrorMappings,
   toAgentProjectResponse,
@@ -207,6 +211,81 @@ export function createAgentController(
 
       response.json(await agentUseCase.getMcpConnections(projectId));
     }, agentErrorMappings.getMcpConnections)
+  );
+
+  router.get(
+    "/codex-plugins",
+    asyncRoute(async (_request, response) => {
+      response.json(await agentUseCase.getCodexPlugins());
+    }, agentErrorMappings.getCodexPlugins)
+  );
+
+  router.post(
+    "/codex-plugins/:pluginId/install",
+    asyncRoute<unknown, { pluginId: string }>(async (request, response) => {
+      response.json(await agentUseCase.installCodexPlugin(
+        request.params.pluginId
+      ));
+    }, agentErrorMappings.installCodexPlugin)
+  );
+
+  router.delete(
+    "/codex-plugins/:pluginId",
+    asyncRoute<unknown, { pluginId: string }>(async (request, response) => {
+      response.json(await agentUseCase.removeCodexPlugin(
+        request.params.pluginId
+      ));
+    }, agentErrorMappings.removeCodexPlugin)
+  );
+
+  router.get(
+    "/mcp-connections/:engine/:name",
+    asyncRoute<unknown, { engine: string; name: string }>(async (
+      request,
+      response
+    ) => {
+      response.json(await agentUseCase.getMachineMcpConnection(
+        request.params.engine as McpConnectionEngine,
+        request.params.name
+      ));
+    }, agentErrorMappings.getMachineMcpConnection)
+  );
+
+  router.post(
+    "/mcp-connections",
+    asyncRoute<McpMachineConnectionInput>(async (request, response) => {
+      response.status(201).json(await agentUseCase.createMachineMcpConnection(
+        request.body
+      ));
+    }, agentErrorMappings.createMachineMcpConnection)
+  );
+
+  router.put(
+    "/mcp-connections/:engine/:name",
+    asyncRoute<
+      McpMachineConnectionInput,
+      { engine: string; name: string }
+    >(async (request, response) => {
+      response.json(await agentUseCase.updateMachineMcpConnection(
+        request.params.engine as McpConnectionEngine,
+        request.params.name,
+        request.body
+      ));
+    }, agentErrorMappings.updateMachineMcpConnection)
+  );
+
+  router.delete(
+    "/mcp-connections/:engine/:name",
+    asyncRoute<unknown, { engine: string; name: string }>(async (
+      request,
+      response
+    ) => {
+      await agentUseCase.deleteMachineMcpConnection(
+        request.params.engine as McpConnectionEngine,
+        request.params.name
+      );
+      response.json({ message: "The MCP connection was deleted." });
+    }, agentErrorMappings.deleteMachineMcpConnection)
   );
 
   router.put(

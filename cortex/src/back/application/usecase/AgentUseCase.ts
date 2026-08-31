@@ -3,7 +3,14 @@ import type {
   AgentConfiguration,
   AgentEngine
 } from "../service/iaService/AgentProvider.ts";
-import type { McpDiscoveryResult } from "../../../shared/McpConnection.ts";
+import type {
+  McpConnectionEngine,
+  McpConnectionSummary,
+  McpDiscoveryResult,
+  McpMachineConnectionDetail,
+  McpMachineConnectionInput
+} from "../../../shared/McpConnection.ts";
+import type { CodexPluginCatalog } from "../../../shared/CodexPlugin.ts";
 import type {
   AgentService,
   AgentStatus
@@ -361,6 +368,46 @@ export class AgentUseCase {
       : null;
 
     return this.agentService.getMcpConnections(project?.directoryPath);
+  }
+
+  getMachineMcpConnection(
+    engine: McpConnectionEngine,
+    name: string
+  ): Promise<McpMachineConnectionDetail> {
+    return this.agentService.getMachineMcpConnection(engine, name);
+  }
+
+  createMachineMcpConnection(
+    input: McpMachineConnectionInput | null | undefined
+  ): Promise<McpConnectionSummary> {
+    return this.agentService.createMachineMcpConnection(input);
+  }
+
+  updateMachineMcpConnection(
+    engine: McpConnectionEngine,
+    name: string,
+    input: McpMachineConnectionInput | null | undefined
+  ): Promise<McpConnectionSummary> {
+    return this.agentService.updateMachineMcpConnection(engine, name, input);
+  }
+
+  deleteMachineMcpConnection(
+    engine: McpConnectionEngine,
+    name: string
+  ): Promise<void> {
+    return this.agentService.deleteMachineMcpConnection(engine, name);
+  }
+
+  getCodexPlugins(): Promise<CodexPluginCatalog> {
+    return this.agentService.getCodexPlugins();
+  }
+
+  installCodexPlugin(pluginId: string): Promise<CodexPluginCatalog> {
+    return this.agentService.installCodexPlugin(pluginId);
+  }
+
+  removeCodexPlugin(pluginId: string): Promise<CodexPluginCatalog> {
+    return this.agentService.removeCodexPlugin(pluginId);
   }
 
   saveConfiguration(
