@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import {
   Activity,
   AlertCircle,
+  ArrowDown,
+  ArrowRight,
   Bot,
   CalendarDays,
   CheckCircle2,
@@ -15,10 +17,13 @@ import {
   GitBranch,
   Hash,
   LoaderCircle,
+  MessageSquareText,
   RefreshCw,
+  Route,
   Timer,
   UsersRound
 } from "lucide-react";
+import { parseAgentResponse } from "../../../../shared/AgentResponse.ts";
 import {
   exportWorkflowAuditRun,
   getWorkflowAuditRun,
@@ -389,15 +394,79 @@ export function WorkflowAuditPanel({ projectId }: { projectId: string }) {
                   </header>
                   {detail.executions.length === 0 ? (
                     <p>{t("audit.noExecutions")}</p>
-                  ) : detail.executions.map((execution, index) => (
-                    <AuditExecution
-                      key={execution.id}
-                      execution={execution}
-                      index={index + 1}
-                      occurrence={executionOccurrences.get(execution.id)}
-                      formatDate={formatDate}
-                    />
-                  ))}
+                  ) : (
+                    <div className="workflow-audit__flow">
+                      {detail.executions.map((execution, index) => {
+                        const snapshotAgent = detail.workflowSnapshot?.agents.find(
+                          (agent) => agent.id === execution.agentId
+                        );
+                        const selectedNextAgentIds = execution.nextAgentIds ?? [];
+                        const unselectedNextAgentIds = snapshotAgent?.nextAgentIds.filter(
+                          (agentId) => !selectedNextAgentIds.includes(agentId)
+                        ) ?? [];
+                        const nextExecution = detail.executions[index + 1];
+                        const sourceWorkflowIndex = detail.workflowSnapshot?.agents.findIndex(
+                          (agent) => agent.id === execution.agentId
+                        ) ?? -1;
+                        const targetWorkflowIndex = nextExecution
+                          ? detail.workflowSnapshot?.agents.findIndex(
+                            (agent) => agent.id === nextExecution.agentId
+                          ) ?? -1
+                          : -1;
+                        const isLoop = nextExecution !== undefined &&
+                          selectedNextAgentIds.includes(nextExecution.agentId) &&
+                          sourceWorkflowIndex >= 0 &&
+                          targetWorkflowIndex >= 0 &&
+                          targetWorkflowIndex <= sourceWorkflowIndex;
+                        const resolveAgentName = (agentId: string): string =>
+                          detail.workflowSnapshot?.agents.find(
+                            (agent) => agent.id === agentId
+                          )?.name ?? detail.executions.find(
+                            (candidate) => candidate.agentId === agentId
+                          )?.agentName ?? agentId;
+
+                        return (
+                          <div className="workflow-audit__flow-step" key={execution.id}>
+                            <AuditExecution
+                              execution={execution}
+                              index={index + 1}
+                              occurrence={executionOccurrences.get(execution.id)}
+                              description={snapshotAgent?.description}
+                              selectedNextAgentNames={selectedNextAgentIds.map(resolveAgentName)}
+                              unselectedNextAgentNames={unselectedNextAgentIds.map(resolveAgentName)}
+                              formatDate={formatDate}
+                            />
+                            {nextExecution && (
+                              <div
+                                className={`workflow-audit__flow-connector${
+                                  isLoop ? " workflow-audit__flow-connector--loop" : ""
+                                }`}
+                                aria-label={isLoop
+                                  ? t("audit.loopContinues", {
+                                    name: resolveAgentName(nextExecution.agentId)
+                                  })
+                                  : t("audit.flowContinues", {
+                                    name: resolveAgentName(nextExecution.agentId)
+                                  })
+                                }
+                              >
+                                <span />
+                                <small>
+                                  {isLoop
+                                    ? t("audit.loopBack", {
+                                      name: resolveAgentName(nextExecution.agentId)
+                                    })
+                                    : t("audit.contextTransfer")
+                                  }
+                                </small>
+                                <ArrowDown aria-hidden="true" size={17} strokeWidth={1.8} />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </section>
               </>
             )}
@@ -412,28 +481,40 @@ function AuditExecution({
   execution,
   index,
   occurrence,
+  description,
+  selectedNextAgentNames,
+  unselectedNextAgentNames,
   formatDate
 }: {
   execution: WorkflowAuditAgentExecution;
   index: number;
   occurrence?: { number: number; total: number };
+  description?: string;
+  selectedNextAgentNames: string[];
+  unselectedNextAgentNames: string[];
   formatDate: (value: string) => string;
 }) {
   const { t } = useTranslation();
+  const hasResponse = execution.response !== null && execution.response.trim() !== "";
+  const parsedResponse = hasResponse
+    ? parseAgentResponse(execution.response!)
+    : null;
+  const transmittedResponse = parsedResponse && parsedResponse.items.length > 0
+    ? parsedResponse.items.map((item) => item.content).join("\n\n")
+    : execution.response;
 
   return (
-    <details className="workflow-audit__execution" open={execution.status === "failed"}>
-      <summary>
+    <article className={`workflow-audit__execution workflow-audit__execution--${execution.status}`}>
+      <header className="workflow-audit__execution-header">
         <span className={`workflow-audit__step workflow-audit__step--${execution.status}`}>
           {index}
         </span>
+        <span className="workflow-audit__agent-icon">
+          <Bot aria-hidden="true" size={19} strokeWidth={1.7} />
+        </span>
         <span className="workflow-audit__execution-title">
           <strong>{execution.agentName}</strong>
-          <small>
-            <Gauge aria-hidden="true" size={13} />
-            {execution.engine}
-            {execution.model ? ` / ${execution.model}` : ""}
-          </small>
+          {description && <small>{description}</small>}
           {occurrence && occurrence.total > 1 && (
             <span className="workflow-audit__occurrence">
               {t("audit.occurrence", {
@@ -443,6 +524,11 @@ function AuditExecution({
             </span>
           )}
         </span>
+        <span className="workflow-audit__execution-model">
+          <Gauge aria-hidden="true" size={13} />
+          {execution.engine}
+          {execution.model ? ` / ${execution.model}` : ""}
+        </span>
         <span className={`workflow-audit__status workflow-audit__status--${execution.status}`}>
           {statusIcon(execution.status)}
           {t(`audit.status.${execution.status}` as Parameters<typeof t>[0])}
@@ -451,16 +537,89 @@ function AuditExecution({
           {formatDate(execution.startedAt)}
           {execution.durationMs !== null && <span>{formatDuration(execution.durationMs)}</span>}
         </small>
-        <ChevronDown className="workflow-audit__chevron" aria-hidden="true" size={17} />
-      </summary>
-      <div className="workflow-audit__execution-body">
+      </header>
+
+      <div className="workflow-audit__interactions">
+        {execution.input.upstreamItems.length === 0 ? (
+          <div className="workflow-audit__interaction workflow-audit__interaction--start">
+            <span className="workflow-audit__interaction-icon">
+              <Route aria-hidden="true" size={16} />
+            </span>
+            <div>
+              <strong>{t("audit.workflowStart")}</strong>
+              <p>{t("audit.noUpstreamContext")}</p>
+            </div>
+          </div>
+        ) : execution.input.upstreamItems.map((item, itemIndex) => (
+          <div
+            className="workflow-audit__interaction workflow-audit__interaction--incoming"
+            key={`${item.agentId}:${itemIndex}`}
+          >
+            <span className="workflow-audit__interaction-icon">
+              <MessageSquareText aria-hidden="true" size={16} />
+            </span>
+            <div>
+              <span className="workflow-audit__interaction-route">
+                <strong>{item.agentName}</strong>
+                <ArrowRight aria-hidden="true" size={14} />
+                <span>{execution.agentName}</span>
+              </span>
+              <p>{item.content}</p>
+            </div>
+          </div>
+        ))}
+
+        <div className="workflow-audit__interaction workflow-audit__interaction--outgoing">
+          <span className="workflow-audit__interaction-icon">
+            <ArrowRight aria-hidden="true" size={16} />
+          </span>
+          <div>
+            <span className="workflow-audit__interaction-route">
+              <strong>{execution.agentName}</strong>
+              <ArrowRight aria-hidden="true" size={14} />
+              <span>
+                {selectedNextAgentNames.length > 0
+                  ? selectedNextAgentNames.join(", ")
+                  : t("audit.workflowEnd")
+                }
+              </span>
+            </span>
+            <p>{transmittedResponse || t("audit.noResponse")}</p>
+          </div>
+        </div>
+      </div>
+
+      {(selectedNextAgentNames.length > 0 || unselectedNextAgentNames.length > 0) && (
+        <div className="workflow-audit__routing">
+          <Route aria-hidden="true" size={14} />
+          <strong>{t("audit.routingDecision")}</strong>
+          {selectedNextAgentNames.map((name) => (
+            <span className="workflow-audit__route workflow-audit__route--selected" key={name}>
+              <CheckCircle2 aria-hidden="true" size={12} />
+              {name}
+            </span>
+          ))}
+          {unselectedNextAgentNames.map((name) => (
+            <span className="workflow-audit__route workflow-audit__route--unselected" key={name}>
+              {t("audit.branchNotTaken", { name })}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <details className="workflow-audit__technical" open={execution.status === "failed"}>
+        <summary>
+          <span>{t("audit.technicalDetails")}</span>
+          <ChevronDown className="workflow-audit__chevron" aria-hidden="true" size={16} />
+        </summary>
+        <div className="workflow-audit__execution-body">
         <dl className="workflow-audit__metadata">
           <div><dt>{t("audit.engine")}</dt><dd>{execution.engine}</dd></div>
           <div><dt>{t("audit.model")}</dt><dd>{execution.model ?? t("audit.default")}</dd></div>
           <div><dt>{t("audit.reasoning")}</dt><dd>{execution.reasoningEffort ?? t("audit.default")}</dd></div>
           <div><dt>{t("audit.attempt")}</dt><dd>{execution.attempt}</dd></div>
           <div><dt>{t("audit.session")}</dt><dd>{execution.sessionId ?? "—"}</dd></div>
-          <div><dt>{t("audit.nextAgents")}</dt><dd>{execution.nextAgentIds?.join(", ") || "—"}</dd></div>
+          <div><dt>{t("audit.nextAgents")}</dt><dd>{selectedNextAgentNames.join(", ") || "—"}</dd></div>
         </dl>
         {execution.error && <p className="workflow-audit__run-error">{execution.error}</p>}
         <AuditJsonBlock title={t("audit.inputs")} value={execution.input} />
@@ -469,8 +628,9 @@ function AuditExecution({
           title={t("audit.response")}
           value={execution.response ?? t("audit.noResponse")}
         />
-      </div>
-    </details>
+        </div>
+      </details>
+    </article>
   );
 }
 
