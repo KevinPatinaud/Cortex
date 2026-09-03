@@ -1,6 +1,7 @@
 import { Cable, Save, X } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useTranslation } from "../../../i18n.tsx";
+import { trapDialogFocus } from "../../shared/dialogFocus.ts";
 import {
   createMachineMcpConnection,
   getMachineMcpConnection,
@@ -47,6 +48,8 @@ export function McpConnectionDialog({
 }: McpConnectionDialogProps) {
   const { t } = useTranslation();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [preservedEnvironmentKeys, setPreservedEnvironmentKeys] = useState<string[]>([]);
   const [preservedHeaderNames, setPreservedHeaderNames] = useState<string[]>([]);
@@ -156,6 +159,11 @@ export function McpConnectionDialog({
     <dialog
       ref={dialogRef}
       className="project-creation-dialog mcp-connection-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descriptionId}
+      onKeyDown={trapDialogFocus}
       onCancel={(event) => {
         event.preventDefault();
         if (!isSaving) onClose();
@@ -171,8 +179,8 @@ export function McpConnectionDialog({
           </span>
           <div>
             <span className="project-creation-dialog__eyebrow">{t("mcp.dialogEyebrow")}</span>
-            <h2>{connection ? t("mcp.editTitle") : t("mcp.createTitle")}</h2>
-            <p>{t("mcp.dialogDescription")}</p>
+            <h2 id={titleId}>{connection ? t("mcp.editTitle") : t("mcp.createTitle")}</h2>
+            <p id={descriptionId}>{t("mcp.dialogDescription")}</p>
           </div>
           <button
             type="button"

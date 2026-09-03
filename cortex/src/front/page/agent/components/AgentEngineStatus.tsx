@@ -2,7 +2,6 @@ import {
   Bot,
   Cable,
   Check,
-  ChevronDown,
   FolderCog,
   Globe2,
   KeyRound,
@@ -10,11 +9,19 @@ import {
   Plus,
   RefreshCw,
   Save,
+  SlidersHorizontal,
   TerminalSquare,
   Trash2,
-  TriangleAlert
+  TriangleAlert,
+  X
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent
+} from "react";
 import { useTranslation } from "../../../i18n.tsx";
 import {
   getAgentConfiguration,
@@ -34,6 +41,7 @@ import {
 } from "../../../services/projectApi.ts";
 import { McpConnectionDialog } from "./McpConnectionDialog.tsx";
 import { CodexPluginPanel } from "./CodexPluginPanel.tsx";
+import { trapDialogFocus } from "../../shared/dialogFocus.ts";
 
 const EMPTY_STATUS: AgentStatus = {
   engine: null,
@@ -43,7 +51,7 @@ const EMPTY_STATUS: AgentStatus = {
 
 const DEFAULT_CONFIGURATION: AgentConfiguration = {
   autopilot: true,
-  allowAll: true
+  allowAll: false
 };
 
 const EMPTY_MCP_DISCOVERY: McpDiscoveryResult = {
@@ -71,6 +79,20 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
   const [editedMcpConnection, setEditedMcpConnection] = useState<McpConnectionSummary | null>(null);
   const [pendingMcpConnectionId, setPendingMcpConnectionId] = useState("");
   const [configurationError, setConfigurationError] = useState("");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsSection, setSettingsSection] = useState<"general" | "connections">("general");
+  const [showAllowAllWarning, setShowAllowAllWarning] = useState(false);
+  const settingsDialogRef = useRef<HTMLDialogElement>(null);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
+  const settingsCloseRef = useRef<HTMLButtonElement>(null);
+  const generalTabRef = useRef<HTMLButtonElement>(null);
+  const connectionsTabRef = useRef<HTMLButtonElement>(null);
+  const settingsTitleId = useId();
+  const settingsDescriptionId = useId();
+  const generalTabId = useId();
+  const generalPanelId = useId();
+  const connectionsTabId = useId();
+  const connectionsPanelId = useId();
 
   useEffect(() => {
     let isMounted = true;
@@ -115,7 +137,35 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
     };
   }, [projectId]);
 
+  useEffect(() => {
+    const dialog = settingsDialogRef.current;
+    let focusFrame = 0;
+
+    if (isSettingsOpen && !dialog?.open) {
+      dialog?.showModal();
+      focusFrame = window.requestAnimationFrame(() => {
+        settingsCloseRef.current?.focus();
+      });
+    } else if (!isSettingsOpen && dialog?.open) {
+      dialog.close();
+    }
+
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [isSettingsOpen]);
+
   const hasError = !isLoading && Boolean(status.error);
+
+  function handleSettingsTabKeyDown(
+    event: ReactKeyboardEvent<HTMLButtonElement>
+  ): void {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    event.preventDefault();
+    const nextSection = settingsSection === "general" ? "connections" : "general";
+    setSettingsSection(nextSection);
+    window.requestAnimationFrame(() => {
+      (nextSection === "general" ? generalTabRef : connectionsTabRef).current?.focus();
+    });
+  }
 
   async function updateConfiguration(
     change: Partial<AgentConfiguration>
@@ -210,201 +260,347 @@ export function AgentEngineStatus({ projectId }: AgentEngineStatusProps) {
 
   return (
     <div className="agent-engine-panel">
-      <details
-        className={`agent-engine-settings${hasError ? " agent-engine-status--error" : ""}`}
+      <button
+        ref={settingsTriggerRef}
+        className={`agent-engine-settings-trigger${hasError ? " agent-engine-status--error" : ""}`}
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={isSettingsOpen}
+        onClick={() => {
+          setSettingsSection("general");
+          setShowAllowAllWarning(false);
+          setIsSettingsOpen(true);
+        }}
       >
-        <summary aria-live="polite">
-          <Bot aria-hidden="true" size={18} strokeWidth={1.8} />
-          <span className="agent-engine-status__content">
-            <strong>
-              {isLoading ? t("engine.detecting") : status.label || t("engine.notConfigured")}
-            </strong>
-            <small>{t("engine.settings")}</small>
-            {hasError && (
-              <span className="agent-engine-status__error">{status.error}</span>
-            )}
+        <Bot aria-hidden="true" size={18} strokeWidth={1.8} />
+        <span className="agent-engine-status__content" aria-live="polite">
+          <strong>
+            {isLoading ? t("engine.detecting") : status.label || t("engine.notConfigured")}
+          </strong>
+          <small>{t("engine.settings")}</small>
+          {hasError && (
+            <span className="agent-engine-status__error">{status.error}</span>
+          )}
+        </span>
+        {(isSaving || isSavingProjectsDirectory) && (
+          <small className="agent-engine-settings__saving">
+            {t("engine.saving")}
+          </small>
+        )}
+        <span className="agent-engine-status__indicator" aria-hidden="true" />
+        <SlidersHorizontal aria-hidden="true" size={15} strokeWidth={1.8} />
+      </button>
+
+      <dialog
+        ref={settingsDialogRef}
+        className={`agent-settings-dialog agent-engine-settings${hasError ? " agent-engine-status--error" : ""}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={settingsTitleId}
+        aria-describedby={settingsDescriptionId}
+        onKeyDown={trapDialogFocus}
+        onCancel={(event) => {
+          event.preventDefault();
+          setIsSettingsOpen(false);
+        }}
+        onClose={() => {
+          setIsSettingsOpen(false);
+          settingsTriggerRef.current?.focus();
+        }}
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            setIsSettingsOpen(false);
+          }
+        }}
+      >
+        <header className="agent-settings-dialog__header">
+          <span className="agent-settings-dialog__icon" aria-hidden="true">
+            <Bot size={22} strokeWidth={1.8} />
           </span>
-          {(isSaving || isSavingProjectsDirectory) && (
-            <small className="agent-engine-settings__saving">
-              {t("engine.saving")}
-            </small>
-          )}
-          <span className="agent-engine-status__indicator" aria-hidden="true" />
-          <ChevronDown
-            className="agent-engine-settings__chevron"
-            aria-hidden="true"
-            size={15}
-            strokeWidth={1.8}
-          />
-        </summary>
-        <div className="agent-engine-settings__content">
-          <label className="agent-engine-settings__language">
-            <span>
-              <strong>{t("language.label")}</strong>
-              <small>{t("language.help")}</small>
+          <div>
+            <span className="agent-settings-dialog__eyebrow">
+              {isLoading ? t("engine.detecting") : status.label || t("engine.notConfigured")}
             </span>
-            <select
-              value={language}
-              onChange={(event) => setLanguage(event.target.value as "fr" | "en")}
-              aria-label={t("language.label")}
-            >
-              <option value="fr">{t("language.fr")}</option>
-              <option value="en">{t("language.en")}</option>
-            </select>
-          </label>
-          <label>
-            <span>
-              <strong>Autopilot</strong>
-              <small>{t("engine.autopilotHelp")}</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={configuration.autopilot}
-              disabled={isLoading || isSaving}
-              onChange={(event) => void updateConfiguration({
-                autopilot: event.target.checked
-              })}
-            />
-          </label>
-          <label>
-            <span>
-              <strong>Allow all</strong>
-              <small>{t("engine.allowAllHelp")}</small>
-            </span>
-            <input
-              type="checkbox"
-              checked={configuration.allowAll}
-              disabled={isLoading || isSaving}
-              onChange={(event) => void updateConfiguration({
-                allowAll: event.target.checked
-              })}
-            />
-          </label>
-          <section className="agent-engine-storage" aria-labelledby="projects-storage-title">
-            <header>
-              <FolderCog aria-hidden="true" size={15} strokeWidth={1.8} />
-              <span>
-                <strong id="projects-storage-title">{t("storage.title")}</strong>
-                <small>{t("storage.help")}</small>
-              </span>
-            </header>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                void updateProjectsDirectory();
-              }}
-            >
-              <input
-                type="text"
-                value={projectsDirectoryDraft}
-                title={projectsDirectoryDraft}
-                aria-label={t("storage.path")}
-                onChange={(event) => {
-                  setProjectsDirectoryDraft(event.target.value);
-                  setProjectsDirectoryMessage("");
-                  setConfigurationError("");
-                }}
-                disabled={isLoading || isSavingProjectsDirectory}
-              />
-              <button
-                type="submit"
-                disabled={
-                  isLoading ||
-                  isSavingProjectsDirectory ||
-                  !projectsDirectoryDraft.trim() ||
-                  projectsDirectoryDraft.trim() === projectsDirectory
-                }
-                title={t("storage.save")}
-                aria-label={t("storage.save")}
-              >
-                <Save aria-hidden="true" size={14} />
-              </button>
-            </form>
-            {projectsDirectoryMessage && (
-              <p className="agent-engine-storage__success" role="status">
-                <Check aria-hidden="true" size={12} />
-                {projectsDirectoryMessage}
-              </p>
-            )}
-          </section>
-          <CodexPluginPanel onChanged={() => void refreshMcpConnections()} />
-          <section className="agent-engine-mcp" aria-labelledby="mcp-connections-title">
-            <header>
-              <span>
-                <Cable aria-hidden="true" size={15} strokeWidth={1.8} />
-                <span>
-                  <strong id="mcp-connections-title">{t("mcp.title")}</strong>
-                  <small>{t("mcp.count", {
-                    count: mcpDiscovery.connections.length
-                  })}</small>
-                </span>
-              </span>
-              <span className="agent-engine-mcp__header-actions">
-                <button
-                  type="button"
-                  className="agent-engine-mcp__add"
-                  onClick={() => {
-                    setEditedMcpConnection(null);
-                    setMcpDialogOpen(true);
-                  }}
-                  title={t("mcp.add")}
-                  aria-label={t("mcp.add")}
-                >
-                  <Plus aria-hidden="true" size={14} />
-                </button>
-                <button
-                  type="button"
-                  className="agent-engine-mcp__refresh"
-                  onClick={() => void refreshMcpConnections()}
-                  disabled={isRefreshingMcp}
-                  title={t("mcp.refresh")}
-                  aria-label={t("mcp.refresh")}
-                >
-                  <RefreshCw
-                    className={isRefreshingMcp ? "spin" : undefined}
-                    aria-hidden="true"
-                    size={14}
-                  />
-                </button>
-              </span>
-            </header>
-            <p className="agent-engine-mcp__help">{t("mcp.machineOnly")}</p>
-            {mcpDiscovery.issues.length > 0 && (
-              <div className="agent-engine-mcp__issues" role="status">
-                {mcpDiscovery.issues.map((issue) => (
-                  <p key={`${issue.source}:${issue.configurationFile}`}>
-                    <TriangleAlert aria-hidden="true" size={13} />
-                    <span>{issue.message}</span>
-                  </p>
-                ))}
-              </div>
-            )}
-            {mcpDiscovery.connections.length === 0 ? (
-              <p className="agent-engine-mcp__empty">{t("mcp.empty")}</p>
-            ) : (
-              <ul className="agent-engine-mcp__list">
-                {mcpDiscovery.connections.map((connection) => (
-                  <McpConnectionItem
-                    key={connection.id}
-                    connection={connection}
-                    isPending={pendingMcpConnectionId === connection.id}
-                    onEdit={() => {
-                      setEditedMcpConnection(connection);
-                      setMcpDialogOpen(true);
-                    }}
-                    onDelete={() => void deleteMcpConnection(connection)}
-                  />
-                ))}
-              </ul>
-            )}
-          </section>
-          {configurationError && (
-            <p className="agent-engine-settings__error" role="alert">
-              {configurationError}
-            </p>
-          )}
+            <h2 id={settingsTitleId}>{t("engine.settingsDialogTitle")}</h2>
+            <p id={settingsDescriptionId}>{t("engine.settingsDialogDescription")}</p>
+          </div>
+          <button
+            ref={settingsCloseRef}
+            className="agent-settings-dialog__close"
+            type="button"
+            aria-label={t("common.close")}
+            title={t("common.close")}
+            onClick={() => setIsSettingsOpen(false)}
+          >
+            <X aria-hidden="true" size={18} />
+          </button>
+        </header>
+
+        <div className="agent-settings-dialog__tabs" role="tablist" aria-label={t("engine.settingsDialogTitle")}>
+          <button
+            ref={generalTabRef}
+            id={generalTabId}
+            type="button"
+            role="tab"
+            aria-selected={settingsSection === "general"}
+            aria-controls={generalPanelId}
+            tabIndex={settingsSection === "general" ? 0 : -1}
+            className={settingsSection === "general" ? "is-active" : ""}
+            onClick={() => setSettingsSection("general")}
+            onKeyDown={handleSettingsTabKeyDown}
+          >
+            <SlidersHorizontal aria-hidden="true" size={15} />
+            {t("engine.generalTab")}
+          </button>
+          <button
+            ref={connectionsTabRef}
+            id={connectionsTabId}
+            type="button"
+            role="tab"
+            aria-selected={settingsSection === "connections"}
+            aria-controls={connectionsPanelId}
+            tabIndex={settingsSection === "connections" ? 0 : -1}
+            className={settingsSection === "connections" ? "is-active" : ""}
+            onClick={() => setSettingsSection("connections")}
+            onKeyDown={handleSettingsTabKeyDown}
+          >
+            <Cable aria-hidden="true" size={15} />
+            {t("engine.connectionsTab")}
+          </button>
         </div>
-      </details>
+
+        <div className="agent-settings-dialog__body agent-engine-settings__content">
+          <section
+            id={generalPanelId}
+            className="agent-settings-dialog__section"
+            role="tabpanel"
+            aria-labelledby={generalTabId}
+            hidden={settingsSection !== "general"}
+          >
+            <header className="agent-settings-dialog__section-header">
+              <SlidersHorizontal aria-hidden="true" size={17} strokeWidth={1.8} />
+              <div>
+                <h3 id="general-settings-title">{t("engine.generalSettings")}</h3>
+                <p>{t("engine.generalSettingsHelp")}</p>
+              </div>
+            </header>
+            <div className="agent-settings-dialog__section-content">
+              <label className="agent-engine-settings__language">
+                <span>
+                  <strong>{t("language.label")}</strong>
+                  <small>{t("language.help")}</small>
+                </span>
+                <select
+                  value={language}
+                  onChange={(event) => setLanguage(event.target.value as "fr" | "en")}
+                  aria-label={t("language.label")}
+                >
+                  <option value="fr">{t("language.fr")}</option>
+                  <option value="en">{t("language.en")}</option>
+                </select>
+              </label>
+              <label>
+                <span>
+                  <strong>Autopilot</strong>
+                  <small>{t("engine.autopilotHelp")}</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={configuration.autopilot}
+                  disabled={isLoading || isSaving}
+                  onChange={(event) => void updateConfiguration({
+                    autopilot: event.target.checked
+                  })}
+                />
+              </label>
+              <label className="agent-engine-settings__danger-setting">
+                <span>
+                  <strong>{t("engine.allowAll")}</strong>
+                  <small id="allow-all-help">{t("engine.allowAllHelp")}</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={configuration.allowAll}
+                  disabled={isLoading || isSaving || !configuration.autopilot}
+                  aria-describedby={showAllowAllWarning
+                    ? "allow-all-help allow-all-warning"
+                    : "allow-all-help"}
+                  onChange={(event) => {
+                    if (event.target.checked) {
+                      setShowAllowAllWarning(true);
+                    } else {
+                      setShowAllowAllWarning(false);
+                      void updateConfiguration({ allowAll: false });
+                    }
+                  }}
+                />
+              </label>
+              {showAllowAllWarning && (
+                <div className="agent-engine-settings__danger-confirmation" id="allow-all-warning" role="alert">
+                  <TriangleAlert aria-hidden="true" size={18} />
+                  <p>{t("engine.allowAllWarning")}</p>
+                  <div>
+                    <button type="button" onClick={() => setShowAllowAllWarning(false)}>
+                      {t("common.cancel")}
+                    </button>
+                    <button
+                      type="button"
+                      className="agent-engine-settings__danger-confirm"
+                      onClick={() => {
+                        setShowAllowAllWarning(false);
+                        void updateConfiguration({ allowAll: true });
+                      }}
+                    >
+                      {t("engine.allowAllConfirm")}
+                    </button>
+                  </div>
+                </div>
+              )}
+              <section className="agent-engine-storage" aria-labelledby="projects-storage-title">
+                <header>
+                  <FolderCog aria-hidden="true" size={15} strokeWidth={1.8} />
+                  <span>
+                    <strong id="projects-storage-title">{t("storage.title")}</strong>
+                    <small>{t("storage.help")}</small>
+                  </span>
+                </header>
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void updateProjectsDirectory();
+                  }}
+                >
+                  <input
+                    type="text"
+                    value={projectsDirectoryDraft}
+                    title={projectsDirectoryDraft}
+                    aria-label={t("storage.path")}
+                    onChange={(event) => {
+                      setProjectsDirectoryDraft(event.target.value);
+                      setProjectsDirectoryMessage("");
+                      setConfigurationError("");
+                    }}
+                    disabled={isLoading || isSavingProjectsDirectory}
+                  />
+                  <button
+                    type="submit"
+                    disabled={
+                      isLoading ||
+                      isSavingProjectsDirectory ||
+                      !projectsDirectoryDraft.trim() ||
+                      projectsDirectoryDraft.trim() === projectsDirectory
+                    }
+                    title={t("storage.save")}
+                    aria-label={t("storage.save")}
+                  >
+                    <Save aria-hidden="true" size={14} />
+                  </button>
+                </form>
+                {projectsDirectoryMessage && (
+                  <p className="agent-engine-storage__success" role="status">
+                    <Check aria-hidden="true" size={12} />
+                    {projectsDirectoryMessage}
+                  </p>
+                )}
+              </section>
+            </div>
+          </section>
+
+          <section
+            id={connectionsPanelId}
+            className="agent-settings-dialog__section"
+            role="tabpanel"
+            aria-labelledby={connectionsTabId}
+            hidden={settingsSection !== "connections"}
+          >
+            <header className="agent-settings-dialog__section-header">
+              <Cable aria-hidden="true" size={17} strokeWidth={1.8} />
+              <span>
+                <h3 id="connections-settings-title">{t("engine.connectionsSettings")}</h3>
+                <p>{t("engine.connectionsSettingsHelp")}</p>
+              </span>
+            </header>
+            <div className="agent-settings-dialog__section-content">
+              <CodexPluginPanel onChanged={() => void refreshMcpConnections()} />
+              <section className="agent-engine-mcp" aria-labelledby="mcp-connections-title">
+                <header>
+                  <span>
+                    <Cable aria-hidden="true" size={15} strokeWidth={1.8} />
+                    <span>
+                      <strong id="mcp-connections-title">{t("mcp.title")}</strong>
+                      <small>{t("mcp.count", {
+                        count: mcpDiscovery.connections.length
+                      })}</small>
+                    </span>
+                  </span>
+                  <span className="agent-engine-mcp__header-actions">
+                    <button
+                      type="button"
+                      className="agent-engine-mcp__add"
+                      onClick={() => {
+                        setEditedMcpConnection(null);
+                        setMcpDialogOpen(true);
+                      }}
+                      title={t("mcp.add")}
+                      aria-label={t("mcp.add")}
+                    >
+                      <Plus aria-hidden="true" size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="agent-engine-mcp__refresh"
+                      onClick={() => void refreshMcpConnections()}
+                      disabled={isRefreshingMcp}
+                      title={t("mcp.refresh")}
+                      aria-label={t("mcp.refresh")}
+                    >
+                      <RefreshCw
+                        className={isRefreshingMcp ? "spin" : undefined}
+                        aria-hidden="true"
+                        size={14}
+                      />
+                    </button>
+                  </span>
+                </header>
+                <p className="agent-engine-mcp__help">{t("mcp.machineOnly")}</p>
+                {mcpDiscovery.issues.length > 0 && (
+                  <div className="agent-engine-mcp__issues" role="status">
+                    {mcpDiscovery.issues.map((issue) => (
+                      <p key={`${issue.source}:${issue.configurationFile}`}>
+                        <TriangleAlert aria-hidden="true" size={13} />
+                        <span>{issue.message}</span>
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {mcpDiscovery.connections.length === 0 ? (
+                  <p className="agent-engine-mcp__empty">{t("mcp.empty")}</p>
+                ) : (
+                  <ul className="agent-engine-mcp__list">
+                    {mcpDiscovery.connections.map((connection) => (
+                      <McpConnectionItem
+                        key={connection.id}
+                        connection={connection}
+                        isPending={pendingMcpConnectionId === connection.id}
+                        onEdit={() => {
+                          setEditedMcpConnection(connection);
+                          setMcpDialogOpen(true);
+                        }}
+                        onDelete={() => void deleteMcpConnection(connection)}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </section>
+              {configurationError && (
+                <p className="agent-engine-settings__error" role="alert">
+                  {configurationError}
+                </p>
+              )}
+            </div>
+          </section>
+        </div>
+      </dialog>
       <McpConnectionDialog
         connection={editedMcpConnection}
         isOpen={mcpDialogOpen}

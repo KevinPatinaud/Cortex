@@ -52,10 +52,22 @@ interface AgentProjectWorkspaceProps {
 
 type HandoffEnabledAgentIdsByProject = Record<string, Set<string>>;
 type AgentFlowKind = "standard" | "cycle" | "parallel";
+type WorkspaceTab = "instructions" | "agents" | "audit";
 
 const HANDOFF_PREFERENCES_STORAGE_KEY =
   "cortex.agent-workflow.handoff-preferences.v1";
 const EMPTY_AGENT_ID_SET = new Set<string>();
+
+function getWorkspaceTabFromUrl(): WorkspaceTab {
+  const view = new URL(window.location.href).searchParams.get("view");
+  return view === "instructions" || view === "audit" ? view : "agents";
+}
+
+function updateWorkspaceView(tab: WorkspaceTab, replace = false): void {
+  const url = new URL(window.location.href);
+  url.searchParams.set("view", tab === "agents" ? "workflow" : tab);
+  window.history[replace ? "replaceState" : "pushState"]({}, "", url);
+}
 
 function loadHandoffPreferences(): HandoffEnabledAgentIdsByProject {
   try {
@@ -147,6 +159,7 @@ function ConversationMessageContent({
   disabled?: boolean;
 }) {
   const { t } = useTranslation();
+  const selectionHelpId = useId();
   if (message.role === "user") {
     return <pre>{message.content}</pre>;
   }
@@ -191,34 +204,49 @@ function ConversationMessageContent({
           <MarkdownContent content={response.items[0].content} />
         </div>
       ) : response.items.length > 1 ? (
-        <ul
-          className="agent-card__conversation-response-list"
-          aria-label={t("agent.responsesAria")}
-        >
-          {response.items.map((item, itemIndex) => {
-            const isSelected = selectedItemIndexes.includes(
-              itemIndexOffset + itemIndex
-            );
+        <>
+          {!disabled && onSelectedItemIndexesChange && (
+            <p className="agent-card__conversation-selection-help" id={selectionHelpId}>
+              {t(allowsMultipleSelection
+                ? "agent.selectionHelpMany"
+                : "agent.selectionHelpOne")}
+            </p>
+          )}
+          <ul
+            className="agent-card__conversation-response-list"
+            aria-label={t("agent.responsesAria")}
+            aria-describedby={!disabled && onSelectedItemIndexesChange
+              ? selectionHelpId
+              : undefined}
+          >
+            {response.items.map((item, itemIndex) => {
+              const isSelected = selectedItemIndexes.includes(
+                itemIndexOffset + itemIndex
+              );
 
-            return (
-              <li key={itemIndex}>
-                <button
-                  className={`agent-card__conversation-response-button${
-                    isSelected
-                      ? " agent-card__conversation-response-button--selected"
-                      : ""
-                  }`}
-                  type="button"
-                  aria-pressed={isSelected}
-                  aria-disabled={disabled || !onSelectedItemIndexesChange}
-                  onClick={() => handleItemSelection(itemIndex)}
-                >
-                  <MarkdownContent content={item.content} />
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+              return (
+                <li key={itemIndex}>
+                  <button
+                    className={`agent-card__conversation-response-button${
+                      isSelected
+                        ? " agent-card__conversation-response-button--selected"
+                        : ""
+                    }`}
+                    type="button"
+                    aria-pressed={isSelected}
+                    aria-disabled={disabled || !onSelectedItemIndexesChange}
+                    onClick={() => handleItemSelection(itemIndex)}
+                  >
+                    <span className="agent-card__conversation-selection-indicator" aria-hidden="true">
+                      <CheckCircle2 size={17} strokeWidth={2.2} />
+                    </span>
+                    <MarkdownContent content={item.content} />
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       ) : (
         <p className="agent-card__conversation-response">
           {t("agent.noResponse")}
@@ -402,7 +430,7 @@ function WorkflowParametersPanel({
 
 type AgentResultStates = Record<string, AgentResultState>;
 
-function getAutomaticHandoffSelections(
+function getDefaultHandoffSelections(
   state: AgentResultState
 ): number[] {
   const selectedItemIndexes: number[] = [];
@@ -1293,6 +1321,9 @@ function AgentCard({
     !parameterPrerequisiteMessage;
   const isUnavailable = !canRun;
   const isDisabled = isUnavailable || isFrozen;
+  const isBlockedByPrerequisite = Boolean(
+    prerequisiteMessage || parameterPrerequisiteMessage
+  );
   const shouldShowRunButton =
     !handoffEnabled || isRunning || (canRun && !isFrozen);
 
@@ -1415,6 +1446,7 @@ function AgentCard({
         isMultithreaded ? " agent-card--multithreaded" : ""
       }${isParallelRunPrepared ? " agent-card--parallel-ready" : ""
       }${isDisabled ? " agent-card--disabled" : ""
+      }${isBlockedByPrerequisite ? " agent-card--prerequisite" : ""
       }${handoffEnabled ? " agent-card--handoff" : ""}`}
       aria-disabled={isDisabled || undefined}
       aria-label={isParallelRunPrepared
@@ -1550,7 +1582,7 @@ function AgentCard({
               }
             />
           )}
-          {!handoffEnabled && (
+          {!handoffEnabled && !isBlockedByPrerequisite && (
             <div className="agent-card__additional-instructions">
               <label htmlFor={additionalInstructionsId}>{t("agent.details")}</label>
               <textarea
@@ -1566,7 +1598,7 @@ function AgentCard({
               />
             </div>
           )}
-          {(shouldShowRunButton || showContinueButton) && (
+          {!isBlockedByPrerequisite && (shouldShowRunButton || showContinueButton) && (
             <div className="agent-card__actions">
               {shouldShowRunButton && (
                 <button
@@ -1639,11 +1671,7 @@ export function AgentProjectWorkspace({
   const instructionsTabRef = useRef<HTMLButtonElement>(null);
   const agentsTabRef = useRef<HTMLButtonElement>(null);
   const auditTabRef = useRef<HTMLButtonElement>(null);
-  const [activeTab, setActiveTab] = useState<
-    "instructions" | "agents" | "audit"
-  >(
-    "agents"
-  );
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(getWorkspaceTabFromUrl);
   const [agentResultStates, setAgentResultStates] = useState<AgentResultStates>(
     {}
   );
@@ -1678,7 +1706,7 @@ export function AgentProjectWorkspace({
   }, [handoffEnabledAgentIdsByProject]);
 
   useEffect(() => {
-    setActiveTab("agents");
+    setActiveTab(getWorkspaceTabFromUrl());
     setIsResetDialogOpen(false);
     setIsScheduleDialogOpen(false);
     setWorkflowSchedule(null);
@@ -1687,6 +1715,12 @@ export function AgentProjectWorkspace({
     setExportError("");
     setReleasedAutomaticAgentIds(new Set());
   }, [content?.projectId]);
+
+  useEffect(() => {
+    const handlePopState = (): void => setActiveTab(getWorkspaceTabFromUrl());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
 
   useEffect(() => {
     if (
@@ -1789,14 +1823,18 @@ export function AgentProjectWorkspace({
       const responses = findLastAgentResponses(
         getAgentConversationThreads(agent)
       );
-
-      restoredStates[agent.id] = {
+      const restoredState: AgentResultState = {
         responses,
-        selectedItemIndexes: responses.length > 0
-          ? [...(storedSelections[agent.id] ?? [])]
-          : [],
+        selectedItemIndexes: [],
         isInvalidated: false
       };
+
+      restoredState.selectedItemIndexes = responses.length === 0
+        ? []
+        : Object.prototype.hasOwnProperty.call(storedSelections, agent.id)
+          ? [...storedSelections[agent.id]]
+          : getDefaultHandoffSelections(restoredState);
+      restoredStates[agent.id] = restoredState;
     }
 
     setAgentResultStates(restoredStates);
@@ -1884,7 +1922,7 @@ export function AgentProjectWorkspace({
         continue;
       }
 
-      const automaticSelections = getAutomaticHandoffSelections(state);
+      const automaticSelections = getDefaultHandoffSelections(state);
 
       if (haveSameIndexes(state.selectedItemIndexes, automaticSelections)) {
         continue;
@@ -1934,6 +1972,9 @@ export function AgentProjectWorkspace({
   const auditTabId = `${tabsId}-audit-tab`;
   const auditPanelId = `${tabsId}-audit-panel`;
   const workflowAgents = [...content.agents];
+  const completedWorkflowAgentCount = workflowAgents.filter((agent) =>
+    (agentResultStates[agent.id]?.responses.length ?? 0) > 0
+  ).length;
   const workflowParameters = content.parameters ?? [];
   const missingWorkflowParameters = getMissingWorkflowParameters(
     workflowParameters,
@@ -2007,6 +2048,12 @@ export function AgentProjectWorkspace({
     (agent) => handoffEnabledAgentIds.has(agent.id)
   );
 
+  function selectTab(tab: WorkspaceTab, updateHistory = true): void {
+    if (tab === activeTab) return;
+    setActiveTab(tab);
+    if (updateHistory) updateWorkspaceView(tab);
+  }
+
   function handleTabKeyDown(
     event: KeyboardEvent<HTMLButtonElement>
   ): void {
@@ -2028,7 +2075,7 @@ export function AgentProjectWorkspace({
     }
 
     event.preventDefault();
-    setActiveTab(nextTab);
+    selectTab(nextTab);
     const nextRef = nextTab === "instructions"
       ? instructionsTabRef
       : nextTab === "agents"
@@ -2181,11 +2228,17 @@ export function AgentProjectWorkspace({
     responses: AgentResponsePayload[]
   ): void {
     const invalidatedAgentIds = getInvalidatedAgentIds(agentId);
+    const nextAgentState: AgentResultState = {
+      responses,
+      selectedItemIndexes: [],
+      isInvalidated: false
+    };
+    nextAgentState.selectedItemIndexes = getDefaultHandoffSelections(nextAgentState);
     const storedSelections = {
       ...(selectedItemIndexesByProject.current[projectId] ?? {})
     };
 
-    storedSelections[agentId] = [];
+    storedSelections[agentId] = [...nextAgentState.selectedItemIndexes];
 
     for (const invalidatedAgentId of invalidatedAgentIds) {
       storedSelections[invalidatedAgentId] = [];
@@ -2195,11 +2248,7 @@ export function AgentProjectWorkspace({
     rearmInvalidatedAgents(agentId, invalidatedAgentIds);
     setAgentResultStates((currentStates) => ({
       ...clearInvalidatedAgentResults(currentStates, invalidatedAgentIds),
-      [agentId]: {
-        responses,
-        selectedItemIndexes: [],
-        isInvalidated: false
-      }
+      [agentId]: nextAgentState
     }));
   }
 
@@ -2370,7 +2419,7 @@ export function AgentProjectWorkspace({
               aria-controls={instructionsPanelId}
               aria-selected={activeTab === "instructions"}
               tabIndex={activeTab === "instructions" ? 0 : -1}
-              onClick={() => setActiveTab("instructions")}
+              onClick={() => selectTab("instructions")}
               onKeyDown={handleTabKeyDown}
             >
               {t("workspace.instructionsTab")}
@@ -2386,7 +2435,7 @@ export function AgentProjectWorkspace({
               aria-controls={agentsPanelId}
               aria-selected={activeTab === "agents"}
               tabIndex={activeTab === "agents" ? 0 : -1}
-              onClick={() => setActiveTab("agents")}
+              onClick={() => selectTab("agents")}
               onKeyDown={handleTabKeyDown}
             >
               {agentsTabLabel}
@@ -2402,7 +2451,7 @@ export function AgentProjectWorkspace({
               aria-controls={auditPanelId}
               aria-selected={activeTab === "audit"}
               tabIndex={activeTab === "audit" ? 0 : -1}
-              onClick={() => setActiveTab("audit")}
+              onClick={() => selectTab("audit")}
               onKeyDown={handleTabKeyDown}
             >
               {t("workspace.auditTab")}
@@ -2511,7 +2560,10 @@ export function AgentProjectWorkspace({
           aria-labelledby={auditTabId}
           tabIndex={0}
         >
-          <WorkflowAuditPanel projectId={projectId} />
+          <WorkflowAuditPanel
+            projectId={projectId}
+            onStartRun={() => selectTab("agents")}
+          />
         </div>
       ) : (
         <section
@@ -2540,6 +2592,30 @@ export function AgentProjectWorkspace({
                   }}
                 />
               )}
+              <nav className="workflow-progress" aria-label={t("workspace.progress")}>
+                <div>
+                  <strong>{t("workspace.progress")}</strong>
+                  <span>{t("workspace.progressCount", {
+                    completed: completedWorkflowAgentCount,
+                    total: workflowAgents.length
+                  })}</span>
+                </div>
+                <ol>
+                  {workflowAgents.map((agent, index) => {
+                    const state = agent.executionStatus === "running"
+                      ? "running"
+                      : (agentResultStates[agent.id]?.responses.length ?? 0) > 0
+                        ? "completed"
+                        : "pending";
+                    return (
+                      <li className={`workflow-progress__step workflow-progress__step--${state}`} key={agent.id}>
+                        <span aria-hidden="true">{state === "completed" ? "✓" : index + 1}</span>
+                        <strong>{agent.name}</strong>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </nav>
               <div
                 className={`agent-project__workflow${
                   workflowFeedbackLoopPlacements.length > 0

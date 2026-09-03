@@ -40,11 +40,11 @@ async function withConfigurationFile(
   }
 }
 
-test("utilise autopilot et allow all par défaut", async () => {
+test("utilise autopilot sans désactiver les protections par défaut", async () => {
   await withConfigurationFile(null, async (service) => {
     assert.deepEqual(await service.getConfiguration(), {
       autopilot: true,
-      allowAll: true
+      allowAll: false
     });
   });
 });

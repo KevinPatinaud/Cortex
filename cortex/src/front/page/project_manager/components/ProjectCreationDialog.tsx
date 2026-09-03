@@ -17,6 +17,7 @@ import {
   type AgentProject
 } from "../../../services/agentApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
+import { trapDialogFocus } from "../../shared/dialogFocus.ts";
 
 interface ProjectCreationDialogProps {
   isPending: boolean;
@@ -109,9 +110,12 @@ export function ProjectCreationDialog({
     <dialog
       className="project-creation-dialog"
       ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
       aria-busy={isPending}
+      onKeyDown={trapDialogFocus}
       onCancel={(event) => {
         event.preventDefault();
         if (!isPending) {
@@ -157,7 +161,7 @@ export function ProjectCreationDialog({
         <div className="project-creation-dialog__layout">
           <div className="project-creation-dialog__fields">
             <label className="editor-field">
-              <span>{t("creation.projectName")}</span>
+              <span>{t("creation.projectName")} <em>{t("form.required")}</em></span>
               <input
                 ref={nameInputRef}
                 value={name}
@@ -200,7 +204,7 @@ export function ProjectCreationDialog({
             </fieldset>
 
             <label className="editor-field editor-field--instructions">
-              <span>{t("creation.projectDescription")}</span>
+              <span>{t("creation.projectDescription")} <em>{t("form.required")}</em></span>
               <textarea
                 value={projectDescription}
                 onChange={(event) => setProjectDescription(event.target.value)}
@@ -251,6 +255,7 @@ export function ProjectCreationDialog({
               isPending ||
               isDetectingEngine ||
               !engine ||
+              !name.trim() ||
               !projectDescription.trim()
             }
           >

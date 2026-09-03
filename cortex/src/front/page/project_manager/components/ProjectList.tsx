@@ -1,5 +1,5 @@
 import { useState, type DragEvent, type KeyboardEvent } from "react";
-import { Check, Folder, LoaderCircle } from "lucide-react";
+import { Check, Folder, GripVertical, LoaderCircle } from "lucide-react";
 import type { Project } from "../../../services/projectApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
 
@@ -12,6 +12,7 @@ interface ProjectListProps {
   loadingProjectId: string | null;
   selectedProjectId: string | null;
   isInteractionLocked: boolean;
+  isReorderLocked: boolean;
   onSelect: (project: Project) => void;
   onReorder: (projects: Project[]) => void;
 }
@@ -30,6 +31,7 @@ export function ProjectList({
   loadingProjectId,
   selectedProjectId,
   isInteractionLocked,
+  isReorderLocked,
   onSelect,
   onReorder
 }: ProjectListProps) {
@@ -84,6 +86,7 @@ export function ProjectList({
     projectId: string
   ): void {
     if (
+      isReorderLocked ||
       !event.altKey ||
       (event.key !== "ArrowUp" && event.key !== "ArrowDown")
     ) {
@@ -144,8 +147,8 @@ export function ProjectList({
                 : ""
             }`}
             key={project.id}
-            draggable={!isInteractionLocked}
-            title={t("project.reorderHelp")}
+            draggable={!isInteractionLocked && !isReorderLocked}
+            title={isReorderLocked ? undefined : t("project.reorderHelp")}
             onDragStart={(event: DragEvent<HTMLLIElement>) => {
               setDraggedProjectId(project.id);
               event.dataTransfer.effectAllowed = "move";
@@ -154,7 +157,7 @@ export function ProjectList({
             }}
             onDragEnd={clearDragState}
             onDragOver={(event: DragEvent<HTMLLIElement>) => {
-              if (!draggedProjectId || isInteractionLocked) {
+              if (!draggedProjectId || isInteractionLocked || isReorderLocked) {
                 return;
               }
 
@@ -179,6 +182,15 @@ export function ProjectList({
               }
             }}
           >
+            <span
+              className={`project-list__drag-handle${isReorderLocked
+                ? " project-list__drag-handle--disabled"
+                : ""}`}
+              aria-hidden="true"
+              title={isReorderLocked ? undefined : t("project.reorderHelp")}
+            >
+              <GripVertical size={15} />
+            </span>
             <button
               className="project-list__select-button"
               type="button"

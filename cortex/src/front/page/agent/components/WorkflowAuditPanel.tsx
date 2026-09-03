@@ -38,7 +38,13 @@ import { useTranslation } from "../../../i18n.tsx";
 
 const PAGE_SIZE = 20;
 
-export function WorkflowAuditPanel({ projectId }: { projectId: string }) {
+export function WorkflowAuditPanel({
+  projectId,
+  onStartRun
+}: {
+  projectId: string;
+  onStartRun: () => void;
+}) {
   const { language, t } = useTranslation();
   const [runs, setRuns] = useState<WorkflowAuditRunSummary[]>([]);
   const [scope, setScope] = useState<WorkflowAuditRunScope>("workflow");
@@ -294,9 +300,12 @@ export function WorkflowAuditPanel({ projectId }: { projectId: string }) {
 
           <div className="workflow-audit__detail">
             {!selectedRunId ? (
-              <p className="workflow-audit__empty">
-                {t(`audit.empty.${scope}` as Parameters<typeof t>[0])}
-              </p>
+              <div className="workflow-audit__empty workflow-audit__empty--action">
+                <p>{t(`audit.empty.${scope}` as Parameters<typeof t>[0])}</p>
+                <button type="button" onClick={onStartRun}>
+                  {t("audit.emptyAction")}
+                </button>
+              </div>
             ) : isLoadingDetail || !detail ? (
               <p className="workflow-audit__empty">
                 <LoaderCircle className="workflow-audit__spinner" aria-hidden="true" size={18} />

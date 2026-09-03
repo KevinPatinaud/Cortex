@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
-import { ChevronDown, FileArchive, FolderInput, Plus } from "lucide-react";
+import { ChevronDown, FileArchive, FolderInput, LoaderCircle, PanelLeftClose, PanelLeftOpen, Plus, Search } from "lucide-react";
 import { useTranslation } from "../../../i18n.tsx";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
 import {
@@ -45,6 +45,24 @@ function getProjectName(project: Project): string {
     project.directoryPath;
 }
 
+function updateProjectUrl(
+  projectId: string | null,
+  replace = false,
+  resetView = true
+): void {
+  const url = new URL(window.location.href);
+
+  if (projectId) {
+    url.searchParams.set("project", projectId);
+    if (resetView) url.searchParams.delete("view");
+  } else {
+    url.searchParams.delete("project");
+    url.searchParams.delete("view");
+  }
+
+  window.history[replace ? "replaceState" : "pushState"]({}, "", url);
+}
+
 export function ProjectDirectoryManager({
   activeProject,
   deletedProject,
@@ -58,18 +76,43 @@ export function ProjectDirectoryManager({
   const [error, setError] = useState("");
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
+  const [loadingProjectName, setLoadingProjectName] = useState("");
+  const [failedProject, setFailedProject] = useState<Project | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
   const [isCreationDialogOpen, setIsCreationDialogOpen] = useState(false);
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [projectSearch, setProjectSearch] = useState("");
   const directoryInputRef = useRef<HTMLInputElement>(null);
   const archiveInputRef = useRef<HTMLInputElement>(null);
+  const projectsRef = useRef<Project[]>([]);
+  const selectedProjectIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    projectsRef.current = projects;
+  }, [projects]);
+
+  useEffect(() => {
+    selectedProjectIdRef.current = selectedProjectId;
+  }, [selectedProjectId]);
 
   useEffect(() => {
     directoryInputRef.current?.setAttribute("webkitdirectory", "");
     directoryInputRef.current?.setAttribute("directory", "");
+  }, []);
+
+  useEffect(() => {
+    const mobileViewport = window.matchMedia("(max-width: 700px)");
+    const expandSidebarForMobile = (): void => {
+      if (mobileViewport.matches) setIsSidebarCollapsed(false);
+    };
+
+    expandSidebarForMobile();
+    mobileViewport.addEventListener("change", expandSidebarForMobile);
+    return () => mobileViewport.removeEventListener("change", expandSidebarForMobile);
   }, []);
 
   useEffect(() => {
@@ -93,6 +136,9 @@ export function ProjectDirectoryManager({
     setSelectedProjectId((currentId) =>
       currentId === deletedProject.id ? null : currentId
     );
+    if (selectedProjectIdRef.current === deletedProject.id) {
+      updateProjectUrl(null, true);
+    }
     setSaveMessage(t("project.deleted"));
   }, [deletedProject]);
 
@@ -109,15 +155,20 @@ export function ProjectDirectoryManager({
         if (isMounted) {
           setProjects(savedProjects);
 
-          if (actualLoadedProject) {
-            const actualProject = savedProjects.find(
-              (project) => project.id === actualLoadedProject.projectId
-            );
+          const requestedProjectId = new URL(window.location.href).searchParams.get("project");
+          const requestedProject = savedProjects.find((project) => project.id === requestedProjectId);
+          const actualProject = actualLoadedProject
+            ? savedProjects.find((project) => project.id === actualLoadedProject.projectId)
+            : undefined;
+          const projectToOpen = requestedProject ?? actualProject;
 
-            if (actualProject) {
-              setSelectedProjectId(actualProject.id);
-              onProjectLoaded(actualProject, actualLoadedProject);
-            }
+          if (projectToOpen) {
+            const content = actualLoadedProject?.projectId === projectToOpen.id
+              ? actualLoadedProject
+              : await loadAgentProject(projectToOpen.id);
+            setSelectedProjectId(projectToOpen.id);
+            updateProjectUrl(projectToOpen.id, true, false);
+            onProjectLoaded(projectToOpen, content);
           }
         }
       } catch (requestError) {
@@ -136,6 +187,18 @@ export function ProjectDirectoryManager({
     return () => {
       isMounted = false;
     };
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = (): void => {
+      const projectId = new URL(window.location.href).searchParams.get("project");
+      if (!projectId || projectId === selectedProjectIdRef.current) return;
+      const project = projectsRef.current.find((candidate) => candidate.id === projectId);
+      if (project) void handleProjectSelection(project, false);
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   async function handleDirectorySelection(
@@ -158,6 +221,7 @@ export function ProjectDirectoryManager({
       setProjects(result.projects);
       const content = await loadAgentProject(result.project.id);
       setSelectedProjectId(result.project.id);
+      updateProjectUrl(result.project.id);
       setIsProjectMenuOpen(false);
       setSaveMessage(result.conversion
         ? t("project.importConverted", result.conversion)
@@ -171,20 +235,25 @@ export function ProjectDirectoryManager({
     }
   }
 
-  async function handleProjectSelection(project: Project): Promise<void> {
+  async function handleProjectSelection(project: Project, updateHistory = true): Promise<void> {
     setLoadingProjectId(project.id);
+    setLoadingProjectName(getProjectName(project));
+    setFailedProject(null);
     setError("");
     setSaveMessage("");
 
     try {
       const content = await loadAgentProject(project.id);
       setSelectedProjectId(project.id);
+      if (updateHistory) updateProjectUrl(project.id);
       setIsProjectMenuOpen(false);
       onProjectLoaded(project, content);
     } catch (requestError) {
+      setFailedProject(project);
       setError(getErrorMessage(requestError, t("common.unexpectedError")));
     } finally {
       setLoadingProjectId(null);
+      setLoadingProjectName("");
     }
   }
 
@@ -207,6 +276,7 @@ export function ProjectDirectoryManager({
       setProjects(result.projects);
       const content = await loadAgentProject(result.project.id);
       setSelectedProjectId(result.project.id);
+      updateProjectUrl(result.project.id);
       setIsProjectMenuOpen(false);
       setSaveMessage(result.conversion
         ? t("project.importConverted", result.conversion)
@@ -250,6 +320,7 @@ export function ProjectDirectoryManager({
       const content = await loadAgentProject(result.project.id);
       setProjects(result.projects);
       setSelectedProjectId(result.project.id);
+      updateProjectUrl(result.project.id);
       setIsProjectMenuOpen(false);
       setIsCreationDialogOpen(false);
       setSaveMessage(t("project.created"));
@@ -266,6 +337,11 @@ export function ProjectDirectoryManager({
   const selectedProject = projects.find(
     (project) => project.id === selectedProjectId
   );
+  const filteredProjects = projects.filter((project) =>
+    getProjectName(project).toLocaleLowerCase().includes(
+      projectSearch.trim().toLocaleLowerCase()
+    )
+  );
   const isSidebarExpanded = isProjectMenuOpen || selectedProjectId === null;
 
   return (
@@ -273,7 +349,7 @@ export function ProjectDirectoryManager({
       <aside
         className={`project-sidebar${
           isSidebarExpanded ? " project-sidebar--expanded" : ""
-        }`}
+        }${isSidebarCollapsed ? " project-sidebar--collapsed" : ""}`}
         aria-label={t("sidebar.aria")}
       >
         <header className="project-sidebar__header">
@@ -298,6 +374,17 @@ export function ProjectDirectoryManager({
                 <span>{isSidebarExpanded ? t("sidebar.hide") : t("sidebar.change")}</span>
                 <ChevronDown aria-hidden="true" size={17} />
               </button>
+              <button
+                className="project-sidebar__collapse"
+                type="button"
+                aria-label={isSidebarCollapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+                title={isSidebarCollapsed ? t("sidebar.expand") : t("sidebar.collapse")}
+                onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
+              >
+                {isSidebarCollapsed
+                  ? <PanelLeftOpen aria-hidden="true" size={17} />
+                  : <PanelLeftClose aria-hidden="true" size={17} />}
+              </button>
             </div>
           </div>
           {selectedProject && (
@@ -309,16 +396,29 @@ export function ProjectDirectoryManager({
         </header>
 
         <div className="project-sidebar__content" id="project-sidebar-panel">
-          <ProjectList
-            projects={projects}
+          <label className="project-sidebar__search">
+            <Search aria-hidden="true" size={15} />
+            <input
+              type="search"
+              value={projectSearch}
+              placeholder={t("sidebar.search")}
+              aria-label={t("sidebar.search")}
+              onChange={(event) => setProjectSearch(event.target.value)}
+            />
+          </label>
+          {filteredProjects.length === 0 && projectSearch.trim() ? (
+            <p className="project-list__state">{t("sidebar.noSearchResult")}</p>
+          ) : <ProjectList
+            projects={filteredProjects}
             projectActivity={projectActivity}
             isLoading={isLoadingProjects}
             loadingProjectId={loadingProjectId}
             selectedProjectId={selectedProjectId}
             isInteractionLocked={isEditing || isReordering}
+            isReorderLocked={Boolean(projectSearch.trim())}
             onSelect={(project) => void handleProjectSelection(project)}
             onReorder={(nextProjects) => void handleProjectReorder(nextProjects)}
-          />
+          />}
         </div>
 
         <footer className="project-sidebar__footer">
@@ -343,7 +443,14 @@ export function ProjectDirectoryManager({
           <div className="project-sidebar__feedback" aria-live="polite">
             {saveMessage && <p className="success-message">{saveMessage}</p>}
             {error && (
-              <p className="error" role="alert">{error}</p>
+              <div className="project-sidebar__error" role="alert">
+                <p className="error">{error}</p>
+                {failedProject && (
+                  <button type="button" onClick={() => void handleProjectSelection(failedProject)}>
+                    {t("project.retry")}
+                  </button>
+                )}
+              </div>
             )}
           </div>
           <button
@@ -390,6 +497,15 @@ export function ProjectDirectoryManager({
           <AgentEngineStatus projectId={activeProject?.id} />
         </footer>
       </aside>
+
+      {loadingProjectId && (
+        <div className="project-loading-overlay" role="status" aria-live="polite">
+          <div>
+            <LoaderCircle aria-hidden="true" size={22} />
+            <strong>{t("project.loadingName", { name: loadingProjectName })}</strong>
+          </div>
+        </div>
+      )}
 
       {isCreationDialogOpen && (
         <ProjectCreationDialog

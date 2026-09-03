@@ -8,7 +8,7 @@ export interface AgentConfiguration {
 
 export const DEFAULT_AGENT_CONFIGURATION: AgentConfiguration = {
   autopilot: true,
-  allowAll: true
+  allowAll: false
 };
 
 export interface AgentExecutionOptions {

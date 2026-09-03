@@ -9,6 +9,7 @@ import {
   FileText,
   Lightbulb,
   LoaderCircle,
+  MoreHorizontal,
   Plus,
   RotateCcw,
   Save,
@@ -536,27 +537,6 @@ export function AgentProjectEditor({
               : t("editor.reviewProject")}
           </button>
           <button
-            className="project-editor__delete"
-            type="button"
-            onClick={() => {
-              setError("");
-              setIsDeleteDialogOpen(true);
-            }}
-            disabled={isSaving || isDeleting || isImproving}
-          >
-            <Trash2 aria-hidden="true" size={16} />
-            {t("editor.deleteProject")}
-          </button>
-          <button
-            className="project-editor__exit"
-            type="button"
-            onClick={requestClose}
-            disabled={isSaving || isImproving}
-          >
-            <X aria-hidden="true" size={16} />
-            {t("editor.leave")}
-          </button>
-          <button
             className="project-editor__save"
             type="button"
             onClick={() => void handleSave()}
@@ -569,6 +549,34 @@ export function AgentProjectEditor({
             )}
             {isSaving ? t("common.saving") : t("editor.saveAndClose")}
           </button>
+          <button
+            className="project-editor__exit"
+            type="button"
+            onClick={requestClose}
+            disabled={isSaving || isImproving}
+          >
+            <X aria-hidden="true" size={16} />
+            {t("editor.leave")}
+          </button>
+          <details className="project-editor__more">
+            <summary title={t("common.moreActions")} aria-label={t("common.moreActions")}>
+              <MoreHorizontal aria-hidden="true" size={18} />
+            </summary>
+            <div>
+              <button
+                className="project-editor__delete"
+                type="button"
+                onClick={() => {
+                  setError("");
+                  setIsDeleteDialogOpen(true);
+                }}
+                disabled={isSaving || isDeleting || isImproving}
+              >
+                <Trash2 aria-hidden="true" size={16} />
+                {t("editor.deleteProject")}
+              </button>
+            </div>
+          </details>
         </div>
       </header>
 

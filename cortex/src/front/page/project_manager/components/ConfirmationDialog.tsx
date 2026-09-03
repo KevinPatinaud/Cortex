@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 import { RotateCcw, Trash2, X } from "lucide-react";
 import { useTranslation } from "../../../i18n.tsx";
+import { trapDialogFocus } from "../../shared/dialogFocus.ts";
 
 interface ConfirmationDialogProps {
   variant: "reset" | "delete";
@@ -57,9 +58,12 @@ export function ConfirmationDialog({
     <dialog
       className={`confirmation-dialog confirmation-dialog--${variant}`}
       ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
       aria-busy={isPending}
+      onKeyDown={trapDialogFocus}
       onCancel={(event) => {
         event.preventDefault();
 

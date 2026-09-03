@@ -7,6 +7,7 @@ import {
 } from "../../../services/agentApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
 import { describeCronExpression } from "./CronExpressionDescription.ts";
+import { trapDialogFocus } from "../../shared/dialogFocus.ts";
 
 interface WorkflowScheduleDialogProps {
   projectId: string;
@@ -76,14 +77,19 @@ export function WorkflowScheduleDialog({
     timeStyle: "short"
   });
   const cronDescription = describeCronExpression(cron, language);
+  const isCronValid = cron.trim().length > 0 && cronDescription !== null;
+  const scheduleHasChanged = cron !== schedule.cron || enabled !== schedule.enabled;
 
   return (
     <dialog
       className="schedule-dialog"
       ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
       aria-busy={isSaving}
+      onKeyDown={trapDialogFocus}
       onCancel={(event) => {
         event.preventDefault();
         if (!isSaving) onCancel();
@@ -147,10 +153,13 @@ export function WorkflowScheduleDialog({
               spellCheck={false}
               autoComplete="off"
               required
+              aria-invalid={!isCronValid}
+              aria-describedby={`${descriptionId}-cron-help ${descriptionId}-cron-status`}
             />
-            <small>{t("schedule.expressionHelp")}</small>
+            <small id={`${descriptionId}-cron-help`}>{t("schedule.expressionHelp")}</small>
           </label>
           <output
+            id={`${descriptionId}-cron-status`}
             className={`schedule-dialog__cron-description${
               cronDescription
                 ? ""
@@ -177,11 +186,16 @@ export function WorkflowScheduleDialog({
           <p className="schedule-dialog__timezone">
             {t("schedule.timezone", { timezone: schedule.timezone })}
           </p>
-          {schedule.nextRunAt && schedule.enabled && (
+          {schedule.nextRunAt && enabled && !scheduleHasChanged && (
             <p className="schedule-dialog__next-run">
               {t("schedule.nextRun", {
                 date: dateFormatter.format(new Date(schedule.nextRunAt))
               })}
+            </p>
+          )}
+          {enabled && isCronValid && scheduleHasChanged && (
+            <p className="schedule-dialog__next-run">
+              {t("schedule.nextRunAfterSave")}
             </p>
           )}
           {schedule.lastRunAt && schedule.lastRunStatus && (
@@ -208,7 +222,11 @@ export function WorkflowScheduleDialog({
           <button type="button" onClick={onCancel} disabled={isSaving}>
             {t("common.cancel")}
           </button>
-          <button className="schedule-dialog__save" type="submit" disabled={isSaving}>
+          <button
+            className="schedule-dialog__save"
+            type="submit"
+            disabled={isSaving || !isCronValid}
+          >
             {isSaving && <LoaderCircle aria-hidden="true" size={16} />}
             {isSaving ? t("common.saving") : t("common.save")}
           </button>
