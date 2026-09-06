@@ -27,12 +27,43 @@ export interface AgentStatus {
 export class AgentService {
   private activeProvider: AgentProvider | null = null;
   private detectionPromise: Promise<AgentProvider | null> | null = null;
+  private readonly executionControllers = new Set<AbortController>();
+  private shutdownRequested = false;
+
+  cancelAllExecutions(): void {
+    this.shutdownRequested = true;
+    for (const controller of this.executionControllers) {
+      controller.abort(new DOMException("The server is stopping.", "AbortError"));
+    }
+  }
+
+  hasActiveExecutions(): boolean {
+    return this.executionControllers.size > 0;
+  }
+
+  private async trackExecution<T>(
+    options: AgentExecutionOptions,
+    execute: (options: AgentExecutionOptions) => Promise<T>
+  ): Promise<T> {
+    if (this.shutdownRequested) throw new DOMException("The server is stopping.", "AbortError");
+    const controller = new AbortController();
+    this.executionControllers.add(controller);
+    try {
+      const signal = options.signal
+        ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
+      signal.throwIfAborted();
+      return await execute({ ...options, signal });
+    } finally {
+      this.executionControllers.delete(controller);
+    }
+  }
 
   constructor(
     private readonly providers: AgentProvider[],
     private readonly configurationService: AgentConfigurationService,
     private readonly mcpConfigurationService?: McpConfigurationService,
-    private readonly codexPluginService?: CodexPluginService
+    private readonly codexPluginService?: CodexPluginService,
+    private readonly executionTimeoutMs = 15 * 60 * 1000
   ) {}
 
   getCodexPlugins(): Promise<CodexPluginCatalog> {
@@ -145,36 +176,45 @@ export class AgentService {
     prompt: string,
     options: AgentExecutionOptions
   ): Promise<AgentExecutionResult> {
-    const provider = this.providers.find(
-      (candidate) => candidate.engine === engine
-    );
-
-    if (!provider || !(await provider.isAvailable())) {
-      throw new Error(
-        `The ${engine} engine required by this agent is unavailable.`
+    return this.trackExecution(options, async (options) => {
+      const provider = this.providers.find(
+        (candidate) => candidate.engine === engine
       );
-    }
 
-    const configuration = await this.configurationService.getConfiguration();
+      if (!provider || !(await provider.isAvailable())) {
+        throw new Error(
+          `The ${engine} engine required by this agent is unavailable.`
+        );
+      }
 
-    return provider.ask(prompt, { ...options, configuration });
+      const configuration = await this.configurationService.getConfiguration();
+      options.signal?.throwIfAborted();
+      return provider.ask(prompt, {
+        ...options, configuration, timeoutMs: options.timeoutMs ?? this.executionTimeoutMs
+      });
+    });
   }
 
   async executeActive(
     prompt: string,
     options: AgentExecutionOptions
   ): Promise<AgentExecutionResult> {
-    const provider = await this.getActiveProvider();
+    return this.trackExecution(options, async (options) => {
+      const provider = await this.getActiveProvider();
 
-    if (!provider) {
-      throw new Error(
-        "No AI engine is configured. Install and connect Codex, Claude, or Copilot."
-      );
-    }
+      if (!provider) {
+        throw new Error(
+          "No AI engine is configured. Install and connect Codex, Claude, or Copilot."
+        );
+      }
 
-    const configuration = await this.configurationService.getConfiguration();
+      const configuration = await this.configurationService.getConfiguration();
 
-    return provider.ask(prompt, { ...options, configuration });
+      options.signal?.throwIfAborted();
+      return provider.ask(prompt, {
+        ...options, configuration, timeoutMs: options.timeoutMs ?? this.executionTimeoutMs
+      });
+    });
   }
 
   private async getActiveProvider(): Promise<AgentProvider | null> {

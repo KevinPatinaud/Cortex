@@ -119,6 +119,21 @@ export function createAgentController(
   );
 
   router.post(
+    "/projects/:projectId/workflow/resume",
+    asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+      response.json(await agentUseCase.resumeWorkflow(request.params.projectId));
+    }, agentErrorMappings.runAgent)
+  );
+
+  router.post(
+    "/projects/:projectId/workflow/cancel",
+    asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+      const cancelled = agentUseCase.cancelProjectExecution(request.params.projectId);
+      response.json({ cancelled });
+    }, agentErrorMappings.resetWorkflow)
+  );
+
+  router.post(
     "/projects/:projectId/workflow/reset",
     asyncRoute<unknown, { projectId: string }>(async (request, response) => {
       agentUseCase.resetWorkflow(request.params.projectId);

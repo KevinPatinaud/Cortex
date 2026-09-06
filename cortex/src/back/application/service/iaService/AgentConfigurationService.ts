@@ -1,4 +1,4 @@
-import { readFile, writeFile } from "node:fs/promises";
+import { JsonConfigurationRepository } from "../configuration/JsonConfigurationRepository.ts";
 import {
   DEFAULT_AGENT_CONFIGURATION,
   type AgentConfiguration
@@ -10,7 +10,11 @@ interface ApplicationConfiguration {
 }
 
 export class AgentConfigurationService {
-  constructor(private readonly configurationFile: string) {}
+  private readonly repository: JsonConfigurationRepository;
+
+  constructor(configurationFile: string) {
+    this.repository = new JsonConfigurationRepository(configurationFile);
+  }
 
   async getConfiguration(): Promise<AgentConfiguration> {
     const applicationConfiguration = await this.readConfiguration();
@@ -33,35 +37,17 @@ export class AgentConfigurationService {
   async saveConfiguration(
     configuration: AgentConfiguration
   ): Promise<AgentConfiguration> {
-    const applicationConfiguration = await this.readConfiguration();
     const storedConfiguration = { ...configuration };
-
-    await writeFile(
-      this.configurationFile,
-      JSON.stringify({
-        ...applicationConfiguration,
-        agentConfiguration: storedConfiguration
-      }, null, 2),
-      "utf8"
-    );
+    await this.repository.update<ApplicationConfiguration>((applicationConfiguration) => ({
+      ...applicationConfiguration,
+      agentConfiguration: storedConfiguration
+    }));
 
     return storedConfiguration;
   }
 
   private async readConfiguration(): Promise<ApplicationConfiguration> {
-    try {
-      const configuration: unknown = JSON.parse(
-        await readFile(this.configurationFile, "utf8")
-      );
-
-      return this.isRecord(configuration) ? configuration : {};
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return {};
-      }
-
-      throw error;
-    }
+    return this.repository.read<ApplicationConfiguration>();
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

@@ -1,3 +1,4 @@
+import { assertPortableProjectName, isExcludedProjectPath, isPortableProjectPath, maximumProjectFiles, maximumProjectBytes, maximumFileBytes } from "../../shared/ProjectArchivePolicy.ts";
 import { requestBlob, requestJson } from "./apiClient.ts";
 
 export interface Project {
@@ -15,11 +16,13 @@ export interface DeleteProjectResponse {
   projects: Project[];
 }
 
-export interface CreateProjectInput {
+export type CreateProjectInput = {
   name: string;
   engine: "codex" | "claude" | "copilot";
-  description: string;
-}
+} & (
+  | { generationMode?: "ai"; description: string }
+  | { generationMode: "empty"; instructions?: string }
+);
 
 export interface CreateProjectResponse extends SaveProjectResponse {
   project: Project;
@@ -43,14 +46,6 @@ export interface BrowserProjectUpload {
   files: BrowserProjectFile[];
 }
 
-const excludedDirectoryNames = new Set([
-  ".git",
-  "node_modules",
-  "dist",
-  "build",
-  "coverage",
-  ".next"
-]);
 
 interface DirectorySelectionResponse {
   directoryPath: string | null;
@@ -158,18 +153,12 @@ export function prepareProjectDirectoryUpload(
       throw new Error("The selected files do not belong to the same folder.");
     }
 
-    const normalizedSegments = segments.map((segment) => segment.toLowerCase());
-    const fileName = normalizedSegments.at(-1) ?? "";
-    const isExcludedDirectory = normalizedSegments
-      .slice(0, -1)
-      .some((segment) => excludedDirectoryNames.has(segment));
-    const isSensitiveEnvironmentFile =
-      (fileName === ".env" || fileName.startsWith(".env.")) &&
-      fileName !== ".env.example";
-
-    if (isExcludedDirectory || isSensitiveEnvironmentFile) {
-      return [];
+    const relativePath = segments.join("/");
+    if (isExcludedProjectPath(relativePath)) return [];
+    if (!isPortableProjectPath(relativePath)) {
+      throw new Error(`The uploaded path "${relativePath}" is invalid.`);
     }
+    if (file.size > maximumFileBytes) throw new Error("An uploaded file exceeds the 20 MB limit.");
 
     return [{ relativePath: segments.join("/"), file }];
   });
@@ -178,6 +167,11 @@ export function prepareProjectDirectoryUpload(
     throw new Error("The selected folder contains no importable files.");
   }
 
+  assertPortableProjectName(projectName);
+  if (files.length > maximumProjectFiles) throw new Error("The project exceeds the 2,000-file limit.");
+  if (files.reduce((total, entry) => total + entry.file.size, 0) > maximumProjectBytes) {
+    throw new Error("The project exceeds the 100 MB limit.");
+  }
   return { projectName, files };
 }
 

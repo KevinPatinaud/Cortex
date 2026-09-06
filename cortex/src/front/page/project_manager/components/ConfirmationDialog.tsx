@@ -76,7 +76,7 @@ export function ConfirmationDialog({
         className="confirmation-dialog__form"
         onSubmit={(event) => {
           event.preventDefault();
-          onConfirm();
+          if (!isPending) onConfirm();
         }}
       >
         <header className="confirmation-dialog__header">

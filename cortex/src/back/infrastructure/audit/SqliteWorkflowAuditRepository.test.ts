@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import Database from "better-sqlite3";
 import { SqliteWorkflowAuditRepository } from "./SqliteWorkflowAuditRepository.ts";
 
 test("persists a complete workflow audit with its exact prompt", async () => {
@@ -153,5 +154,69 @@ test("filters complete workflows and individual agent executions", () => {
     assert.equal(agents.items[0].scope, "agent");
   } finally {
     repository.close();
+  }
+});
+
+test("audit order follows insertion sequence even when timestamps tie or the clock moves backwards", () => {
+  let now = new Date("2026-09-06T10:00:00Z");
+  const repository = new SqliteWorkflowAuditRepository(":memory:", () => now);
+  const input = { projectId: "project", trigger: "manual" as const, scope: "workflow" as const, parameterValues: {}, workflowSnapshot: null };
+  try {
+    const firstRun = repository.createRun(input);
+    const ids: string[] = [];
+    for (let index = 0; index < 30; index++) {
+      ids.push(repository.startExecution({ runId: firstRun, agentId: `agent-${index}`, agentName: "Agent",
+        threadId: "thread", engine: "codex", input: { workflowParameterValues: {}, additionalInstructions: "", upstreamItems: [] }, prompt: `Prompt ${index}` }));
+      if (index === 15) now = new Date("2026-09-06T09:59:00Z");
+    }
+    const secondRun = repository.createRun(input);
+    assert.deepEqual(repository.getRun("project", firstRun)?.executions.map((execution) => execution.id), ids);
+    assert.deepEqual(repository.listRuns("project", 20, 0).items.map((run) => run.id), [secondRun, firstRun]);
+  } finally { repository.close(); }
+});
+
+test("scheduled occurrence claims are unique and retain interrupted state after restart", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-occurrence-"));
+  const databaseFile = path.join(directory, "audit.sqlite");
+  const occurrence = "2026-09-06T10:00:00Z";
+  const first = new SqliteWorkflowAuditRepository(databaseFile);
+  assert.equal(first.claimScheduledOccurrence("project", occurrence), true);
+  assert.equal(first.claimScheduledOccurrence("project", occurrence), false);
+  first.close();
+  const second = new SqliteWorkflowAuditRepository(databaseFile);
+  try {
+    assert.equal(second.claimScheduledOccurrence("project", occurrence), false);
+    assert.equal(second.getLatestScheduledOccurrence("project")?.status, "interrupted");
+    assert.equal(second.claimScheduledOccurrence("other-project", occurrence), true);
+  } finally {
+    second.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("legacy audit databases migrate their insertion order without losing history", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-audit-migration-"));
+  const databaseFile = path.join(directory, "audit.sqlite");
+  const input = { projectId: "project", trigger: "manual" as const, scope: "workflow" as const, parameterValues: {}, workflowSnapshot: null };
+  const original = new SqliteWorkflowAuditRepository(databaseFile);
+  const firstId = original.createRun(input);
+  original.completeRun(firstId, "succeeded");
+  original.close();
+  const legacy = new Database(databaseFile);
+  legacy.exec(`
+    DROP INDEX workflow_runs_sequence_idx;
+    DROP INDEX agent_executions_sequence_idx;
+    ALTER TABLE workflow_runs DROP COLUMN sequence;
+    ALTER TABLE agent_executions DROP COLUMN sequence;
+  `);
+  legacy.close();
+  const migrated = new SqliteWorkflowAuditRepository(databaseFile);
+  try {
+    const nextId = migrated.createRun(input);
+    assert.deepEqual(migrated.listRuns("project", 20, 0).items.map((run) => run.id), [nextId, firstId]);
+    assert.equal(migrated.getRun("project", firstId)?.status, "succeeded");
+  } finally {
+    migrated.close();
+    await rm(directory, { recursive: true, force: true });
   }
 });

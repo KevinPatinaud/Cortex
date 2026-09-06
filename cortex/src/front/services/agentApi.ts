@@ -60,8 +60,11 @@ export interface AgentDefinition {
   nextAgentIds: string[];
   inputMode: "separate" | "aggregate";
   hasSession: boolean;
-  executionStatus: "idle" | "running" | "failed";
+  executionStatus: "idle" | "running" | "failed" | "cancelled";
   executionError?: string;
+  executionStartedAt?: string;
+  executionLastActivityAt?: string;
+  executionProgress?: string;
   conversation: AgentConversationMessage[];
   threads: AgentConversationThread[];
   model?: string;
@@ -86,6 +89,8 @@ export interface ProjectInstructions {
 
 export interface AgentProject {
   projectId: string;
+  workflowResumable: boolean;
+  workflowParameterValues: WorkflowParameterValues;
   directoryPath: string;
   engine: AgentEngine;
   agents: AgentDefinition[];
@@ -118,7 +123,7 @@ export interface WorkflowSchedule {
   nextRunAt: string | null;
   running: boolean;
   lastRunAt: string | null;
-  lastRunStatus: "succeeded" | "failed" | "skipped" | null;
+  lastRunStatus: "succeeded" | "failed" | "skipped" | "cancelled" | "interrupted" | null;
   lastRunError: string | null;
   parameterValues: WorkflowParameterValues;
 }
@@ -394,6 +399,20 @@ export async function runAgent(
     conversation: data.conversation,
     threads: data.threads
   };
+}
+
+export async function cancelProjectExecution(projectId: string): Promise<void> {
+  await requestJson<{ cancelled: boolean }>(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/workflow/cancel`,
+    { method: "POST" }
+  );
+}
+
+export async function resumeWorkflow(projectId: string): Promise<void> {
+  await requestJson(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/workflow/resume`,
+    { method: "POST" }
+  );
 }
 
 export async function resetAgentProjectWorkflow(

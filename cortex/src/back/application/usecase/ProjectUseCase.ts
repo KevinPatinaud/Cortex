@@ -25,7 +25,9 @@ export interface CreateProjectInput {
   parentDirectory?: unknown;
   name?: unknown;
   engine?: unknown;
+  generationMode?: unknown;
   description?: unknown;
+  instructions?: unknown;
 }
 
 export interface EditableProjectAgentInput {
@@ -153,10 +155,23 @@ export class ProjectUseCase {
       "The project name is required."
     );
     const engine = this.getAgentEngine(input?.engine);
-    const description = this.getRequiredString(
-      input?.description,
-      "The project description is required."
-    );
+    const generationMode = input?.generationMode === undefined
+      ? "ai"
+      : input.generationMode;
+
+    if (generationMode !== "ai" && generationMode !== "empty") {
+      throw new ValidationError("The project generation mode is invalid.");
+    }
+
+    const description = generationMode === "ai"
+      ? this.getRequiredString(
+        input?.description,
+        "The project description is required."
+      )
+      : "";
+    const instructions = generationMode === "empty"
+      ? this.getInitialProjectInstructions(input?.instructions, name)
+      : "";
 
     if (
       name === "." ||
@@ -187,11 +202,9 @@ export class ProjectUseCase {
       throw error;
     }
 
-    const generatedProject = await this.generateProject(
-      name,
-      description,
-      parentDirectory
-    );
+    const generatedProject = generationMode === "ai"
+      ? await this.generateProject(name, description, parentDirectory)
+      : { instructions, agents: [] };
 
     try {
       return await this.projectService.createProject({
@@ -377,6 +390,24 @@ export class ProjectUseCase {
     }
 
     return value;
+  }
+
+  private getInitialProjectInstructions(value: unknown, name: string): string {
+    if (value !== undefined && typeof value !== "string") {
+      throw new ValidationError("The project instructions are invalid.");
+    }
+
+    const instructions = typeof value === "string" ? value : "";
+
+    if (instructions.length > 20_000) {
+      throw new ValidationError(
+        "The project instructions must not exceed 20,000 characters."
+      );
+    }
+
+    return instructions.trim()
+      ? instructions
+      : `# ${name}\n\n## Instructions globales\n\nÀ compléter.\n`;
   }
 
   private getEditableAgent(

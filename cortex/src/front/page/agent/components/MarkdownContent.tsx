@@ -1,40 +1,12 @@
-import Markdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import remarkGfm from "remark-gfm";
+import { lazy, Suspense } from "react";
+import { useTranslation } from "../../../i18n.tsx";
 
-const markdownSchema = {
-  ...defaultSchema,
-  tagNames: [...(defaultSchema.tagNames ?? []), "u"]
-};
+const MarkdownRenderer = lazy(() => import("./MarkdownRenderer.tsx")
+  .then((module) => ({ default: module.MarkdownRenderer })));
 
-interface MarkdownContentProps {
-  content: string;
-  className?: string;
-}
-
-export function MarkdownContent({
-  content,
-  className = ""
-}: MarkdownContentProps) {
-  return (
-    <div className={`agent-card__markdown ${className}`.trim()}>
-      <Markdown
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSchema]]}
-        components={{
-          a: ({ node: _node, ...properties }) => (
-            <a
-              {...properties}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(event) => event.stopPropagation()}
-            />
-          )
-        }}
-      >
-        {content}
-      </Markdown>
-    </div>
-  );
+export function MarkdownContent(props: { content: string; className?: string }) {
+  const { t } = useTranslation();
+  return <Suspense fallback={<span role="status">{t("common.loading")}</span>}>
+    <MarkdownRenderer {...props} />
+  </Suspense>;
 }

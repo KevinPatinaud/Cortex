@@ -3,6 +3,11 @@ import test from "node:test";
 import type { AgentUseCase } from "../../usecase/AgentUseCase.ts";
 import type { ProjectUseCase } from "../../usecase/ProjectUseCase.ts";
 import { WorkflowScheduler } from "./WorkflowScheduler.ts";
+import { WorkflowAuditService } from "../workflowAudit/WorkflowAuditService.ts";
+import { SqliteWorkflowAuditRepository } from "../../../infrastructure/audit/SqliteWorkflowAuditRepository.ts";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 
 test("déclenche une seule exécution par minute correspondante", async () => {
   const schedules = new Map<string, {
@@ -96,4 +101,61 @@ test("saute une occurrence lorsqu'une exécution est déjà active", async () =>
 
   assert.equal(state.lastRunStatus, "skipped");
   assert.match(state.lastRunError ?? "", /still running/);
+});
+
+test("saving an unchanged schedule and restarting do not replay the same occurrence", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-schedule-"));
+  const databaseFile = path.join(directory, "audit.sqlite");
+  const now = new Date("2026-09-06T10:00:05Z");
+  let schedule = { cron: "* * * * *", enabled: true, parameterValues: {} };
+  let runCount = 0;
+  const projectUseCase = {
+    getProjects: async () => [{ id: "project", directoryPath: directory }],
+    getWorkflowScheduleConfiguration: async () => schedule,
+    saveWorkflowScheduleConfiguration: async (_id: string, value: typeof schedule) => { schedule = value; }
+  } as unknown as ProjectUseCase;
+  const agentUseCase = {
+    isProjectRunning: () => false,
+    validateWorkflowParameterValues: async () => ({}),
+    runWorkflow: async () => { runCount++; }
+  } as unknown as AgentUseCase;
+  let repository = new SqliteWorkflowAuditRepository(databaseFile);
+  let scheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => now, new WorkflowAuditService(repository));
+  try {
+    await scheduler.start();
+    await new Promise(setImmediate);
+    await scheduler.saveSchedule("project", schedule);
+    scheduler.checkDueSchedules(now);
+    await new Promise(setImmediate);
+    assert.equal(runCount, 1);
+    scheduler.stop();
+    repository.close();
+    repository = new SqliteWorkflowAuditRepository(databaseFile);
+    scheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => now, new WorkflowAuditService(repository));
+    await scheduler.start();
+    await new Promise(setImmediate);
+    assert.equal(runCount, 1);
+    assert.equal((await scheduler.getSchedule("project")).lastRunStatus, "succeeded");
+    scheduler.checkDueSchedules(new Date("2026-09-06T10:01:05Z"));
+    await new Promise(setImmediate);
+    assert.equal(runCount, 2);
+  } finally {
+    scheduler.stop();
+    repository.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("a failed initialization can be started again", async () => {
+  let attempts = 0;
+  const projectUseCase = { getProjects: async () => {
+    if (++attempts === 1) throw new Error("Temporary read failure");
+    return [];
+  } } as unknown as ProjectUseCase;
+  const scheduler = new WorkflowScheduler(projectUseCase, {} as AgentUseCase);
+  try {
+    await assert.rejects(scheduler.start(), /Temporary read failure/);
+    await scheduler.start();
+    assert.equal(attempts, 2);
+  } finally { scheduler.stop(); }
 });

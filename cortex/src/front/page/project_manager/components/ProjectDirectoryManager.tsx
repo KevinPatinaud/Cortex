@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "react";
 import { ChevronDown, FileArchive, FolderInput, LoaderCircle, PanelLeftClose, PanelLeftOpen, Plus, Search } from "lucide-react";
 import { useTranslation } from "../../../i18n.tsx";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
@@ -18,6 +18,7 @@ import {
   type Project
 } from "../../../services/projectApi.ts";
 import { ProjectCreationDialog } from "./ProjectCreationDialog.tsx";
+import { getNavigationIndex, initializeNavigation, updateBrowserUrl } from "../../shared/browserNavigation.ts";
 import {
   ProjectList,
   type ProjectActivityStatus
@@ -34,6 +35,9 @@ interface ProjectDirectoryManagerProps {
     openEditor?: boolean,
     requiresInitialSave?: boolean
   ) => void;
+  onProjectCleared: () => void;
+  onBeforeProjectChange: () => boolean;
+  creationRequest: number;
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -60,7 +64,7 @@ function updateProjectUrl(
     url.searchParams.delete("view");
   }
 
-  window.history[replace ? "replaceState" : "pushState"]({}, "", url);
+  updateBrowserUrl(url, replace);
 }
 
 export function ProjectDirectoryManager({
@@ -68,18 +72,24 @@ export function ProjectDirectoryManager({
   deletedProject,
   isEditing,
   projectActivity,
-  onProjectLoaded
+  onProjectLoaded,
+  onProjectCleared,
+  onBeforeProjectChange,
+  creationRequest
 }: ProjectDirectoryManagerProps) {
   const { t } = useTranslation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
+  const [hasProjectListError, setHasProjectListError] = useState(false);
+  const [projectListAttempt, setProjectListAttempt] = useState(0);
   const [loadingProjectId, setLoadingProjectId] = useState<string | null>(null);
   const [loadingProjectName, setLoadingProjectName] = useState("");
   const [failedProject, setFailedProject] = useState<Project | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [isSelecting, setIsSelecting] = useState(false);
+  const [isDraggingArchive, setIsDraggingArchive] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isReordering, setIsReordering] = useState(false);
   const [isCreationDialogOpen, setIsCreationDialogOpen] = useState(false);
@@ -88,8 +98,34 @@ export function ProjectDirectoryManager({
   const [projectSearch, setProjectSearch] = useState("");
   const directoryInputRef = useRef<HTMLInputElement>(null);
   const archiveInputRef = useRef<HTMLInputElement>(null);
+  const archiveDragDepthRef = useRef(0);
+  const archiveImportPendingRef = useRef(false);
   const projectsRef = useRef<Project[]>([]);
   const selectedProjectIdRef = useRef<string | null>(null);
+  const selectionRequestRef = useRef(0);
+  const hasPendingSelectionRef = useRef(false);
+  const beforeProjectChangeRef = useRef(onBeforeProjectChange);
+  const currentNavigationRef = useRef({ url: window.location.href, index: getNavigationIndex() });
+  const isRestoringNavigationRef = useRef(false);
+  useEffect(() => {
+    if (creationRequest > 0) setIsCreationDialogOpen(true);
+  }, [creationRequest]);
+
+  useEffect(() => {
+    if (error) {
+      setIsProjectMenuOpen(true);
+      setIsSidebarCollapsed(false);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    beforeProjectChangeRef.current = onBeforeProjectChange;
+  }, [onBeforeProjectChange]);
+
+  useEffect(() => {
+    initializeNavigation();
+    currentNavigationRef.current = { url: window.location.href, index: getNavigationIndex() };
+  }, [isEditing, selectedProjectId]);
 
   useEffect(() => {
     projectsRef.current = projects;
@@ -146,13 +182,23 @@ export function ProjectDirectoryManager({
     let isMounted = true;
 
     async function loadProjects(): Promise<void> {
+      const selectionRequest = ++selectionRequestRef.current;
+      setIsLoadingProjects(true);
+      setHasProjectListError(false);
+      setError("");
       try {
-        const [savedProjects, actualLoadedProject] = await Promise.all([
+        const [savedResult, loadedResult] = await Promise.allSettled([
           getSavedProjects(),
           getActualLoadedAgentProject()
         ]);
 
-        if (isMounted) {
+        if (isMounted && selectionRequest === selectionRequestRef.current) {
+          if (savedResult.status === "rejected") {
+            setHasProjectListError(true);
+            throw savedResult.reason;
+          }
+          const savedProjects = savedResult.value;
+          const actualLoadedProject = loadedResult.status === "fulfilled" ? loadedResult.value : null;
           setProjects(savedProjects);
 
           const requestedProjectId = new URL(window.location.href).searchParams.get("project");
@@ -160,23 +206,35 @@ export function ProjectDirectoryManager({
           const actualProject = actualLoadedProject
             ? savedProjects.find((project) => project.id === actualLoadedProject.projectId)
             : undefined;
-          const projectToOpen = requestedProject ?? actualProject;
+          const projectToOpen = requestedProjectId ? requestedProject : actualProject;
+
+          if (requestedProjectId && !requestedProject) {
+            setError(t("project.notFound"));
+            updateProjectUrl(null, true);
+            setIsProjectMenuOpen(true);
+          }
 
           if (projectToOpen) {
+            hasPendingSelectionRef.current = true;
+            setFailedProject(projectToOpen);
             const content = actualLoadedProject?.projectId === projectToOpen.id
               ? actualLoadedProject
               : await loadAgentProject(projectToOpen.id);
+            if (!isMounted || selectionRequest !== selectionRequestRef.current) return;
+            hasPendingSelectionRef.current = false;
+            setFailedProject(null);
             setSelectedProjectId(projectToOpen.id);
             updateProjectUrl(projectToOpen.id, true, false);
             onProjectLoaded(projectToOpen, content);
           }
         }
       } catch (requestError) {
-        if (isMounted) {
+        if (isMounted && selectionRequest === selectionRequestRef.current) {
           setError(getErrorMessage(requestError, t("common.unexpectedError")));
         }
       } finally {
         if (isMounted) {
+          if (selectionRequest === selectionRequestRef.current) hasPendingSelectionRef.current = false;
           setIsLoadingProjects(false);
         }
       }
@@ -187,18 +245,69 @@ export function ProjectDirectoryManager({
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [projectListAttempt]);
 
   useEffect(() => {
-    const handlePopState = (): void => {
+    const handlePopState = (event: PopStateEvent): void => {
+      if (isRestoringNavigationRef.current) {
+        isRestoringNavigationRef.current = false;
+        event.stopImmediatePropagation();
+        return;
+      }
       const projectId = new URL(window.location.href).searchParams.get("project");
-      if (!projectId || projectId === selectedProjectIdRef.current) return;
+      if (projectId === selectedProjectIdRef.current) {
+        if (hasPendingSelectionRef.current) {
+          selectionRequestRef.current += 1;
+          hasPendingSelectionRef.current = false;
+          setLoadingProjectId(null);
+          setLoadingProjectName("");
+          setFailedProject(null);
+        }
+        return;
+      }
+
+      if (!beforeProjectChangeRef.current()) {
+        event.stopImmediatePropagation();
+        const previous = currentNavigationRef.current;
+        const nextIndex = getNavigationIndex();
+        if (previous.index !== null && nextIndex !== null && previous.index !== nextIndex) {
+          isRestoringNavigationRef.current = true;
+          window.history.go(previous.index - nextIndex);
+        } else {
+          updateBrowserUrl(new URL(previous.url));
+        }
+        return;
+      }
+      currentNavigationRef.current = { url: window.location.href, index: getNavigationIndex() };
+
+      if (!projectId) {
+        selectionRequestRef.current += 1;
+        hasPendingSelectionRef.current = false;
+        setLoadingProjectId(null);
+        setLoadingProjectName("");
+        setFailedProject(null);
+        setSelectedProjectId(null);
+        setIsProjectMenuOpen(false);
+        onProjectCleared();
+        return;
+      }
+
       const project = projectsRef.current.find((candidate) => candidate.id === projectId);
-      if (project) void handleProjectSelection(project, false);
+      if (project) {
+        void handleProjectSelection(project, false);
+      } else {
+        selectionRequestRef.current += 1;
+        hasPendingSelectionRef.current = false;
+        setLoadingProjectId(null);
+        setSelectedProjectId(null);
+        setError(t("project.notFound"));
+        updateProjectUrl(null, true);
+        onProjectCleared();
+      }
     };
 
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
+    window.addEventListener("popstate", handlePopState, true);
+    return () => window.removeEventListener("popstate", handlePopState, true);
   }, []);
 
   async function handleDirectorySelection(
@@ -236,6 +345,9 @@ export function ProjectDirectoryManager({
   }
 
   async function handleProjectSelection(project: Project, updateHistory = true): Promise<void> {
+    if (updateHistory && !beforeProjectChangeRef.current()) return;
+    const selectionRequest = ++selectionRequestRef.current;
+    hasPendingSelectionRef.current = true;
     setLoadingProjectId(project.id);
     setLoadingProjectName(getProjectName(project));
     setFailedProject(null);
@@ -244,16 +356,24 @@ export function ProjectDirectoryManager({
 
     try {
       const content = await loadAgentProject(project.id);
+      if (selectionRequest !== selectionRequestRef.current) return;
       setSelectedProjectId(project.id);
       if (updateHistory) updateProjectUrl(project.id);
       setIsProjectMenuOpen(false);
       onProjectLoaded(project, content);
+      if (window.matchMedia("(max-width: 700px)").matches) {
+        requestAnimationFrame(() => document.getElementById("main-content")?.focus());
+      }
     } catch (requestError) {
+      if (selectionRequest !== selectionRequestRef.current) return;
       setFailedProject(project);
       setError(getErrorMessage(requestError, t("common.unexpectedError")));
     } finally {
-      setLoadingProjectId(null);
-      setLoadingProjectName("");
+      if (selectionRequest === selectionRequestRef.current) {
+        hasPendingSelectionRef.current = false;
+        setLoadingProjectId(null);
+        setLoadingProjectName("");
+      }
     }
   }
 
@@ -263,10 +383,40 @@ export function ProjectDirectoryManager({
     const archive = event.target.files?.[0];
     event.target.value = "";
 
-    if (!archive) {
+    if (archive) await handleArchiveImport(archive);
+  }
+
+  function clearArchiveDragState(): void {
+    archiveDragDepthRef.current = 0;
+    setIsDraggingArchive(false);
+  }
+
+  function handleArchiveDragOver(event: DragEvent<HTMLDivElement>): void {
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = isImportDisabled ? "none" : "copy";
+  }
+
+  function handleArchiveDrop(event: DragEvent<HTMLDivElement>): void {
+    clearArchiveDragState();
+    if (!event.dataTransfer.types.includes("Files")) return;
+    event.preventDefault();
+    if (isImportDisabled || archiveImportPendingRef.current) return;
+
+    const archives = Array.from(event.dataTransfer.files);
+    const archive = archives[0];
+    if (archives.length !== 1 || !archive || !/\.ctx$/i.test(archive.name)) {
+      setSaveMessage("");
+      setError(t("project.archiveDropInvalid"));
       return;
     }
 
+    void handleArchiveImport(archive);
+  }
+
+  async function handleArchiveImport(archive: File): Promise<void> {
+    if (isImportDisabled || archiveImportPendingRef.current) return;
+    archiveImportPendingRef.current = true;
     setIsSelecting(true);
     setError("");
     setSaveMessage("");
@@ -286,12 +436,16 @@ export function ProjectDirectoryManager({
     } catch (requestError) {
       setError(getErrorMessage(requestError, t("common.unexpectedError")));
     } finally {
+      archiveImportPendingRef.current = false;
       setIsSelecting(false);
     }
   }
 
   async function handleProjectReorder(nextProjects: Project[]): Promise<void> {
     const previousProjects = projects;
+    const reorderControl = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
     setProjects(nextProjects);
     setIsReordering(true);
     setError("");
@@ -300,11 +454,20 @@ export function ProjectDirectoryManager({
       setProjects(await reorderProjects(
         nextProjects.map((project) => project.id)
       ));
+      setSaveMessage(t("project.reordered"));
     } catch (requestError) {
       setProjects(previousProjects);
       setError(getErrorMessage(requestError, t("project.reorderError")));
     } finally {
       setIsReordering(false);
+      requestAnimationFrame(() => {
+        if (!reorderControl?.isConnected ||
+          (document.activeElement !== document.body && document.activeElement !== reorderControl)) return;
+        const focusTarget = reorderControl.matches(":disabled")
+          ? reorderControl.closest(".project-list__item")?.querySelector<HTMLElement>(".project-list__select-button")
+          : reorderControl;
+        focusTarget?.focus({ preventScroll: true });
+      });
     }
   }
 
@@ -342,7 +505,9 @@ export function ProjectDirectoryManager({
       projectSearch.trim().toLocaleLowerCase()
     )
   );
-  const isSidebarExpanded = isProjectMenuOpen || selectedProjectId === null;
+  const isSidebarExpanded = isProjectMenuOpen;
+  const isProjectActionPending = isSelecting || isCreating || isReordering || loadingProjectId !== null;
+  const isImportDisabled = isProjectActionPending || isEditing || isLoadingProjects;
 
   return (
     <>
@@ -371,12 +536,14 @@ export function ProjectDirectoryManager({
                 }
                 onClick={() => setIsProjectMenuOpen((isOpen) => !isOpen)}
               >
-                <span>{isSidebarExpanded ? t("sidebar.hide") : t("sidebar.change")}</span>
+                <span>{isSidebarExpanded ? t("sidebar.hide") : t(selectedProject ? "sidebar.change" : "sidebar.show")}</span>
                 <ChevronDown aria-hidden="true" size={17} />
               </button>
               <button
                 className="project-sidebar__collapse"
                 type="button"
+                aria-expanded={!isSidebarCollapsed}
+                aria-controls="project-sidebar-panel"
                 aria-label={isSidebarCollapsed ? t("sidebar.expand") : t("sidebar.collapse")}
                 title={isSidebarCollapsed ? t("sidebar.expand") : t("sidebar.collapse")}
                 onClick={() => setIsSidebarCollapsed((collapsed) => !collapsed)}
@@ -407,14 +574,16 @@ export function ProjectDirectoryManager({
             />
           </label>
           {filteredProjects.length === 0 && projectSearch.trim() ? (
-            <p className="project-list__state">{t("sidebar.noSearchResult")}</p>
+            <p className="project-list__state" role="status">{t("sidebar.noSearchResult")}</p>
+          ) : hasProjectListError ? (
+            <p className="project-list__state">{t("project.listUnavailable")}</p>
           ) : <ProjectList
             projects={filteredProjects}
             projectActivity={projectActivity}
             isLoading={isLoadingProjects}
             loadingProjectId={loadingProjectId}
             selectedProjectId={selectedProjectId}
-            isInteractionLocked={isEditing || isReordering}
+            isInteractionLocked={isEditing || isProjectActionPending}
             isReorderLocked={Boolean(projectSearch.trim())}
             onSelect={(project) => void handleProjectSelection(project)}
             onReorder={(nextProjects) => void handleProjectReorder(nextProjects)}
@@ -446,7 +615,12 @@ export function ProjectDirectoryManager({
               <div className="project-sidebar__error" role="alert">
                 <p className="error">{error}</p>
                 {failedProject && (
-                  <button type="button" onClick={() => void handleProjectSelection(failedProject)}>
+                  <button type="button" disabled={loadingProjectId !== null} onClick={() => void handleProjectSelection(failedProject)}>
+                    {t("project.retry")}
+                  </button>
+                )}
+                {hasProjectListError && (
+                  <button type="button" onClick={() => setProjectListAttempt((attempt) => attempt + 1)}>
                     {t("project.retry")}
                   </button>
                 )}
@@ -461,14 +635,30 @@ export function ProjectDirectoryManager({
               setSaveMessage("");
               setIsCreationDialogOpen(true);
             }}
-            disabled={isSelecting || isCreating || isEditing}
+            disabled={isProjectActionPending || isEditing || isLoadingProjects}
           >
             <Plus aria-hidden="true" size={18} />
             {t("sidebar.newProject")}
           </button>
           <div
-            className="project-sidebar__import"
+            className={`project-sidebar__import${isDraggingArchive && !isImportDisabled
+              ? " project-sidebar__import--dragging"
+              : ""}`}
             aria-label={t("sidebar.importLabel")}
+            title={t("sidebar.importDropHelp")}
+            onDragEnter={(event) => {
+              if (!event.dataTransfer.types.includes("Files")) return;
+              handleArchiveDragOver(event);
+              archiveDragDepthRef.current += 1;
+              if (!isImportDisabled) setIsDraggingArchive(true);
+            }}
+            onDragOver={handleArchiveDragOver}
+            onDragLeave={(event) => {
+              if (!event.dataTransfer.types.includes("Files")) return;
+              archiveDragDepthRef.current = Math.max(0, archiveDragDepthRef.current - 1);
+              if (archiveDragDepthRef.current === 0) setIsDraggingArchive(false);
+            }}
+            onDrop={handleArchiveDrop}
           >
             <span>{isSelecting
               ? t("sidebar.importing")
@@ -478,7 +668,7 @@ export function ProjectDirectoryManager({
                 className="project-sidebar__import-button"
                 type="button"
                 onClick={() => directoryInputRef.current?.click()}
-                disabled={isSelecting || isCreating || isEditing}
+                disabled={isImportDisabled}
               >
                 <FolderInput aria-hidden="true" size={15} />
                 {t("sidebar.importFolder")}
@@ -487,7 +677,7 @@ export function ProjectDirectoryManager({
                 className="project-sidebar__import-button"
                 type="button"
                 onClick={() => archiveInputRef.current?.click()}
-                disabled={isSelecting || isCreating || isEditing}
+                disabled={isImportDisabled}
               >
                 <FileArchive aria-hidden="true" size={15} />
                 {t("sidebar.importArchive")}

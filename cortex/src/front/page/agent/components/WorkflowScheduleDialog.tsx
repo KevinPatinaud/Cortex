@@ -205,7 +205,11 @@ export function WorkflowScheduleDialog({
                   ? "schedule.lastRunSucceeded"
                   : schedule.lastRunStatus === "failed"
                     ? "schedule.lastRunFailed"
-                    : "schedule.lastRunSkipped",
+                    : schedule.lastRunStatus === "cancelled"
+                      ? "schedule.lastRunCancelled"
+                      : schedule.lastRunStatus === "interrupted"
+                        ? "schedule.lastRunInterrupted"
+                        : "schedule.lastRunSkipped",
                 { date: dateFormatter.format(new Date(schedule.lastRunAt)) }
               )}
             </p>

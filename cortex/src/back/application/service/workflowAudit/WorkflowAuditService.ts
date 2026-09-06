@@ -50,7 +50,24 @@ export interface CompleteWorkflowAuditExecutionInput {
   sessionId?: string;
 }
 
+export interface ScheduledOccurrence {
+  scheduledAt: string;
+  status: "running" | "succeeded" | "failed" | "skipped" | "cancelled" | "interrupted";
+  error: string | null;
+}
+
+export interface WorkflowCheckpointRecord {
+  fingerprint: string;
+  state: unknown;
+}
+
 export interface WorkflowAuditRepository {
+  saveCheckpoint(projectId: string, fingerprint: string, state: unknown): void;
+  getCheckpoint(projectId: string): WorkflowCheckpointRecord | null;
+  deleteCheckpoint(projectId: string): void;
+  claimScheduledOccurrence(projectId: string, scheduledAt: string): boolean;
+  completeScheduledOccurrence(projectId: string, scheduledAt: string, status: ScheduledOccurrence["status"], error?: string): void;
+  getLatestScheduledOccurrence(projectId: string): ScheduledOccurrence | null;
   createRun(input: CreateWorkflowAuditRunInput): string;
   completeRun(runId: string, status: WorkflowAuditRunStatus, error?: string): void;
   addEvent(
@@ -68,7 +85,8 @@ export interface WorkflowAuditRepository {
     executionId: string,
     error: string,
     response?: string,
-    sessionId?: string
+    sessionId?: string,
+    status?: "failed" | "cancelled"
   ): void;
   listRuns(
     projectId: string,
@@ -81,6 +99,30 @@ export interface WorkflowAuditRepository {
 
 export class WorkflowAuditService {
   constructor(private readonly repository: WorkflowAuditRepository) {}
+
+  saveCheckpoint(projectId: string, fingerprint: string, state: unknown): void {
+    this.repository.saveCheckpoint(projectId, fingerprint, state);
+  }
+
+  getCheckpoint(projectId: string): WorkflowCheckpointRecord | null {
+    return this.repository.getCheckpoint(projectId);
+  }
+
+  deleteCheckpoint(projectId: string): void {
+    this.repository.deleteCheckpoint(projectId);
+  }
+
+  claimScheduledOccurrence(projectId: string, scheduledAt: string): boolean {
+    return this.repository.claimScheduledOccurrence(projectId, scheduledAt);
+  }
+
+  completeScheduledOccurrence(projectId: string, scheduledAt: string, status: ScheduledOccurrence["status"], error?: string): void {
+    this.repository.completeScheduledOccurrence(projectId, scheduledAt, status, error);
+  }
+
+  getLatestScheduledOccurrence(projectId: string): ScheduledOccurrence | null {
+    return this.repository.getLatestScheduledOccurrence(projectId);
+  }
 
   createRun(input: CreateWorkflowAuditRunInput): string {
     return this.repository.createRun(input);
@@ -125,9 +167,10 @@ export class WorkflowAuditService {
     executionId: string,
     error: string,
     response?: string,
-    sessionId?: string
+    sessionId?: string,
+    status?: "failed" | "cancelled"
   ): void {
-    this.repository.failExecution(executionId, error, response, sessionId);
+    this.repository.failExecution(executionId, error, response, sessionId, status);
   }
 
   listRuns(

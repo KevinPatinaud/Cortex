@@ -15,6 +15,8 @@ import type {
   CompleteWorkflowAuditExecutionInput,
   CreateWorkflowAuditRunInput,
   StartWorkflowAuditExecutionInput,
+  ScheduledOccurrence,
+  WorkflowCheckpointRecord,
   WorkflowAuditRepository
 } from "../../application/service/workflowAudit/WorkflowAuditService.ts";
 
@@ -75,8 +77,8 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
     this.database.pragma("journal_mode = WAL");
     this.database.pragma("foreign_keys = ON");
     this.database.pragma("busy_timeout = 5000");
-    this.initializeSchema();
-    this.markInterruptedExecutions();
+    this.database.transaction(() => this.initializeSchema())();
+    this.database.transaction(() => this.markInterruptedExecutions())();
   }
 
   close(): void {
@@ -90,8 +92,9 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
       this.database.prepare(`
         INSERT INTO workflow_runs (
           id, project_id, trigger, scope, started_at, status,
-          parameters_json, workflow_snapshot_json
-        ) VALUES (?, ?, ?, ?, ?, 'running', ?, ?)
+          parameters_json, workflow_snapshot_json, sequence
+        ) VALUES (?, ?, ?, ?, ?, 'running', ?, ?,
+          (SELECT COALESCE(MAX(sequence), 0) + 1 FROM workflow_runs))
       `).run(
         runId,
         input.projectId,
@@ -163,8 +166,9 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
         INSERT INTO agent_executions (
           id, run_id, agent_id, agent_name, thread_id, attempt,
           engine, model, reasoning_effort, started_at, status,
-          input_json, prompt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?)
+          input_json, prompt, sequence
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'running', ?, ?,
+          (SELECT COALESCE(MAX(sequence), 0) + 1 FROM agent_executions))
       `).run(
         executionId,
         input.runId,
@@ -247,7 +251,8 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
     executionId: string,
     error: string,
     response?: string,
-    sessionId?: string
+    sessionId?: string,
+    status: "failed" | "cancelled" = "failed"
   ): void {
     const finishedAt = this.now().toISOString();
     const transaction = this.database.transaction(() => {
@@ -259,7 +264,7 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
         UPDATE agent_executions
         SET finished_at = ?,
             duration_ms = MAX(0, CAST(ROUND((julianday(?) - julianday(started_at)) * 86400000) AS INTEGER)),
-            status = 'failed',
+            status = ?,
             response = COALESCE(?, response),
             session_id = COALESCE(?, session_id),
             error = ?
@@ -267,6 +272,7 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
       `).run(
         finishedAt,
         finishedAt,
+        status,
         response ?? null,
         sessionId ?? null,
         error,
@@ -277,7 +283,7 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
         this.insertEvent(
           execution.run_id,
           executionId,
-          "agent.failed",
+          `agent.${status}`,
           finishedAt,
           { error }
         );
@@ -299,7 +305,7 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
       LEFT JOIN agent_executions AS executions ON executions.run_id = runs.id
       WHERE runs.project_id = ? AND (? IS NULL OR runs.scope = ?)
       GROUP BY runs.id
-      ORDER BY runs.started_at DESC, runs.id DESC
+      ORDER BY runs.sequence DESC
       LIMIT ? OFFSET ?
     `).all(projectId, scope ?? null, scope ?? null, limit, offset) as RunRow[];
     const countRow = this.database.prepare(`
@@ -333,7 +339,7 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
     const executionRows = this.database.prepare(`
       SELECT * FROM agent_executions
       WHERE run_id = ?
-      ORDER BY started_at ASC, id ASC
+      ORDER BY sequence ASC
     `).all(runId) as ExecutionRow[];
 
     return {
@@ -349,6 +355,46 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
         this.toAgentExecution(execution)
       )
     };
+  }
+
+  saveCheckpoint(projectId: string, fingerprint: string, state: unknown): void {
+    this.database.prepare(`
+      INSERT INTO workflow_checkpoints (project_id, fingerprint, state_json)
+      VALUES (?, ?, ?)
+      ON CONFLICT(project_id) DO UPDATE SET fingerprint = excluded.fingerprint, state_json = excluded.state_json
+    `).run(projectId, fingerprint, JSON.stringify(state));
+  }
+
+  getCheckpoint(projectId: string): WorkflowCheckpointRecord | null {
+    const row = this.database.prepare(`SELECT fingerprint, state_json FROM workflow_checkpoints WHERE project_id = ?`)
+      .get(projectId) as { fingerprint: string; state_json: string } | undefined;
+    return row ? { fingerprint: row.fingerprint, state: this.parseJson(row.state_json, null) } : null;
+  }
+
+  deleteCheckpoint(projectId: string): void {
+    this.database.prepare("DELETE FROM workflow_checkpoints WHERE project_id = ?").run(projectId);
+  }
+
+  claimScheduledOccurrence(projectId: string, scheduledAt: string): boolean {
+    return this.database.prepare(`
+      INSERT OR IGNORE INTO scheduled_occurrences (project_id, scheduled_at, status)
+      VALUES (?, ?, 'running')
+    `).run(projectId, scheduledAt).changes === 1;
+  }
+
+  completeScheduledOccurrence(projectId: string, scheduledAt: string, status: ScheduledOccurrence["status"], error?: string): void {
+    this.database.prepare(`
+      UPDATE scheduled_occurrences SET status = ?, error = ?
+      WHERE project_id = ? AND scheduled_at = ?
+    `).run(status, error ?? null, projectId, scheduledAt);
+  }
+
+  getLatestScheduledOccurrence(projectId: string): ScheduledOccurrence | null {
+    return (this.database.prepare(`
+      SELECT scheduled_at AS scheduledAt, status, error
+      FROM scheduled_occurrences WHERE project_id = ?
+      ORDER BY scheduled_at DESC LIMIT 1
+    `).get(projectId) as ScheduledOccurrence | undefined) ?? null;
   }
 
   private initializeSchema(): void {
@@ -408,6 +454,29 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
         ON audit_events(run_id, occurred_at, id);
     `);
 
+    for (const table of ["workflow_runs", "agent_executions"]) {
+      const columns = this.database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
+      if (!columns.some((column) => column.name === "sequence")) {
+        this.database.exec(`ALTER TABLE ${table} ADD COLUMN sequence INTEGER;
+          UPDATE ${table} SET sequence = rowid;`);
+      }
+      this.database.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ${table}_sequence_idx ON ${table}(sequence);`);
+    }
+    this.database.exec(`
+      CREATE TABLE IF NOT EXISTS workflow_checkpoints (
+        project_id TEXT PRIMARY KEY,
+        fingerprint TEXT NOT NULL,
+        state_json TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS scheduled_occurrences (
+        project_id TEXT NOT NULL,
+        scheduled_at TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error TEXT,
+        PRIMARY KEY (project_id, scheduled_at)
+      );
+    `);
+
     const runColumns = this.database.prepare(
       "PRAGMA table_info(workflow_runs)"
     ).all() as Array<{ name: string }>;
@@ -437,6 +506,9 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
 
   private markInterruptedExecutions(): void {
     const interruptedAt = this.now().toISOString();
+    this.database.prepare(`UPDATE scheduled_occurrences
+      SET status = 'interrupted', error = 'Cortex stopped before the scheduled execution completed.'
+      WHERE status = 'running'`).run();
     this.database.prepare(`
       UPDATE agent_executions
       SET status = 'interrupted',

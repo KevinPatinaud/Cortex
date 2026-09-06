@@ -3,20 +3,11 @@ import * as unzipper from "unzipper";
 import { ValidationError } from "../../application/error/ValidationError.ts";
 import type { UploadedProjectFile } from "../../application/service/projectService/ProjectService.ts";
 
-const maximumProjectFiles = 2_000;
-const maximumProjectBytes = 100 * 1024 * 1024;
-const maximumFileBytes = 20 * 1024 * 1024;
+import { assertPortableProjectName, assertProjectFileManifest, isExcludedProjectPath, isPortableProjectPath, maximumProjectFiles, maximumProjectBytes, maximumFileBytes } from "../../../shared/ProjectArchivePolicy.ts";
+
 const encryptedFlag = 0x1;
 const unixFileTypeMask = 0xf000;
 const unixSymbolicLinkType = 0xa000;
-const excludedDirectoryNames = new Set([
-  ".git",
-  "node_modules",
-  "dist",
-  "build",
-  "coverage",
-  ".next"
-]);
 
 export interface ImportedCortexArchive {
   projectName: string;
@@ -33,6 +24,9 @@ export async function readCortexProjectArchive(
   content: Buffer
 ): Promise<ImportedCortexArchive> {
   const projectName = getProjectName(archiveFileName);
+  if (content.byteLength > maximumProjectBytes) {
+    throw new ValidationError("The Cortex archive exceeds the 100 MB limit.");
+  }
   let directory: unzipper.CentralDirectory;
 
   try {
@@ -56,25 +50,18 @@ export async function readCortexProjectArchive(
   );
 
   const archiveFiles = removeOptionalRootDirectory(rawArchiveFiles)
-    .filter(({ relativePath }) => !isExcludedImportPath(relativePath));
+    .filter(({ relativePath }) => !isExcludedProjectPath(relativePath));
 
   archiveFiles.forEach(({ relativePath }) =>
     assertSafeArchivePath(relativePath)
   );
 
-  if (archiveFiles.length === 0 || archiveFiles.length > maximumProjectFiles) {
-    throw new ValidationError(
-      `The Cortex archive must contain between 1 and ${maximumProjectFiles} files.`
-    );
-  }
-
-  if (archiveFiles.reduce(
-    (total, { entry }) => total + entry.uncompressedSize,
-    0
-  ) > maximumProjectBytes) {
-    throw new ValidationError(
-      "The Cortex archive exceeds the 100 MB extracted-size limit."
-    );
+  try {
+    assertProjectFileManifest(archiveFiles.map(({ relativePath, entry }) => ({
+      relativePath, size: entry.uncompressedSize
+    })));
+  } catch (error) {
+    throw new ValidationError((error as Error).message);
   }
 
   let totalBytes = 0;
@@ -107,6 +94,11 @@ function getProjectName(archiveFileName: string): string {
     throw new ValidationError("The Cortex archive name is invalid.");
   }
 
+  try {
+    assertPortableProjectName(projectName);
+  } catch {
+    throw new ValidationError("The Cortex archive name is invalid.");
+  }
   return projectName;
 }
 
@@ -158,30 +150,9 @@ function removeOptionalRootDirectory(
     : files;
 }
 
-function isExcludedImportPath(relativePath: string): boolean {
-  const segments = relativePath.replace(/\\/g, "/").split("/");
-  const fileName = segments.at(-1)?.toLowerCase() ?? "";
-
-  return segments
-    .slice(0, -1)
-    .some((segment) => excludedDirectoryNames.has(segment.toLowerCase())) ||
-    ((fileName === ".env" || fileName.startsWith(".env.")) &&
-      fileName !== ".env.example");
-}
-
 function assertSafeArchivePath(relativePath: string): void {
-  const segments = relativePath.split("/");
-
-  if (
-    !relativePath ||
-    relativePath.startsWith("/") ||
-    relativePath.includes("\\") ||
-    /[<>:"|?*\u0000-\u001F]/.test(relativePath) ||
-    segments.some((segment) => !segment || segment === "." || segment === "..")
-  ) {
-    throw new ValidationError(
-      `The archived path "${relativePath}" is invalid.`
-    );
+  if (!isPortableProjectPath(relativePath)) {
+    throw new ValidationError(`The archived path "${relativePath}" is invalid.`);
   }
 }
 

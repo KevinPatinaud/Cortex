@@ -96,6 +96,7 @@ test("génère les instructions et les agents à partir de la description", asyn
     parentDirectory: "C:\\projects",
     name: "Atlas",
     engine: "claude",
+    generationMode: "ai",
     description: "Créer un observatoire des tendances du marché."
   });
 
@@ -129,6 +130,107 @@ test("refuse une réponse IA invalide avant de créer le dossier", async () => {
     /active AI engine returned an invalid project/
   );
   assert.equal(creationCalls.length, 0);
+});
+
+test("preserves Markdown whitespace in custom instructions without calling AI", async () => {
+  const { useCase, executionCalls, creationCalls } = createUseCase("invalid AI answer");
+
+  await useCase.createProject({
+    name: "Atlas",
+    engine: "copilot",
+    generationMode: "empty",
+    instructions: "    const language = 'French';\n\nWrite in French.  \n"
+  });
+
+  assert.deepEqual(executionCalls, []);
+  assert.deepEqual(creationCalls, [{
+    parentDirectory: "C:\\managed-projects",
+    name: "Atlas",
+    engine: "copilot",
+    instructions: "    const language = 'French';\n\nWrite in French.  \n",
+    agents: []
+  }]);
+});
+
+test("supplies minimal global instructions when empty-project instructions are omitted or blank", async () => {
+  for (const instructions of [undefined, "", " \n\t "]) {
+    const { useCase, executionCalls, creationCalls } = createUseCase("invalid AI answer");
+
+    await useCase.createProject({
+      name: " Atlas ",
+      engine: "codex",
+      generationMode: "empty",
+      instructions
+    });
+
+    assert.deepEqual(executionCalls, []);
+    assert.equal(creationCalls[0].instructions, "# Atlas\n\n## Instructions globales\n\nÀ compléter.\n");
+    assert.deepEqual(creationCalls[0].agents, []);
+  }
+});
+
+test("validates the creation mode before generating or saving a project", async () => {
+  for (const generationMode of [null, true, "manual", ""]) {
+    const { useCase, executionCalls, creationCalls } = createUseCase("invalid AI answer");
+
+    await assert.rejects(useCase.createProject({
+      name: "Atlas",
+      engine: "codex",
+      generationMode,
+      description: "Create a project."
+    }), /project generation mode is invalid/);
+
+    assert.deepEqual(executionCalls, []);
+    assert.deepEqual(creationCalls, []);
+  }
+});
+
+test("validates custom instructions before saving an empty project", async () => {
+  for (const instructions of [null, 42, {}, "x".repeat(20_001), ` ${"x".repeat(20_000)} `]) {
+    const { useCase, executionCalls, creationCalls } = createUseCase("invalid AI answer");
+
+    await assert.rejects(useCase.createProject({
+      name: "Atlas",
+      engine: "claude",
+      generationMode: "empty",
+      instructions
+    }), /project instructions (are invalid|must not exceed 20,000 characters)/);
+
+    assert.deepEqual(executionCalls, []);
+    assert.deepEqual(creationCalls, []);
+  }
+});
+
+test("accepts exactly 20,000 characters of custom instructions", async () => {
+  const { useCase, executionCalls, creationCalls } = createUseCase("invalid AI answer");
+
+  await useCase.createProject({
+    name: "Atlas",
+    engine: "codex",
+    generationMode: "empty",
+    instructions: "x".repeat(20_000)
+  });
+
+  assert.deepEqual(executionCalls, []);
+  assert.equal(creationCalls[0].instructions.length, 20_000);
+});
+
+test("requires a bounded description for explicit and default AI generation", async () => {
+  for (const generationMode of [undefined, "ai"]) {
+    for (const description of [undefined, " \n ", "x".repeat(20_001)]) {
+      const { useCase, executionCalls, creationCalls } = createUseCase("invalid AI answer");
+
+      await assert.rejects(useCase.createProject({
+        name: "Atlas",
+        engine: "codex",
+        generationMode,
+        description
+      }), /project description (is required|must not exceed 20,000 characters)/);
+
+      assert.deepEqual(executionCalls, []);
+      assert.deepEqual(creationCalls, []);
+    }
+  }
 });
 
 test("demande une architecture minimale et confie le fan-out a Cortex", async () => {

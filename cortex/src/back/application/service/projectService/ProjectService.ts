@@ -2,19 +2,21 @@
 import { randomUUID } from "node:crypto";
 import {
   mkdir,
+  mkdtemp,
   readdir,
   readFile,
   readlink,
   rename,
-  rm,
   stat,
-  unlink,
   writeFile
 } from "node:fs/promises";
 import path from "node:path";
 import type { WorkflowParameterDefinition } from "../../../../shared/WorkflowParameter.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
 import { prepareImportedProject } from "./ProjectImportConverter.ts";
+import { JsonConfigurationRepository } from "../configuration/JsonConfigurationRepository.ts";
+import { removeOwnedDirectory, withProjectFileTransaction, type ProjectFileChange } from "./ProjectFileTransaction.ts";
+import { assertPortableProjectName, assertProjectFileManifest } from "../../../../shared/ProjectArchivePolicy.ts";
 
 interface ProjectConfiguration {
   projects?: unknown;
@@ -97,17 +99,6 @@ export interface UploadedProjectFile {
   content: Buffer;
 }
 
-const maximumUploadedProjectFiles = 2_000;
-const maximumUploadedProjectBytes = 100 * 1024 * 1024;
-const maximumUploadedFileBytes = 20 * 1024 * 1024;
-const excludedUploadedDirectories = new Set([
-  ".git",
-  "node_modules",
-  "dist",
-  "build",
-  "coverage",
-  ".next"
-]);
 
 interface AgentFileConfiguration {
   rootDirectory: ".codex" | ".claude" | ".github";
@@ -178,17 +169,58 @@ export interface ProjectOtherContent {
 }
 
 export class ProjectService {
-  private projectsCache: Project[] | null = null;
-  private projectsLoading: Promise<Project[]> | null = null;
+  private readonly repository: JsonConfigurationRepository;
 
   constructor(
-    private readonly configurationFile: string,
+    configurationFile: string,
     private readonly defaultManagedProjectsDirectory = path.join(
       path.dirname(configurationFile),
       "projects"
     )
-  ) {}
+  ) {
+    this.repository = new JsonConfigurationRepository(configurationFile);
+  }
 
+
+  saveManagedProjectsDirectory(directoryPath: string): Promise<string> {
+    return this.repository.runExclusive(() => this.saveManagedProjectsDirectoryUnlocked(directoryPath));
+  }
+
+  createProject(options: CreateProjectOptions): Promise<CreateProjectResult> {
+    return this.repository.runExclusive(() => this.createProjectUnlocked(options));
+  }
+
+  importProject(name: string, files: UploadedProjectFile[], targetEngine?: ProjectAgentEngine | null): Promise<CreateProjectResult> {
+    return this.repository.runExclusive(() => this.importProjectUnlocked(name, files, targetEngine));
+  }
+
+  saveAgentProject(projectId: string, draft: EditableAgentProject): Promise<Project> {
+    return this.repository.runExclusive(() => this.saveAgentProjectUnlocked(projectId, draft));
+  }
+
+  saveProject(directoryPath: string): Promise<Project[]> {
+    return this.repository.runExclusive(() => this.saveProjectUnlocked(directoryPath));
+  }
+
+  reorderProjects(projectIds: string[]): Promise<Project[]> {
+    return this.repository.runExclusive(() => this.reorderProjectsUnlocked(projectIds));
+  }
+
+  getProjects(): Promise<Project[]> {
+    return this.repository.runExclusive(() => this.getProjectsUnlocked());
+  }
+
+  saveAgentWorkflowConfiguration(projectId: string, workflow: AgentWorkflowConfiguration): Promise<void> {
+    return this.repository.runExclusive(() => this.saveAgentWorkflowConfigurationUnlocked(projectId, workflow));
+  }
+
+  saveWorkflowScheduleConfiguration(projectId: string, schedule: WorkflowScheduleConfiguration): Promise<void> {
+    return this.repository.runExclusive(() => this.saveWorkflowScheduleConfigurationUnlocked(projectId, schedule));
+  }
+
+  deleteProject(directoryPath: string): Promise<DeleteProjectResult> {
+    return this.repository.runExclusive(() => this.deleteProjectUnlocked(directoryPath));
+  }
   async getManagedProjectsDirectory(): Promise<string> {
     const configuration = await this.readConfiguration();
     const configuredDirectory = configuration.projectsDirectory;
@@ -206,7 +238,7 @@ export class ProjectService {
     return directory;
   }
 
-  async saveManagedProjectsDirectory(directoryPath: string): Promise<string> {
+  private async saveManagedProjectsDirectoryUnlocked(directoryPath: string): Promise<string> {
     if (!path.isAbsolute(directoryPath)) {
       throw new TypeError("The projects directory must be an absolute path.");
     }
@@ -245,251 +277,137 @@ export class ProjectService {
     }
   }
 
-  async createProject(
-    options: CreateProjectOptions
-  ): Promise<CreateProjectResult> {
-    await this.assertProjectCanBeCreated(options.parentDirectory, options.name);
-    const parentDirectory = path.resolve(options.parentDirectory);
-    const projectDirectory = path.join(parentDirectory, options.name);
-
-    const fileConfiguration = agentFileConfigurations[options.engine];
-    await mkdir(projectDirectory);
-    await mkdir(
-      path.join(
-        projectDirectory,
-        fileConfiguration.rootDirectory,
-        "agents"
-      ),
-      { recursive: true }
-    );
-    await writeFile(
-      path.join(projectDirectory, fileConfiguration.instructionsFileName),
-      options.instructions,
-      "utf8"
-    );
-
-    const unavailableFileNames = new Set<string>();
-
+  private async createProjectUnlocked(options: CreateProjectOptions): Promise<CreateProjectResult> {
+    assertPortableProjectName(options.name);
+    const configuration = agentFileConfigurations[options.engine];
+    const files: UploadedProjectFile[] = [{
+      relativePath: configuration.instructionsFileName,
+      content: Buffer.from(options.instructions, "utf8")
+    }];
+    const usedNames = new Set<string>();
     for (const agent of options.agents ?? []) {
-      const fileName = this.createAgentFileName(
-        agent.name,
-        fileConfiguration.extension,
-        unavailableFileNames
-      );
-      unavailableFileNames.add(fileName);
-      await writeFile(
-        path.join(
-          projectDirectory,
-          fileConfiguration.rootDirectory,
-          "agents",
-          fileName
-        ),
-        this.serializeAgent(options.engine, agent),
-        "utf8"
-      );
+      const name = this.createAgentFileName(agent.name, configuration.extension, usedNames);
+      usedNames.add(name);
+      files.push({
+        relativePath: `${configuration.rootDirectory}/agents/${name}`,
+        content: Buffer.from(this.serializeAgent(options.engine, agent), "utf8")
+      });
     }
-
-    if ((options.agents?.length ?? 0) === 0) {
-      await writeFile(
-        path.join(
-          projectDirectory,
-          fileConfiguration.rootDirectory,
-          "agents",
-          ".gitkeep"
-        ),
-        "",
-        "utf8"
-      );
+    if (!options.agents?.length) {
+      files.push({
+        relativePath: `${configuration.rootDirectory}/agents/.gitkeep`,
+        content: Buffer.alloc(0)
+      });
     }
-
-    const projects = await this.saveProject(projectDirectory);
-    const project = projects.find((candidate) =>
-      this.pathsAreEqual(candidate.directoryPath, projectDirectory)
-    );
-
-    if (!project) {
-      throw new Error("The new project could not be saved.");
-    }
-
-    return { project, projects };
+    return this.publishProject(options.parentDirectory, options.name, files);
   }
 
-  async importProject(
+  private async importProjectUnlocked(
     name: string,
     files: UploadedProjectFile[],
     targetEngine?: ProjectAgentEngine | null
   ): Promise<CreateProjectResult> {
     this.validateImportedProject(name, files);
-    const preparedImport = prepareImportedProject(files, targetEngine);
-    this.validateImportedProject(name, preparedImport.files);
-
-    const projectsDirectory = await this.ensureManagedProjectsDirectory();
-    const projectDirectory = path.join(projectsDirectory, name);
-    const temporaryDirectory = path.join(
-      projectsDirectory,
-      `.cortex-upload-${randomUUID()}`
-    );
-
-    if (await this.pathExists(projectDirectory)) {
-      throw new TypeError(
-        "A file or directory with this name already exists at this location."
-      );
-    }
-
-    await mkdir(temporaryDirectory);
-
-    try {
-      for (const file of preparedImport.files) {
-        const destination = path.join(
-          temporaryDirectory,
-          ...file.relativePath.split("/")
-        );
-        await mkdir(path.dirname(destination), { recursive: true });
-        await writeFile(destination, file.content);
-      }
-
-      await rename(temporaryDirectory, projectDirectory);
-    } catch (error) {
-      await rm(temporaryDirectory, { recursive: true, force: true });
-      throw error;
-    }
-
-    const projects = await this.saveProject(projectDirectory);
-    const project = projects.find((candidate) =>
-      this.pathsAreEqual(candidate.directoryPath, projectDirectory)
-    );
-
-    if (!project) {
-      throw new Error("The imported project could not be saved.");
-    }
-
+    const prepared = prepareImportedProject(files, targetEngine);
+    this.validateImportedProject(name, prepared.files);
+    const directory = await this.ensureManagedProjectsDirectory();
+    const result = await this.publishProject(directory, name, prepared.files);
     return {
-      project,
-      projects,
-      ...(preparedImport.converted && preparedImport.sourceEngine &&
-        preparedImport.targetEngine
-        ? {
-          conversion: {
-            sourceEngine: preparedImport.sourceEngine,
-            targetEngine: preparedImport.targetEngine
-          }
-        }
-        : {})
+      ...result,
+      ...(prepared.converted && prepared.sourceEngine && prepared.targetEngine ? {
+        conversion: { sourceEngine: prepared.sourceEngine, targetEngine: prepared.targetEngine }
+      } : {})
     };
   }
 
-  async saveAgentProject(
+  private async publishProject(
+    parentDirectory: string,
+    name: string,
+    files: UploadedProjectFile[]
+  ): Promise<CreateProjectResult> {
+    assertPortableProjectName(name);
+    this.validateImportedProject(name, files);
+    await this.assertProjectCanBeCreated(parentDirectory, name);
+    const parent = path.resolve(parentDirectory);
+    const directory = path.join(parent, name);
+    const staging = await mkdtemp(path.join(parent, ".cortex-upload-"));
+    let published = false;
+    try {
+      for (const file of files) {
+        const destination = path.join(staging, ...file.relativePath.split("/"));
+        await mkdir(path.dirname(destination), { recursive: true });
+        await writeFile(destination, file.content);
+      }
+      await rename(staging, directory);
+      published = true;
+      const projects = await this.saveProject(directory);
+      const project = projects.find((candidate) =>
+        this.pathsAreEqual(candidate.directoryPath, directory)
+      );
+      if (!project) throw new Error("The new project could not be saved.");
+      return { project, projects };
+    } catch (error) {
+      await removeOwnedDirectory(published ? directory : staging, parent);
+      throw error;
+    }
+  }
+
+  private async saveAgentProjectUnlocked(
     projectId: string,
     draft: EditableAgentProject
   ): Promise<Project> {
+    assertPortableProjectName(draft.name);
     const projects = await this.getProjects();
-    const project = projects.find(
-      (candidate) => candidate.id === projectId
-    );
-
-    if (!project) {
-      throw new NotFoundError("The project could not be found.");
+    const project = projects.find((candidate) => candidate.id === projectId);
+    if (!project) throw new NotFoundError("The project could not be found.");
+    const nextDirectory = path.join(path.dirname(project.directoryPath), draft.name);
+    const renamed = project.directoryPath !== nextDirectory;
+    if (renamed && !this.pathsAreEqual(project.directoryPath, nextDirectory) &&
+      await this.pathExists(nextDirectory)) {
+      throw new TypeError("A file or directory with this name already exists at this location.");
     }
-
-    const nextDirectoryPath = path.join(
-      path.dirname(project.directoryPath),
-      draft.name
-    );
-    const isRenamed = project.directoryPath !== nextDirectoryPath;
-
-    if (
-      isRenamed &&
-      !this.pathsAreEqual(project.directoryPath, nextDirectoryPath) &&
-      await this.pathExists(nextDirectoryPath)
-    ) {
-      throw new TypeError(
-        "A file or directory with this name already exists at this location."
-      );
-    }
-
     const configuration = agentFileConfigurations[draft.engine];
-    const configurationDirectory = path.join(
-      project.directoryPath,
-      configuration.rootDirectory
-    );
-
+    const configurationDirectory = path.join(project.directoryPath, configuration.rootDirectory);
     if (!await this.pathExists(configurationDirectory)) {
-      throw new TypeError(
-        "The draft engine does not match the project configuration."
-      );
+      throw new TypeError("The draft engine does not match the project configuration.");
     }
-
     const agentsDirectory = path.join(configurationDirectory, "agents");
-    await mkdir(agentsDirectory, { recursive: true });
-
-    const currentAgentFileNames = (await readdir(agentsDirectory, {
-      withFileTypes: true
-    }))
-      .filter((entry) => entry.isFile() &&
-        this.isAgentFileName(entry.name, configuration.extension))
-      .map((entry) => entry.name);
-    const retainedFileNames = new Set<string>();
-
-    for (const agent of draft.agents) {
-      const existingFileName = agent.id
-        ? this.getExistingAgentFileName(
-          agent.id,
-          configuration,
-          currentAgentFileNames
-        )
-        : null;
-      const fileName = existingFileName ?? this.createAgentFileName(
-        agent.name,
-        configuration.extension,
-        new Set([...currentAgentFileNames, ...retainedFileNames])
-      );
-
-      if (retainedFileNames.has(fileName)) {
-        throw new TypeError("Two agents cannot use the same file.");
+    const entries = await readdir(agentsDirectory, { withFileTypes: true }).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === "ENOENT") return [];
+        throw error;
       }
-
-      retainedFileNames.add(fileName);
-      await writeFile(
-        path.join(agentsDirectory, fileName),
-        this.serializeAgent(draft.engine, agent),
-        "utf8"
-      );
-    }
-
-    for (const fileName of currentAgentFileNames) {
-      if (!retainedFileNames.has(fileName)) {
-        await unlink(path.join(agentsDirectory, fileName));
-      }
-    }
-
-    const emptyDirectoryMarker = path.join(agentsDirectory, ".gitkeep");
-
-    if (draft.agents.length === 0) {
-      await writeFile(emptyDirectoryMarker, "", "utf8");
-    } else {
-      await unlink(emptyDirectoryMarker).catch((error: NodeJS.ErrnoException) => {
-        if (error.code !== "ENOENT") {
-          throw error;
-        }
-      });
-    }
-
-    await writeFile(
-      path.join(project.directoryPath, configuration.instructionsFileName),
-      draft.instructions,
-      "utf8"
     );
-
-    if (isRenamed) {
-      await rename(project.directoryPath, nextDirectoryPath);
-      project.directoryPath = nextDirectoryPath;
-      await this.persistProjects(projects);
+    const currentNames = entries.filter((entry) => entry.isFile() &&
+      this.isAgentFileName(entry.name, configuration.extension)).map((entry) => entry.name);
+    const retained = new Set<string>();
+    const changes: ProjectFileChange[] = [];
+    const agentPrefix = `${configuration.rootDirectory}/agents/`;
+    for (const agent of draft.agents) {
+      const name = agent.id
+        ? this.getExistingAgentFileName(agent.id, configuration, currentNames)
+        : this.createAgentFileName(agent.name, configuration.extension,
+          new Set([...currentNames, ...retained]));
+      if (retained.has(name)) throw new TypeError("Two agents cannot use the same file.");
+      retained.add(name);
+      changes.push({ relativePath: agentPrefix + name, content: this.serializeAgent(draft.engine, agent) });
     }
-
-    return { ...project };
+    for (const name of currentNames) {
+      if (!retained.has(name)) changes.push({ relativePath: agentPrefix + name, content: null });
+    }
+    changes.push({ relativePath: agentPrefix + ".gitkeep", content: draft.agents.length ? null : "" });
+    changes.push({ relativePath: configuration.instructionsFileName, content: draft.instructions });
+    return withProjectFileTransaction(project.directoryPath, changes, async (renameProject) => {
+      if (renamed) {
+        await renameProject(nextDirectory);
+        project.directoryPath = nextDirectory;
+        await this.persistProjects(projects);
+      }
+      return { ...project };
+    });
   }
 
-  async saveProject(directoryPath: string): Promise<Project[]> {
+  private async saveProjectUnlocked(directoryPath: string): Promise<Project[]> {
     if (!directoryPath.trim()) {
       throw new TypeError("The directory path is required.");
     }
@@ -511,7 +429,7 @@ export class ProjectService {
     return this.cloneProjects(projects);
   }
 
-  async reorderProjects(projectIds: string[]): Promise<Project[]> {
+  private async reorderProjectsUnlocked(projectIds: string[]): Promise<Project[]> {
     const projects = await this.getProjects();
     const uniqueProjectIds = new Set(projectIds);
     const projectsById = new Map(projects.map((project) => [project.id, project]));
@@ -531,20 +449,8 @@ export class ProjectService {
     return this.cloneProjects(reorderedProjects);
   }
 
-  async getProjects(): Promise<Project[]> {
-    if (this.projectsCache) {
-      return this.cloneProjects(this.projectsCache);
-    }
-
-    this.projectsLoading ??= this.loadProjects();
-
-    try {
-      const projects = await this.projectsLoading;
-      this.projectsCache = projects;
-      return this.cloneProjects(projects);
-    } finally {
-      this.projectsLoading = null;
-    }
+  private async getProjectsUnlocked(): Promise<Project[]> {
+    return this.loadProjects();
   }
 
   async getProjectContent(id: string): Promise<ProjectContent> {
@@ -588,7 +494,7 @@ export class ProjectService {
     return null;
   }
 
-  async saveAgentWorkflowConfiguration(
+  private async saveAgentWorkflowConfigurationUnlocked(
     projectId: string,
     workflow: AgentWorkflowConfiguration
   ): Promise<void> {
@@ -620,7 +526,7 @@ export class ProjectService {
       : null;
   }
 
-  async saveWorkflowScheduleConfiguration(
+  private async saveWorkflowScheduleConfigurationUnlocked(
     projectId: string,
     schedule: WorkflowScheduleConfiguration
   ): Promise<void> {
@@ -649,7 +555,7 @@ export class ProjectService {
     });
   }
 
-  async deleteProject(directoryPath: string): Promise<DeleteProjectResult> {
+  private async deleteProjectUnlocked(directoryPath: string): Promise<DeleteProjectResult> {
     if (!directoryPath.trim()) {
       throw new TypeError("The directory path is required.");
     }
@@ -881,33 +787,14 @@ export class ProjectService {
     }
 
     await this.writeConfiguration(nextConfiguration);
-    this.projectsCache = this.cloneProjects(projects);
   }
 
-  private async readConfiguration(): Promise<ProjectConfiguration> {
-    try {
-      const configuration: unknown = JSON.parse(
-        await readFile(this.configurationFile, "utf8")
-      );
-
-      return this.isProjectConfiguration(configuration) ? configuration : {};
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return {};
-      }
-
-      throw error;
-    }
+  private readConfiguration(): Promise<ProjectConfiguration> {
+    return this.repository.read<ProjectConfiguration>();
   }
 
-  private writeConfiguration(
-    configuration: ProjectConfiguration
-  ): Promise<void> {
-    return writeFile(
-      this.configurationFile,
-      JSON.stringify(configuration, null, 2),
-      "utf8"
-    );
+  private writeConfiguration(configuration: ProjectConfiguration): Promise<void> {
+    return this.repository.replace(configuration);
   }
 
   private cloneAgentWorkflowConfiguration(
@@ -936,76 +823,12 @@ export class ProjectService {
     });
   }
 
-  private validateImportedProject(
-    name: string,
-    files: UploadedProjectFile[]
-  ): void {
-    if (
-      !name ||
-      name.length > 120 ||
-      name === "." ||
-      name === ".." ||
-      /[<>:"/\\|?*\u0000-\u001F]/.test(name)
-    ) {
-      throw new TypeError("The project name contains invalid characters.");
-    }
-
-    if (files.length === 0 || files.length > maximumUploadedProjectFiles) {
-      throw new TypeError(
-        `The project must contain between 1 and ${maximumUploadedProjectFiles} files.`
-      );
-    }
-
-    const paths = new Set<string>();
-    let totalBytes = 0;
-
-    for (const file of files) {
-      const relativePath = file.relativePath;
-      const segments = relativePath.split("/");
-      const portableKey = relativePath.toLowerCase();
-
-      if (
-        !relativePath ||
-        relativePath.startsWith("/") ||
-        relativePath.includes("\\") ||
-        segments.some((segment) => !segment || segment === "." || segment === "..") ||
-        segments.some((segment) => excludedUploadedDirectories.has(segment.toLowerCase()))
-      ) {
-        throw new TypeError(`The uploaded path "${relativePath}" is invalid.`);
-      }
-
-      const fileName = segments.at(-1)?.toLowerCase() ?? "";
-
-      if (
-        (fileName === ".env" || fileName.startsWith(".env.")) &&
-        fileName !== ".env.example"
-      ) {
-        throw new TypeError(
-          `The sensitive file "${relativePath}" cannot be imported.`
-        );
-      }
-
-      if (paths.has(portableKey)) {
-        throw new TypeError(`The uploaded path "${relativePath}" is duplicated.`);
-      }
-
-      if (file.content.byteLength > maximumUploadedFileBytes) {
-        throw new TypeError(`The file "${relativePath}" exceeds the 20 MB limit.`);
-      }
-
-      paths.add(portableKey);
-      totalBytes += file.content.byteLength;
-    }
-
-    if (totalBytes > maximumUploadedProjectBytes) {
-      throw new TypeError("The project exceeds the 100 MB limit.");
-    }
-
-    if (!paths.has("agents.md") && !paths.has("claude.md")) {
-      throw new TypeError(
-        "The selected folder must contain AGENTS.md or CLAUDE.md at its root."
-      );
-    }
+  private validateImportedProject(name: string, files: UploadedProjectFile[]): void {
+    assertPortableProjectName(name);
+    assertProjectFileManifest(files.map((file) => ({
+      relativePath: file.relativePath,
+      size: file.content.byteLength
+    })));
   }
 
   private isAgentFileName(

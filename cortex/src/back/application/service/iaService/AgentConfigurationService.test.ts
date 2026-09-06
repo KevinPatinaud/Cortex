@@ -85,10 +85,38 @@ test("injecte la même configuration dans tous les providers", async () => {
 
     await service.execute("codex", "Test", { model: "test-model" });
 
-    assert.deepEqual(receivedOptions, {
+    assert.ok(receivedOptions?.signal instanceof AbortSignal);
+    assert.deepEqual({ ...receivedOptions, signal: undefined }, {
+      signal: undefined,
       model: "test-model",
+      timeoutMs: 900_000,
       configuration: { autopilot: false, allowAll: true }
     });
+  });
+});
+
+test("shutdown cancels internal generation requests and prevents new engine work", async () => {
+  await withConfigurationFile({}, async (configurationService) => {
+    let notifyStarted!: () => void;
+    const started = new Promise<void>((resolve) => { notifyStarted = resolve; });
+    const provider: AgentProvider = {
+      engine: "codex", label: "Test",
+      async isAvailable() { return true; },
+      ask(_prompt, options) {
+        return new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
+          notifyStarted();
+        });
+      }
+    };
+    const service = new AgentService([provider], configurationService);
+    const generation = service.executeActive("Generate a project", {});
+    await started;
+    assert.equal(service.hasActiveExecutions(), true);
+    service.cancelAllExecutions();
+    await assert.rejects(generation, { name: "AbortError" });
+    assert.equal(service.hasActiveExecutions(), false);
+    await assert.rejects(service.executeActive("Another project", {}), { name: "AbortError" });
   });
 });
 

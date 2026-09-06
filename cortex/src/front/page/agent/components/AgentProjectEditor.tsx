@@ -28,7 +28,6 @@ import {
   reviewProject,
   saveAgentProject,
   type AgentProject,
-  type EditableAgentDefinition,
   type ImproveProjectAgent,
   type ProjectReview,
   type ProjectReviewFinding
@@ -40,6 +39,7 @@ import {
 import { useTranslation } from "../../../i18n.tsx";
 import { ConfirmationDialog } from "../../project_manager/components/ConfirmationDialog.tsx";
 import { MarkdownEditor } from "./MarkdownEditor.tsx";
+import { readProjectDraft, removeProjectDraft, saveProjectDraft, type DraftAgent } from "./projectDraft.ts";
 
 interface AgentProjectEditorProps {
   project: Project;
@@ -48,10 +48,7 @@ interface AgentProjectEditorProps {
   onClose: () => void;
   onSaved: (content: AgentProject) => void;
   onDeleted: (projectId: string) => void;
-}
-
-interface DraftAgent extends EditableAgentDefinition {
-  clientId: string;
+  onDirtyChange: (dirty: boolean) => void;
 }
 
 interface DeletedAgent {
@@ -129,7 +126,8 @@ export function AgentProjectEditor({
   requiresInitialSave,
   onClose,
   onSaved,
-  onDeleted
+  onDeleted,
+  onDirtyChange
 }: AgentProjectEditorProps) {
   const { t } = useTranslation();
   const [section, setSection] = useState<EditorSection>("agents");
@@ -158,25 +156,8 @@ export function AgentProjectEditor({
   const [error, setError] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
   const initialDraft = useRef(serializeDraft(projectName, instructions, agents));
-
-  useEffect(() => {
-    const nextInstructions = content.instructions.content ?? "";
-    const nextAgents = toDraftAgents(content);
-    const nextProjectName = getProjectName(project);
-    setProjectName(nextProjectName);
-    setInstructions(nextInstructions);
-    setAgents(nextAgents);
-    setSelectedAgentId((currentId) =>
-      nextAgents.some((agent) => agent.clientId === currentId)
-        ? currentId
-        : nextAgents[0]?.clientId ?? null
-    );
-    initialDraft.current = serializeDraft(
-      nextProjectName,
-      nextInstructions,
-      nextAgents
-    );
-  }, [content, project]);
+  const [recovery, setRecovery] = useState(() => readProjectDraft(project.id));
+  const [draftStorageAvailable, setDraftStorageAvailable] = useState(true);
 
   useEffect(() => {
     if (!agentImprovement && !instructionsImprovement && !projectReview) {
@@ -203,6 +184,39 @@ export function AgentProjectEditor({
     [agents, instructions, projectName]
   );
   const isDirty = requiresInitialSave || currentDraft !== initialDraft.current;
+  useEffect(() => {
+    onDirtyChange(isDirty);
+    return () => onDirtyChange(false);
+  }, [isDirty, onDirtyChange]);
+
+  useEffect(() => {
+    if (isDirty) {
+      setDraftStorageAvailable(saveProjectDraft(project.id, initialDraft.current, {
+        projectName, instructions, agents
+      }));
+    } else if (!recovery) {
+      removeProjectDraft(project.id);
+    }
+  }, [project.id, projectName, instructions, agents, isDirty, recovery]);
+
+  useEffect(() => {
+    if (!isDirty) return;
+    const persist = () => saveProjectDraft(project.id, initialDraft.current, {
+      projectName, instructions, agents
+    });
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      persist();
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    window.addEventListener("pagehide", persist);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      window.removeEventListener("pagehide", persist);
+    };
+  }, [project.id, projectName, instructions, agents, isDirty]);
+
   const isImproving = isImprovingAgent ||
     isImprovingInstructions ||
     isReviewingProject;
@@ -413,12 +427,13 @@ export function AgentProjectEditor({
 
   function requestClose(): void {
     if (
-      isDirty &&
+      (isDirty || recovery !== null) &&
       !window.confirm(t("editor.leaveConfirm"))
     ) {
       return;
     }
 
+    removeProjectDraft(project.id);
     onClose();
   }
 
@@ -460,6 +475,7 @@ export function AgentProjectEditor({
         }))
       });
       setDeletedAgent(null);
+      removeProjectDraft(project.id);
       setSaveMessage(t("editor.saved"));
       onSaved(savedContent);
       onClose();
@@ -476,6 +492,7 @@ export function AgentProjectEditor({
 
     try {
       await deleteProjectDirectory(project.directoryPath);
+      removeProjectDraft(project.id);
       setIsDeleteDialogOpen(false);
       onDeleted(project.id);
     } catch (requestError) {
@@ -488,7 +505,33 @@ export function AgentProjectEditor({
   const suggestions = modelSuggestions[content.engine];
 
   return (
-    <section className="workspace-content workspace-content--editor">
+    <main id="main-content" tabIndex={-1} className="workspace-content workspace-content--editor">
+      {recovery && (
+        <section className="project-editor__recovery" aria-label={t("editor.draftRecovery")}>
+          <div>
+            <strong>{t("editor.draftRecovery")}</strong>
+            <p>{t(recovery.base === initialDraft.current
+              ? "editor.draftRecoveryHelp"
+              : "editor.draftRecoveryConflict")}</p>
+          </div>
+          <button type="button" onClick={() => {
+            setProjectName(recovery.value.projectName);
+            setInstructions(recovery.value.instructions);
+            setAgents(recovery.value.agents);
+            setSelectedAgentId(recovery.value.agents[0]?.clientId ?? null);
+            setRecovery(null);
+            setSaveMessage(t("editor.draftRestored"));
+          }}>{t("editor.restoreDraft")}</button>
+          <button type="button" onClick={() => {
+            if (!window.confirm(t("editor.discardDraftConfirm"))) return;
+            removeProjectDraft(project.id);
+            setRecovery(null);
+          }}>{t("editor.discardDraft")}</button>
+        </section>
+      )}
+      {!draftStorageAvailable && (
+        <p className="project-editor__storage-warning" role="status">{t("editor.draftStorageUnavailable")}</p>
+      )}
       <header className="project-editor__topbar">
         <div className="project-editor__heading">
           <span className="project-editor__mode-pill">
@@ -1183,6 +1226,6 @@ export function AgentProjectEditor({
           </section>
         </div>
       )}
-    </section>
+    </main>
   );
 }

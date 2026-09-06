@@ -10,6 +10,8 @@ config.json
 
 # Sorties locales
 coverage/
+playwright-report/
+test-results/
 data/
 *.log
 .DS_Store

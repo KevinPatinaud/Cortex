@@ -59,11 +59,12 @@ input:focus-visible,
 textarea:focus-visible,
 select:focus-visible,
 summary:focus-visible {
-  outline: 3px solid rgb(49 199 230 / 28%);
+  outline: 3px solid #2563eb;
   outline-offset: 2px;
 }
 
-main {
+main,
+.app-shell {
   min-height: 100vh;
   background:
     radial-gradient(circle at 78% -8%, rgb(73 139 236 / 10%), transparent 34rem),
@@ -205,6 +206,7 @@ main {
 
 .agent-project__tabs-row {
   display: flex;
+  flex-wrap: wrap;
   margin-top: 0.55rem;
   align-items: flex-end;
   justify-content: space-between;
@@ -1181,17 +1183,18 @@ main {
 
 .agent-card__actions {
   display: flex;
+  flex-wrap: wrap;
   margin-top: 0.85rem;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 0.75rem;
 }
 
 .agent-card__run-button,
 .agent-card__continue-button {
   display: inline-flex;
-  min-height: 2.45rem;
-  padding: 0.55rem 0.85rem;
+  min-height: 2.75rem;
+  padding: 0.62rem 1rem;
   align-items: center;
   justify-content: center;
   gap: 0.48rem;
@@ -1200,16 +1203,15 @@ main {
   background: #2563eb;
   box-shadow: 0 8px 20px rgb(37 99 235 / 20%);
   color: #fff;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.68rem;
+  font-family: inherit;
+  font-size: 0.75rem;
   font-weight: 700;
-  letter-spacing: 0.055em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   transition: box-shadow 160ms ease, transform 160ms ease;
 }
 
 .agent-card__continue-button {
-  margin-left: auto;
   border-color: rgb(22 163 74 / 72%);
   background: #16a34a;
   box-shadow: 0 8px 20px rgb(22 163 74 / 20%);
@@ -1238,6 +1240,7 @@ main {
 
 .agent-project__tab-actions {
   display: flex;
+  max-width: 100%;
   margin-bottom: 0.42rem;
   margin-left: auto;
   flex: 0 0 auto;
@@ -1256,6 +1259,8 @@ main {
 .agent-project__schedule-button,
 .agent-project__reset-button,
 .agent-project__edit-button,
+.agent-project__stop-button,
+.agent-project__resume-button,
 .agent-project__export-button {
   display: inline-flex;
   min-height: 2.45rem;
@@ -1366,9 +1371,9 @@ main {
 
 .agent-card__conversation-title,
 .agent-card__conversation-message > span {
-  color: #7089ad;
+  color: #476187;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -1644,6 +1649,8 @@ main {
 }
 
 .agent-card__conversation-routing > span {
+  color: #476187;
+  font-size: 0.7rem;
   font-weight: 750;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1676,9 +1683,9 @@ main {
 }
 
 .agent-card__additional-instructions label {
-  color: #7089ad;
+  color: #526d93;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.58rem;
+  font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -2174,6 +2181,14 @@ main {
   margin-top: 0.52rem;
   align-items: center;
   gap: 0.42rem;
+  border-radius: 8px;
+  outline: 2px dashed transparent;
+  outline-offset: 4px;
+}
+
+.project-sidebar__import--dragging {
+  outline-color: #63a8ff;
+  background: rgb(37 99 235 / 12%);
 }
 
 .project-sidebar__import > span {
@@ -2185,6 +2200,10 @@ main {
   font-weight: 750;
   letter-spacing: 0.055em;
   text-transform: uppercase;
+}
+
+.project-sidebar__import--dragging > span {
+  color: #b6d3fa;
 }
 
 .project-sidebar__import-options {
@@ -2325,7 +2344,7 @@ main {
 }
 
 .editor-field > span em {
-  color: #8295af;
+  color: #526d93;
   font-size: 0.6rem;
   font-style: normal;
   font-weight: 500;
@@ -2367,7 +2386,7 @@ main {
 }
 
 .editor-field > small {
-  color: #8293aa;
+  color: #526d93;
   font-size: 0.6rem;
   line-height: 1.45;
 }
@@ -2410,7 +2429,7 @@ main {
   border: 0;
   border-radius: 6px;
   background: transparent;
-  color: #7287a3;
+  color: #526d93;
   font-size: 0.58rem;
   font-weight: 700;
 }
@@ -2512,7 +2531,7 @@ main {
 }
 
 .markdown-editor > small {
-  color: #8293aa;
+  color: #526d93;
   font-size: 0.6rem;
   line-height: 1.45;
 }
@@ -2532,6 +2551,26 @@ main {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.55rem;
+}
+
+.creation-mode-selector__options {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.creation-mode-option.engine-option {
+  min-height: 4.5rem;
+  padding-right: 1.1rem;
+}
+
+.creation-mode-option.engine-option strong,
+.creation-mode-option.engine-option small {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.creation-mode-option.engine-option small {
+  line-height: 1.45;
 }
 
 .engine-option {
@@ -2577,8 +2616,8 @@ main {
 
 .engine-option small {
   margin-top: 0.14rem;
-  color: #8196b3;
-  font-size: 0.57rem;
+  color: #526987;
+  font-size: 0.7rem;
 }
 
 .engine-option--selected {
@@ -2704,6 +2743,7 @@ main {
 
 .workspace-content--editor {
   min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
   padding: 1.35rem clamp(1.25rem, 3.4vw, 3.6rem) 3rem;
   align-content: start;
   background:
@@ -2731,8 +2771,8 @@ main {
 }
 
 .project-editor__name-field > span {
-  color: #8295af;
-  font-size: 0.58rem;
+  color: #5d7392;
+  font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2900,8 +2940,8 @@ main {
 
 .project-editor__summary span,
 .project-editor__summary em {
-  color: #7b90ad;
-  font-size: 0.55rem;
+  color: #5f7593;
+  font-size: 0.6rem;
   font-style: normal;
 }
 
@@ -3047,9 +3087,9 @@ main {
 .agent-library > header span,
 .agent-inspector__header > div > span,
 .instructions-editor > header > div > span {
-  color: #7890b2;
+  color: #557199;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.52rem;
+  font-size: 0.58rem;
   font-weight: 750;
   letter-spacing: 0.09em;
   text-transform: uppercase;
@@ -3128,9 +3168,9 @@ main {
   border: 1px solid rgb(68 115 182 / 15%);
   border-radius: 8px;
   background: #f2f7ff;
-  color: #6282ad;
+  color: #486b98;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 0.56rem;
+  font-size: 0.6rem;
   font-weight: 750;
 }
 
@@ -3154,8 +3194,8 @@ main {
 
 .agent-library__identity small {
   margin-top: 0.18rem;
-  color: #8397b2;
-  font-size: 0.56rem;
+  color: #526d93;
+  font-size: 0.6rem;
 }
 
 .agent-library__new {
@@ -4092,7 +4132,7 @@ main {
   width: 1.8rem;
   height: 1.8rem;
   padding: 0;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   place-items: center;
   border: 1px solid rgb(111 137 170 / 30%);
   border-radius: 6px;
@@ -5402,7 +5442,26 @@ dialog input {
   }
 
   .project-editor__topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
     align-items: flex-start;
+    gap: 0.9rem;
+  }
+
+  .project-editor__heading > div {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .project-editor__name-field input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .project-editor__topbar-actions {
+    min-width: 0;
+    width: 100%;
+    flex-wrap: wrap;
   }
 
   .project-editor__draft-status {
@@ -5418,7 +5477,12 @@ dialog input {
   }
 
   .project-editor__canvas {
-    grid-template-columns: minmax(13.5rem, 16rem) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .agent-library {
+    position: static;
+    max-height: 18rem;
   }
 
   .agent-inspector__row,
@@ -5975,7 +6039,7 @@ button:disabled {
 }
 
 .project-sidebar__search input::placeholder {
-  color: #6682a7;
+  color: #9bb5d9;
 }
 
 .project-sidebar--collapsed {
@@ -6024,93 +6088,6 @@ button:disabled {
 .project-list__item:focus-within .project-list__drag-handle--disabled {
   cursor: default;
   opacity: 0.25;
-}
-
-.workflow-progress {
-  position: sticky;
-  z-index: 6;
-  top: 0.5rem;
-  display: flex;
-  width: min(100%, 72rem);
-  margin: 0 auto 1rem;
-  padding: 0.7rem 0.85rem;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  border: 1px solid rgb(73 113 174 / 18%);
-  border-radius: 0.9rem;
-  background: rgb(255 255 255 / 92%);
-  box-shadow: 0 0.7rem 1.8rem rgb(35 73 128 / 8%);
-  backdrop-filter: blur(12px);
-}
-
-.workflow-progress > div {
-  display: grid;
-  flex: 0 0 auto;
-  gap: 0.12rem;
-}
-
-.workflow-progress > div strong {
-  color: #1a3f73;
-  font-size: 0.72rem;
-}
-
-.workflow-progress > div span {
-  color: var(--color-text-muted);
-  font-size: 0.62rem;
-}
-
-.workflow-progress ol {
-  display: flex;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  overflow-x: auto;
-  gap: 0.42rem;
-  list-style: none;
-  scrollbar-width: thin;
-}
-
-.workflow-progress__step {
-  display: inline-flex;
-  min-width: 0;
-  padding: 0.34rem 0.52rem;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 0.38rem;
-  border-radius: 999px;
-  background: #f0f4fa;
-  color: #5d718d;
-  font-size: 0.64rem;
-}
-
-.workflow-progress__step > span {
-  display: grid;
-  width: 1.2rem;
-  height: 1.2rem;
-  border-radius: 50%;
-  place-items: center;
-  background: #dce6f2;
-  font-size: 0.6rem;
-  font-weight: 800;
-}
-
-.workflow-progress__step--completed {
-  background: #ecf9f4;
-  color: #176b52;
-}
-
-.workflow-progress__step--completed > span {
-  background: #bfead9;
-}
-
-.workflow-progress__step--running {
-  background: #edf4ff;
-  color: #245fb8;
-}
-
-.workflow-progress__step--running > span {
-  background: #cfe1ff;
 }
 
 .agent-card--prerequisite {
@@ -6316,17 +6293,11 @@ button:disabled {
 }
 
 @media (max-width: 700px) {
-  body:has(.project-sidebar--expanded) {
-    overflow: hidden;
-  }
-
   .project-sidebar--expanded {
-    position: fixed;
-    z-index: 80;
-    inset: 0;
+    position: relative;
     width: 100%;
-    height: 100dvh;
-    max-height: 100dvh;
+    height: auto;
+    max-height: none;
   }
 
   .project-sidebar--collapsed {
@@ -6403,12 +6374,20 @@ button:disabled {
   }
 
   .agent-project__tab-actions {
+    display: grid;
     width: 100%;
     margin-left: 0;
     padding: 0.15rem 0 0.3rem;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    scrollbar-width: thin;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
+  }
+
+  .agent-project__tab-actions .handoff-toggle--global,
+  .agent-project__tab-actions .agent-project__schedule-button,
+  .agent-project__tab-actions .agent-project__reset-button,
+  .agent-project__tab-actions .agent-project__edit-button {
+    width: 100%;
+    justify-content: center;
   }
 
   .agent-project__reset-button,
@@ -6416,17 +6395,6 @@ button:disabled {
     width: auto;
     padding: 0.55rem 0.68rem;
     font-size: 0.68rem;
-  }
-
-  .workflow-progress {
-    position: static;
-    display: grid;
-    padding: 0.65rem;
-    gap: 0.55rem;
-  }
-
-  .workflow-progress ol {
-    width: 100%;
   }
 
   .agent-settings-dialog.agent-engine-settings {
@@ -6451,14 +6419,52 @@ button:disabled {
   }
 
   .project-editor__topbar-actions {
-    flex-wrap: nowrap;
-    overflow-x: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    overflow: visible;
   }
 
   .project-editor__review,
   .project-editor__exit,
   .project-editor__save {
-    flex: 0 0 auto;
+    width: 100%;
+  }
+
+  .project-editor__more,
+  .project-editor__more > summary {
+    width: 100%;
+  }
+
+  .agent-library__list {
+    display: grid;
+    overflow: visible;
+  }
+
+  .agent-library__list li {
+    min-width: 0;
+  }
+
+  .agent-inspector__header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .agent-inspector__header > div {
+    width: 100%;
+  }
+
+  .agent-inspector__improve,
+  .agent-inspector__delete,
+  .agent-inspector__improve + .agent-inspector__delete {
+    width: 100%;
+    margin-left: 0;
+    justify-content: center;
+    grid-column: 1 / -1;
+  }
+
+  .markdown-editor__toolbar {
+    flex-wrap: wrap;
+    overflow: visible;
   }
 }
 
@@ -7942,4 +7948,351 @@ button:disabled {
 
 .agent-settings-dialog.agent-engine-settings input[type="checkbox"]:disabled {
   cursor: not-allowed;
+}
+
+.project-editor__recovery {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid #bad0ed;
+  border-radius: 12px;
+  background: #f0f6ff;
+  color: #214b82;
+}
+
+.project-editor__recovery > div {
+  min-width: 0;
+  flex: 1 1 20rem;
+}
+
+.project-editor__recovery strong {
+  font-size: 0.88rem;
+}
+
+.project-editor__recovery p,
+.project-editor__storage-warning {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.project-editor__recovery button,
+.workspace-welcome__create {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid #abc5e8;
+  border-radius: 9px;
+  background: #fff;
+  color: #214b82;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.workspace-welcome__create {
+  margin-top: 1rem;
+  background: #245baf;
+  color: #fff;
+}
+
+.workspace-welcome__help {
+  max-width: 40rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.project-editor__storage-warning {
+  margin: 0 0 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid #ebcb8a;
+  border-radius: 9px;
+  background: #fff8e9;
+  color: #71521e;
+}
+
+.agent-project__tab-actions {
+  flex-wrap: wrap;
+}
+
+.agent-project__stop-button {
+  border-color: #e3b5b5;
+  background: #fff4f4;
+  color: #9c3030;
+}
+
+.agent-project__resume-button {
+  background: #eaf7f1;
+  border-color: #afd3c1;
+  color: #216348;
+}
+
+.agent-card__activity {
+  margin-top: 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #c9daf0;
+  border-radius: 10px;
+  background: #f4f8ff;
+  color: #2c527f;
+  font-size: 0.76rem;
+}
+
+.agent-card__activity-times,
+.agent-card__activity-times > span {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem 1rem;
+}
+
+.agent-card__activity-times > span {
+  gap: 0.4rem;
+}
+
+.agent-card__activity p {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0.6rem 0 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-card__activity svg {
+  flex: 0 0 auto;
+}
+
+.agent-card__activity p svg {
+  margin-top: 0.15rem;
+}
+
+.agent-card__retry {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.agent-card__retry p {
+  flex: 1 1 15rem;
+  margin: 0;
+  color: #71521e;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.agent-card__expand {
+  display: grid;
+  width: 2.75rem;
+  min-height: 2.75rem;
+  place-items: center;
+  border: 1px solid #c9daf0;
+  border-radius: 9px;
+  background: #f4f8ff;
+  color: #285289;
+}
+
+.agent-card__expand[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.agent-card:focus-visible {
+  outline: 3px solid #366cb9;
+  outline-offset: 4px;
+}
+
+@media (max-width: 980px) {
+  .agent-project__tab-actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 700px) {
+  .project-editor__recovery {
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+
+  .project-editor__recovery button {
+    flex: 1 1 12rem;
+  }
+
+  .agent-project__tab-actions .agent-project__stop-button,
+  .agent-project__tab-actions .agent-project__resume-button {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+    padding: 0.55rem 0.68rem;
+    font-size: 0.68rem;
+  }
+
+  .agent-card__retry .agent-card__run-button {
+    width: 100%;
+  }
+}
+
+/* UX audit: visible keyboard focus, readable forms and recoverable navigation. */
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  top: 0.75rem;
+  left: 0.75rem;
+  padding: 0.8rem 1rem;
+  border-radius: 0.6rem;
+  background: #fff;
+  color: #173c72;
+  font-weight: 700;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+  outline: 3px solid #2563eb;
+}
+
+.connection-state h1 {
+  font-size: 1.65rem;
+}
+
+.connection-state > button {
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: #2563eb;
+  color: white;
+  font-weight: 650;
+}
+
+.project-sidebar :focus-visible {
+  outline-color: #93c5fd;
+}
+
+.project-sidebar__search:focus-within,
+.engine-option:has(input:focus-visible) {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.project-sidebar__search:focus-within {
+  outline-color: #93c5fd;
+}
+
+.agent-engine-mcp__help,
+.agent-engine-plugins__help {
+  color: #a2b8d4;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.handoff-toggle--mixed {
+  border-color: #b78130;
+  background: #fff6e5;
+  color: #825313;
+}
+
+.workflow-parameters__footer {
+  flex-wrap: wrap;
+}
+
+.workflow-parameters__focus {
+  min-height: 2.75rem;
+  margin-left: auto;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #b78130;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #825313;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.workflow-parameters__field [aria-invalid="true"] {
+  border-color: #b9384e;
+}
+
+.workflow-parameters__field .workflow-parameters__error {
+  color: #a5263c;
+}
+
+.agent-card__conversation-response-option {
+  display: grid;
+  min-width: 0;
+  padding: 0.72rem 0.85rem;
+  gap: 0.35rem;
+  border: 1px solid #c0d2eb;
+  border-radius: 8px;
+  background: #f1f7ff;
+  color: #29486f;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.agent-card__conversation-response-option--selected {
+  border-color: #2563eb;
+  background: #eaf2ff;
+  box-shadow: inset 3px 0 0 #2563eb;
+  color: #173c72;
+}
+
+.agent-card__conversation-response-select {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  gap: 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.agent-card__conversation-response-select:has(input:disabled) {
+  cursor: default;
+}
+
+.agent-card__conversation-response-choice {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: #2563eb;
+}
+
+@media (max-width: 700px) {
+  .project-sidebar--expanded .project-sidebar__content {
+    max-height: min(22rem, 40dvh);
+  }
+
+  .project-sidebar__toggle,
+  .project-sidebar__import-button,
+  .project-sidebar__error button {
+    min-height: 2.75rem;
+  }
+
+  .engine-option strong {
+    font-size: 0.82rem;
+  }
+
+  .editor-field input,
+  .editor-field textarea,
+  .editor-field select,
+  .project-creation-dialog input,
+  .project-creation-dialog textarea,
+  .workflow-parameters__field input,
+  .workflow-parameters__field textarea,
+  .workflow-parameters__field select,
+  .project-sidebar__search input {
+    font-size: 1rem;
+  }
+
+  .workflow-parameters__focus {
+    width: 100%;
+  }
 }

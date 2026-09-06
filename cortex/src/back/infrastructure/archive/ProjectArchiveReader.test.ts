@@ -6,6 +6,8 @@ import { Writable } from "node:stream";
 import test from "node:test";
 import { writeCortexProjectArchive } from "./ProjectArchive.ts";
 import { readCortexProjectArchive } from "./ProjectArchiveReader.ts";
+import { ZipArchive } from "archiver";
+import { pipeline } from "node:stream/promises";
 
 test("relit une archive .ctx exportée par Cortex", async () => {
   const temporaryDirectory = await mkdtemp(
@@ -67,6 +69,29 @@ test("exige l'extension .ctx", async () => {
     /must use the \.ctx extension/
   );
 });
+
+test("rejects duplicate paths and file-directory collisions before extraction", async () => {
+  for (const names of [["AGENTS.md", "agents.MD"], ["AGENTS.md", "src", "src/index.ts"]]) {
+    const archive = await createRawArchive(names);
+    await assert.rejects(readCortexProjectArchive("Atlas.ctx", archive), /duplicated|conflicts/);
+  }
+});
+
+test("rejects reserved Windows file names in external archives", async () => {
+  const archive = await createRawArchive(["AGENTS.md", "NUL.txt"]);
+  await assert.rejects(readCortexProjectArchive("Atlas.ctx", archive), /archived path.*invalid/);
+});
+
+async function createRawArchive(names: string[]): Promise<Buffer> {
+  const archive = new ZipArchive();
+  const chunks: Buffer[] = [];
+  const output = new Writable({
+    write(chunk: Buffer, _encoding, callback) { chunks.push(Buffer.from(chunk)); callback(); }
+  });
+  for (const name of names) archive.append("test content", { name });
+  await Promise.all([pipeline(archive, output), archive.finalize()]);
+  return Buffer.concat(chunks);
+}
 
 async function createArchive(directoryPath: string): Promise<Buffer> {
   const chunks: Buffer[] = [];

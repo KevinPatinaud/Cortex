@@ -12,6 +12,8 @@
     "build": "vite build",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "check:all": "npm run check && npm run test:e2e",
     "check": "npm run typecheck && npm test && npm run build",
     "preview": "vite preview"
   },
@@ -35,6 +37,8 @@
     "unzipper": "^0.12.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.63.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^5.0.6",
     "@types/multer": "^2.2.0",

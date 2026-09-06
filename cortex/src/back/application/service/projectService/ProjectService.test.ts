@@ -4,6 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { ProjectService } from "./ProjectService.ts";
+import { AgentConfigurationService } from "../iaService/AgentConfigurationService.ts";
+import { JsonConfigurationRepository } from "../configuration/JsonConfigurationRepository.ts";
+import type { AgentService } from "../iaService/AgentService.ts";
+import type { DirectoryPickerService } from "./DirectoryPickerService.ts";
+import { AgentUseCase } from "../../usecase/AgentUseCase.ts";
+import { ProjectUseCase } from "../../usecase/ProjectUseCase.ts";
 
 async function withProjectService(
   assertion: (
@@ -28,6 +34,98 @@ async function withProjectService(
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
 }
+
+test("preserves concurrent project, agent and workflow settings across service instances", async () => {
+  await withProjectService(async (service, parentDirectory, directory) => {
+    const file = path.join(directory, "config.json");
+    const otherService = new ProjectService(file);
+    const agentConfiguration = new AgentConfigurationService(file);
+    await Promise.all([
+      ...Array.from({ length: 12 }, (_, index) =>
+        (index % 2 ? service : otherService).saveProject(path.join(parentDirectory, `project-${index}`))
+      ),
+      agentConfiguration.saveConfiguration({ autopilot: false, allowAll: true }),
+      service.saveAgentWorkflowConfiguration("workflow-a", { hash: "a", agents: [], parameters: [] }),
+      otherService.saveAgentWorkflowConfiguration("workflow-b", { hash: "b", agents: [], parameters: [] }),
+      service.saveManagedProjectsDirectory(path.join(directory, "managed"))
+    ]);
+    assert.equal((await service.getProjects()).length, 12);
+    assert.deepEqual(await otherService.getProjects(), await service.getProjects());
+    assert.deepEqual(await agentConfiguration.getConfiguration(), { autopilot: false, allowAll: true });
+    assert.equal((await service.getAgentWorkflowConfiguration("workflow-a"))?.hash, "a");
+    assert.equal((await service.getAgentWorkflowConfiguration("workflow-b"))?.hash, "b");
+    const projects = await service.getProjects();
+    await Promise.all(projects.map((project, index) =>
+      (index % 2 ? service : otherService).saveWorkflowScheduleConfiguration(project.id, {
+        cron: "0 7 * * *", enabled: true, parameterValues: { index: String(index) }
+      })
+    ));
+    const stored = JSON.parse(await readFile(file, "utf8"));
+    assert.equal(Object.keys(stored.workflowSchedules).length, 12);
+    assert.equal(stored.projectsDirectory, path.join(directory, "managed"));
+  });
+});
+
+test("validates every edited agent before changing any project file", async () => {
+  await withProjectService(async (service, parentDirectory) => {
+    const { project } = await service.createProject({
+      parentDirectory, name: "Stable", engine: "codex", instructions: "original",
+      agents: [{ name: "Review", description: "original", prompt: "original" }]
+    });
+    const file = path.join(project.directoryPath, ".codex", "agents", "review.toml");
+    const original = await readFile(file, "utf8");
+    await assert.rejects(service.saveAgentProject(project.id, {
+      name: "Stable", engine: "codex", instructions: "changed",
+      agents: [
+        { id: ".codex/agents/review.toml", name: "Review", description: "changed", prompt: "changed" },
+        { id: ".codex/agents/missing.toml", name: "Missing", description: "", prompt: "" }
+      ]
+    }), /could not be found/);
+    assert.equal(await readFile(file, "utf8"), original);
+    assert.equal(await readFile(path.join(project.directoryPath, "AGENTS.md"), "utf8"), "original");
+    assert.deepEqual(await readdir(parentDirectory), ["Stable"]);
+  });
+});
+
+test("rolls back files, deleted agents and directory rename when config persistence fails", async (context) => {
+  await withProjectService(async (service, parentDirectory, directory) => {
+    const { project } = await service.createProject({
+      parentDirectory, name: "Stable", engine: "codex", instructions: "original",
+      agents: [{ name: "Review", description: "original", prompt: "original" }]
+    });
+    const file = path.join(project.directoryPath, ".codex", "agents", "review.toml");
+    const original = await readFile(file, "utf8");
+    const configFile = path.join(directory, "config.json");
+    const configuration = await readFile(configFile, "utf8");
+    context.mock.method(JsonConfigurationRepository.prototype, "replace", async () => {
+      throw Object.assign(new Error("simulated disk full"), { code: "ENOSPC" });
+    });
+    await assert.rejects(service.saveAgentProject(project.id, {
+      name: "Renamed", engine: "codex", instructions: "changed",
+      agents: [{ name: "New", description: "changed", prompt: "changed" }]
+    }), /simulated disk full/);
+    assert.deepEqual(await readdir(parentDirectory), ["Stable"]);
+    assert.deepEqual(await readdir(path.dirname(file)), ["review.toml"]);
+    assert.equal(await readFile(file, "utf8"), original);
+    assert.equal(await readFile(path.join(project.directoryPath, "AGENTS.md"), "utf8"), "original");
+    assert.equal(await readFile(configFile, "utf8"), configuration);
+  });
+});
+
+test("removes an unpublished creation or import when configuration cannot be committed", async (context) => {
+  await withProjectService(async (service, parentDirectory) => {
+    context.mock.method(JsonConfigurationRepository.prototype, "replace", async () => {
+      throw new Error("simulated config failure");
+    });
+    await assert.rejects(service.createProject({
+      parentDirectory, name: "Creation", engine: "codex", instructions: "instructions"
+    }), /simulated config failure/);
+    await assert.rejects(service.importProject("Import", [
+      { relativePath: "AGENTS.md", content: Buffer.from("instructions") }
+    ]), /simulated config failure/);
+    assert.deepEqual(await readdir(parentDirectory), []);
+  });
+});
 
 test("crée et enregistre un projet Cortex prêt à être édité", async () => {
   await withProjectService(async (service, parentDirectory) => {
@@ -63,6 +161,65 @@ test("crée et enregistre un projet Cortex prêt à être édité", async () => 
     );
   });
 });
+
+for (const engine of ["codex", "claude", "copilot"] as const) {
+  test(`creates, loads and edits an empty ${engine} project without any AI call`, async () => {
+    await withProjectService(async (service, parentDirectory, temporaryDirectory) => {
+      const agentServiceCalls: string[] = [];
+      const agentService = new Proxy({} as AgentService, {
+        get(_target, property) {
+          agentServiceCalls.push(String(property));
+          throw new Error("An empty project must not use the AI service.");
+        }
+      });
+      const projectUseCase = new ProjectUseCase(
+        service,
+        {} as DirectoryPickerService,
+        agentService
+      );
+      const agentUseCase = new AgentUseCase(agentService, projectUseCase);
+      const { project, projects } = await projectUseCase.createProject({
+        parentDirectory,
+        name: "Empty",
+        engine,
+        generationMode: "empty",
+        instructions: "# Global instructions\n\nWork in French."
+      });
+      const configurationDirectory = engine === "copilot" ? ".github" : `.${engine}`;
+      const instructionsFileName = engine === "claude" ? "CLAUDE.md" : "AGENTS.md";
+
+      assert.deepEqual(await readdir(parentDirectory), ["Empty"]);
+      assert.deepEqual(
+        (await readdir(project.directoryPath)).sort(),
+        [configurationDirectory, instructionsFileName].sort()
+      );
+      assert.deepEqual(await readdir(path.join(project.directoryPath, configurationDirectory)), ["agents"]);
+      assert.deepEqual(await readdir(path.join(project.directoryPath, configurationDirectory, "agents")), [".gitkeep"]);
+      assert.equal(await readFile(path.join(project.directoryPath, configurationDirectory, "agents", ".gitkeep"), "utf8"), "");
+      assert.equal(
+        await readFile(path.join(project.directoryPath, instructionsFileName), "utf8"),
+        "# Global instructions\n\nWork in French."
+      );
+      const reloadedService = new ProjectService(path.join(temporaryDirectory, "config.json"));
+      assert.deepEqual(await reloadedService.getProjects(), projects);
+
+      const loadedProject = await agentUseCase.loadProject(project.id);
+      assert.equal(loadedProject.engine, engine);
+      assert.equal(loadedProject.instructions.fileName, instructionsFileName);
+      assert.equal(loadedProject.instructions.content, "# Global instructions\n\nWork in French.");
+      assert.deepEqual(loadedProject.agents, []);
+      assert.deepEqual(loadedProject.parameters, []);
+
+      await projectUseCase.saveAgentProject(project.id, {
+        name: "Empty", engine, instructions: "# Updated global instructions", agents: []
+      });
+      const editedProject = await agentUseCase.loadProject(project.id);
+      assert.equal(editedProject.instructions.content, "# Updated global instructions");
+      assert.deepEqual(editedProject.agents, []);
+      assert.deepEqual(agentServiceCalls, []);
+    });
+  });
+}
 
 test("importe un dossier envoyé par le navigateur dans le stockage géré", async () => {
   await withProjectService(async (service, parentDirectory) => {

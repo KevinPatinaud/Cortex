@@ -87,6 +87,7 @@ export function ProjectList({
   ): void {
     if (
       isReorderLocked ||
+      isInteractionLocked ||
       !event.altKey ||
       (event.key !== "ArrowUp" && event.key !== "ArrowDown")
     ) {
@@ -195,7 +196,9 @@ export function ProjectList({
               className="project-list__select-button"
               type="button"
               aria-busy={isProjectLoading}
-              aria-pressed={isSelected}
+              aria-current={isSelected ? "page" : undefined}
+              aria-keyshortcuts={isReorderLocked ? undefined : "Alt+ArrowUp Alt+ArrowDown"}
+              title={project.directoryPath}
               onClick={() => onSelect(project)}
               onKeyDown={(event) => moveProjectWithKeyboard(event, project.id)}
               disabled={loadingProjectId !== null || isInteractionLocked}

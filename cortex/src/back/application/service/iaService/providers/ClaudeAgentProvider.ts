@@ -7,6 +7,7 @@ import type {
 } from "../AgentProvider.ts";
 import { DEFAULT_AGENT_CONFIGURATION } from "../AgentProvider.ts";
 import { CliAgentProvider } from "../CliAgentProvider.ts";
+import { createClaudeProgress } from "../ExecutionProgress.ts";
 
 export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvider {
   readonly engine = "claude" as const;
@@ -31,7 +32,9 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
     const args = [
       "--print",
       "--output-format",
-      "text",
+      "stream-json",
+      "--verbose",
+      "--include-partial-messages",
       "--permission-mode",
       permissionMode
     ];
@@ -51,14 +54,26 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
       args.push("--effort", options.reasoningEffort);
     }
 
-    args.push(prompt);
-
-    const answer = await this.runCommand(
+    const output = await this.runCommand(
       "claude",
       args,
-      120_000,
-      options.workingDirectory
+      options.timeoutMs ?? 15 * 60 * 1000,
+      options.workingDirectory,
+      prompt,
+      { signal: options.signal, onProgress: createClaudeProgress(options.onProgress) }
     );
+
+    const result = output.split(/\r?\n/).flatMap((line) => {
+      try {
+        const value = JSON.parse(line);
+        return value?.type === "result" ? [value] : [];
+      } catch { return []; }
+    }).at(-1);
+    if (result?.is_error) {
+      throw new Error(typeof result.result === "string" ? result.result : "Claude execution failed.");
+    }
+    const answer: string = typeof result?.result === "string" ? result.result : "";
+    const effectiveSessionId = typeof result?.session_id === "string" ? result.session_id : sessionId;
 
     if (!answer) {
       throw new Error("Claude did not return a response.");
@@ -66,7 +81,7 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
 
     return {
       answer,
-      ...(sessionId ? { sessionId } : {})
+      ...(effectiveSessionId ? { sessionId: effectiveSessionId } : {})
     };
   }
 }

@@ -6,7 +6,7 @@ Cortex is a local application for creating, visualizing, and running Codex, Clau
 
 - Node.js 20.19 or later, or Node.js 22.12 and later;
 - npm;
-- at least one supported engine installed and authenticated (`codex`, `claude`, or GitHub Copilot).
+- for AI generation and workflow execution, at least one supported engine installed and authenticated (`codex`, `claude`, or GitHub Copilot).
 
 ## Getting started
 
@@ -48,6 +48,16 @@ npm run dev:web
 
 Vite serves the frontend and proxies `/api` to the Express server.
 
+## Creating a project
+
+The creation dialog offers two modes:
+
+- **With AI** generates global instructions and agents from a required project description using the active engine.
+- **Without AI** creates a minimal project with optional global instructions and no agents. Instructions are saved directly; leaving them blank creates a short template to complete later. Creating and opening this project does not call AI or require an installed engine.
+
+In both modes, choose Codex, Claude, or Copilot for the project's agent format.
+You can then edit the global instructions and add agents in the project editor.
+
 ## Importing an existing project
 
 The import controls accept either a project folder or a Cortex `.ctx` archive
@@ -73,6 +83,30 @@ A `.ctx` file is a standard ZIP archive whose root contains the project files,
 so it can be inspected or extracted with regular ZIP tools on Windows, Linux,
 and macOS.
 
+Exports use the same exclusions and limits as imports. Generated directories,
+environment secrets, common credential files, private keys, audit databases and
+transaction backups are excluded. Symbolic links and nonportable paths are
+rejected. The complete archive is checked before the download starts, including
+the 100 MB archive limit. This is a filename-based policy; review project content
+before sharing an archive. An export is prepared in memory and may temporarily
+use approximately 200 MB plus buffers at the maximum allowed size.
+
+## Editing and saving
+
+Unsaved editor drafts are kept in the current browser, separately for each
+project. Reopening the editor offers **Restore draft** or **Delete draft**.
+Navigation and reload warn before leaving a modified draft. Saving or explicitly
+discarding changes removes the saved draft. If browser storage is unavailable,
+the editor reports that draft recovery is unavailable.
+
+Configuration mutations are serialized within the server process and written
+using an atomic file replacement. Run only one Cortex server per configuration
+file. Project edits validate and stage all changed files before applying them;
+an ordinary write or rename failure restores the previous files. If the server
+stops mid-save or rollback fails, a sibling `.cortex-edit-*` directory retains
+backups and a `recovery.json` manifest for manual recovery. This does not provide
+an automatic recovery guarantee for a power failure during a multi-file save.
+
 ## Scheduled workflows
 
 From a project's **Workflow** tab, select **Schedule** to configure a standard
@@ -81,6 +115,31 @@ schedule uses the server's local timezone and remains active when the browser is
 closed, as long as the Cortex server is running. Each occurrence starts a fresh
 workflow and automatically passes the selected branch results to downstream
 agents. An occurrence is skipped when the same project is already running.
+
+Occurrences are claimed in SQLite using the project and scheduled UTC minute.
+Saving the schedule again or restarting Cortex in the same minute does not
+execute that occurrence twice. Missed minutes while the server was offline are
+not replayed automatically. An unfinished occurrence is marked interrupted on
+restart; the last recorded scheduling result remains available.
+
+## Execution progress and recovery
+
+Running agents show elapsed time, time since the last engine event and a bounded
+live response preview. **Stop** cancels the project's active executions. Completed
+instances are retained; retrying a failed agent runs only the incomplete
+instances. Stopping an execution does not undo changes already made by its tools.
+
+SQLite checkpoints retain completed responses, session IDs, parameters and
+incomplete instances. After a restart, **Resume workflow** continues from that
+checkpoint only when the project definition is unchanged. Recovery requires an
+explicit action; the server never resumes interrupted work automatically. The
+engine must still be able to access any saved session. A reset or project edit
+invalidates the checkpoint.
+
+Automatic workflows follow selected branches and loops until completion, with
+a default maximum of 100 agent executions per run. Each agent launch executes at
+most four instances concurrently. Engine executions have a default 15-minute
+timeout. These limits are configurable using the variables below.
 
 ## Workflow parameters
 
@@ -138,6 +197,22 @@ npm run check
 
 This command runs strict TypeScript type checking, all Node.js tests, and the production build. It is also run by CI for every pull request.
 
+To run the complete browser campaign after installing Chromium:
+
+```bash
+npx playwright install chromium
+npm run check:all
+```
+
+CI runs both checks on Windows and Linux. The browser suite uses the production
+HTTP application with a simulated engine and temporary storage: it never invokes
+an installed AI engine or accesses your saved projects. It covers creation,
+editing, draft recovery, browser navigation, cancellation/retry, audit and archive
+import at widths 390, 700, 980 and 1440 px. It also checks accessibility and keeps
+screenshots and failure traces in `playwright-report/` and `test-results/`.
+See the [Playwright server setup](https://playwright.dev/docs/test-webserver) and
+[accessibility testing](https://playwright.dev/docs/accessibility-testing) documentation.
+
 ## Server configuration
 
 | Variable | Default value | Description |
@@ -148,6 +223,9 @@ This command runs strict TypeScript type checking, all Node.js tests, and the pr
 | `CORTEX_SECURE_COOKIE` | `false` | Set to `true` when Cortex is served over HTTPS |
 | `CORTEX_PROJECTS_DIRECTORY` | `<workspace>/projects` | Directory used to store projects uploaded through the browser |
 | `CORTEX_AUDIT_DATABASE` | `<workspace>/data/audit/cortex-audit.sqlite` | SQLite file used for persistent workflow audit history |
+| `CORTEX_AGENT_TIMEOUT_MS` | `900000` | Maximum engine execution time in milliseconds |
+| `CORTEX_MAX_CONCURRENT_INSTANCES` | `4` | Maximum concurrent instances within an agent launch |
+| `CORTEX_MAX_WORKFLOW_EXECUTIONS` | `100` | Maximum agent executions in one automatic workflow, including loop iterations |
 | `CORTEX_COPILOT_MCP_CONFIG` | `<COPILOT_HOME>/mcp-config.json` | Optional Copilot MCP configuration file override |
 | `CORTEX_CLAUDE_MCP_CONFIG` | `~/.claude.json` | Optional Claude MCP configuration file override |
 

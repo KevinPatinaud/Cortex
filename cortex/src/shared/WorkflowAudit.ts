@@ -11,6 +11,7 @@ export type WorkflowAuditRunStatus =
   | "interrupted";
 
 export type WorkflowAuditExecutionStatus =
+  | "cancelled"
   | "running"
   | "succeeded"
   | "failed"

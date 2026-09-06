@@ -1,7 +1,7 @@
-import express, { type Request, type Response } from "express";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import { AgentService } from "../../../application/service/iaService/AgentService.ts";
 import { AgentConfigurationService } from "../../../application/service/iaService/AgentConfigurationService.ts";
 import { createDefaultAgentToolRegistry } from "../../../application/service/iaService/iaTools/AgentToolRegistry.ts";
@@ -17,19 +17,14 @@ import { ProjectUseCase } from "../../../application/usecase/ProjectUseCase.ts";
 import { WorkflowScheduler } from "../../../application/service/workflowScheduler/WorkflowScheduler.ts";
 import { WorkflowAuditService } from "../../../application/service/workflowAudit/WorkflowAuditService.ts";
 import { SqliteWorkflowAuditRepository } from "../../audit/SqliteWorkflowAuditRepository.ts";
-import { httpErrorMiddleware } from "../middleware/HttpErrorMiddleware.ts";
 import {
-  createAuthenticationRouter,
   PasswordAuthentication,
   readAccessPassword,
   readPasswordArgument,
-  readSecureCookie,
-  requireAuthentication
+  readSecureCookie
 } from "../middleware/PasswordAuthentication.ts";
-import { createAgentController } from "./AgentController.ts";
-import { createProjectController } from "./ProjectController.ts";
+import { createCortexApplication } from "./CortexApplication.ts";
 
-const app = express();
 const port = readPort(process.env.PORT);
 const host = process.env.HOST?.trim() || "127.0.0.1";
 const directoryName = path.dirname(fileURLToPath(import.meta.url));
@@ -65,7 +60,8 @@ const agentService = new AgentService([
   new CodexAgentProvider(workspaceDirectory),
   new ClaudeAgentProvider(workspaceDirectory),
   new CopilotAgentProvider(agentToolRegistry, mcpConfigurationService)
-], agentConfigurationService, mcpConfigurationService, codexPluginService);
+], agentConfigurationService, mcpConfigurationService, codexPluginService,
+readPositiveSetting("CORTEX_AGENT_TIMEOUT_MS", 15 * 60 * 1000));
 const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(
   configurationFile,
@@ -83,7 +79,11 @@ const workflowAuditService = new WorkflowAuditService(workflowAuditRepository);
 const agentUseCase = new AgentUseCase(
   agentService,
   projectUseCase,
-  workflowAuditService
+  workflowAuditService,
+  {
+    maxConcurrentInstances: readPositiveSetting("CORTEX_MAX_CONCURRENT_INSTANCES", 4),
+    maxWorkflowExecutions: readPositiveSetting("CORTEX_MAX_WORKFLOW_EXECUTIONS", 100)
+  }
 );
 const workflowScheduler = new WorkflowScheduler(
   projectUseCase,
@@ -92,57 +92,11 @@ const workflowScheduler = new WorkflowScheduler(
   workflowAuditService
 );
 
-app.disable("x-powered-by");
-app.use((_request, response, next) => {
-  response.set({
-    "Content-Security-Policy": [
-      "default-src 'self'",
-      "base-uri 'self'",
-      "connect-src 'self'",
-      "font-src 'self'",
-      "form-action 'self'",
-      "frame-ancestors 'none'",
-      "img-src 'self' data:",
-      "object-src 'none'",
-      "script-src 'self'",
-      "style-src 'self' 'unsafe-inline'"
-    ].join("; "),
-    "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
-    "Referrer-Policy": "no-referrer",
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY"
-  });
-  next();
-});
-app.use(express.json({ limit: "1mb", strict: true }));
-app.use("/api/auth", createAuthenticationRouter(authentication));
-app.get("/api/health", (_request, response) => {
-  response.json({ status: "ok" });
-});
-if (authentication) {
-  app.use("/api", requireAuthentication(authentication));
-}
-app.use(
-  "/api/projects",
-  createProjectController(projectUseCase)
-);
-app.use(
-  "/api/agents",
-  createAgentController(agentUseCase, workflowScheduler)
-);
-app.use("/api", (_request, response) => {
-  response.status(404).json({ error: "API route not found." });
+const app = createCortexApplication({
+  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory
 });
 
-app.use(express.static(clientDirectory));
-
-app.get(/.*/, (_request: Request, response: Response) => {
-  response.sendFile(path.join(clientDirectory, "index.html"));
-});
-
-app.use(httpErrorMiddleware);
-
-app.listen(port, host, () => {
+const httpServer = app.listen(port, host, () => {
   const browserHost = host === "0.0.0.0" || host === "::"
     ? "localhost"
     : host;
@@ -156,6 +110,34 @@ app.listen(port, host, () => {
     openDefaultBrowser(applicationUrl);
   }
 });
+
+let shuttingDown = false;
+async function shutdown(): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  workflowScheduler.stop();
+  agentUseCase.cancelAllExecutions();
+  agentService.cancelAllExecutions();
+  const deadline = setTimeout(() => process.exit(1), 15_000);
+  deadline.unref();
+  const closed = new Promise<void>((resolve) => httpServer.close(() => resolve()));
+  const expiresAt = Date.now() + 10_000;
+  while ((agentUseCase.hasActiveExecutions() || agentService.hasActiveExecutions()) && Date.now() < expiresAt) {
+    await delay(50);
+  }
+  if (agentUseCase.hasActiveExecutions() || agentService.hasActiveExecutions()) {
+    // Leave SQLite open until process exit; unfinished audit rows and
+    // checkpoints are recovered as interrupted on the next startup.
+    process.exitCode = 1;
+    return;
+  }
+  httpServer.closeAllConnections();
+  await closed;
+  workflowAuditRepository.close();
+  clearTimeout(deadline);
+}
+process.on("SIGINT", () => void shutdown());
+process.on("SIGTERM", () => void shutdown());
 
 function openDefaultBrowser(url: string): void {
   const browserProcess = process.platform === "win32"
@@ -186,4 +168,14 @@ function readPort(value: string | undefined): number {
   }
 
   return parsedPort;
+}
+
+function readPositiveSetting(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647) {
+    throw new Error(`The ${name} variable must be a positive integer no larger than 2147483647.`);
+  }
+  return value;
 }

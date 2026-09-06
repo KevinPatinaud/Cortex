@@ -34,7 +34,7 @@ import {
   type WorkflowAuditRunStatus,
   type WorkflowAuditRunSummary
 } from "../../../services/agentApi.ts";
-import { useTranslation } from "../../../i18n.tsx";
+import { useTranslation, type Translate } from "../../../i18n.tsx";
 
 const PAGE_SIZE = 20;
 
@@ -379,7 +379,9 @@ export function WorkflowAuditPanel({
                 </section>
 
                 {detail.error && (
-                  <p className="workflow-audit__run-error">{detail.error}</p>
+                  <p className="workflow-audit__run-error">
+                    {getAuditErrorMessage(detail.error, t)}
+                  </p>
                 )}
 
                 <AuditJsonBlock
@@ -630,7 +632,11 @@ function AuditExecution({
           <div><dt>{t("audit.session")}</dt><dd>{execution.sessionId ?? "—"}</dd></div>
           <div><dt>{t("audit.nextAgents")}</dt><dd>{selectedNextAgentNames.join(", ") || "—"}</dd></div>
         </dl>
-        {execution.error && <p className="workflow-audit__run-error">{execution.error}</p>}
+        {execution.error && (
+          <p className="workflow-audit__run-error">
+            {getAuditErrorMessage(execution.error, t)}
+          </p>
+        )}
         <AuditJsonBlock title={t("audit.inputs")} value={execution.input} />
         <AuditTextBlock title={t("audit.prompt")} value={execution.prompt} />
         <AuditTextBlock
@@ -720,4 +726,19 @@ function getExecutionOccurrences(
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function getAuditErrorMessage(
+  error: string,
+  translate: Translate
+): string {
+  if (error === "Cortex stopped before the workflow completed.") {
+    return translate("audit.interruptedWorkflow");
+  }
+
+  if (error === "Cortex stopped before the execution completed.") {
+    return translate("audit.interruptedExecution");
+  }
+
+  return error;
 }

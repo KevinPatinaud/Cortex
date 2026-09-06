@@ -1,3 +1,4 @@
+import { isExecutionCancelled } from "../workflowExecution/WorkflowExecution.ts";
 import type { AgentUseCase } from "../../usecase/AgentUseCase.ts";
 import type { ProjectUseCase } from "../../usecase/ProjectUseCase.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
@@ -12,6 +13,8 @@ import {
 export type WorkflowScheduleLastRunStatus =
   | "succeeded"
   | "failed"
+  | "cancelled"
+  | "interrupted"
   | "skipped";
 
 export interface WorkflowScheduleOutput {
@@ -67,22 +70,31 @@ export class WorkflowScheduler {
     }
 
     this.started = true;
-    const projects = await this.projectUseCase.getProjects();
+    try {
+      const projects = await this.projectUseCase.getProjects();
 
-    await Promise.all(projects.map(async (project) => {
-      const schedule = await this.projectUseCase
-        .getWorkflowScheduleConfiguration(project.id);
+      await Promise.all(projects.map(async (project) => {
+        const schedule = await this.projectUseCase
+          .getWorkflowScheduleConfiguration(project.id);
 
-      if (schedule) {
-        this.schedules.set(project.id, schedule);
-      }
-    }));
+        if (schedule) {
+          this.schedules.set(project.id, schedule);
+        }
+      }));
 
-    this.checkDueSchedules(this.now());
-    this.timer = setInterval(() => {
       this.checkDueSchedules(this.now());
-    }, 15_000);
-    this.timer.unref();
+      this.timer = setInterval(() => {
+        try {
+          this.checkDueSchedules(this.now());
+        } catch (error) {
+          console.error("Unable to check scheduled workflow occurrences:", error);
+        }
+      }, 15_000);
+      this.timer.unref();
+    } catch (error) {
+      this.started = false;
+      throw error;
+    }
   }
 
   stop(): void {
@@ -138,7 +150,6 @@ export class WorkflowScheduler {
       schedule
     );
     this.schedules.set(normalizedProjectId, schedule);
-    this.handledMinuteKeys.delete(normalizedProjectId);
 
     return this.toOutput(normalizedProjectId, schedule);
   }
@@ -155,6 +166,10 @@ export class WorkflowScheduler {
         continue;
       }
 
+      if (this.workflowAuditService && !this.workflowAuditService.claimScheduledOccurrence(projectId, minuteKey)) {
+        this.handledMinuteKeys.set(projectId, minuteKey);
+        continue;
+      }
       this.handledMinuteKeys.set(projectId, minuteKey);
       const runtime = this.getRuntimeState(projectId);
 
@@ -163,6 +178,7 @@ export class WorkflowScheduler {
         runtime.lastRunAt = new Date(date);
         runtime.lastRunStatus = "skipped";
         runtime.lastRunError = reason;
+        this.workflowAuditService?.completeScheduledOccurrence(projectId, minuteKey, "skipped", reason);
         this.workflowAuditService?.recordSkippedRun({
           projectId,
           trigger: "scheduled",
@@ -178,13 +194,15 @@ export class WorkflowScheduler {
       runtime.lastRunStatus = null;
       runtime.lastRunError = null;
 
-      void this.executeScheduledWorkflow(projectId, runtime);
+      void this.executeScheduledWorkflow(projectId, runtime, minuteKey, { ...schedule.parameterValues });
     }
   }
 
   private async executeScheduledWorkflow(
     projectId: string,
-    runtime: WorkflowScheduleRuntimeState
+    runtime: WorkflowScheduleRuntimeState,
+    scheduledAt: string,
+    parameterValues: Record<string, string>
   ): Promise<void> {
     try {
       const projectExists = (await this.projectUseCase.getProjects()).some(
@@ -192,23 +210,24 @@ export class WorkflowScheduler {
       );
 
       if (!projectExists) {
+        this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "skipped", "The project no longer exists.");
         this.schedules.delete(projectId);
         this.runtimeStates.delete(projectId);
         this.handledMinuteKeys.delete(projectId);
         return;
       }
 
-      const schedule = this.schedules.get(projectId);
-      await this.agentUseCase.runWorkflow(
-        projectId,
-        schedule?.parameterValues ?? {}
-      );
-      runtime.lastRunStatus = "succeeded";
+      await this.agentUseCase.runWorkflow(projectId, parameterValues);
+      this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "succeeded");
+      if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) runtime.lastRunStatus = "succeeded";
     } catch (error) {
-      runtime.lastRunStatus = "failed";
-      runtime.lastRunError = error instanceof Error
-        ? error.message
-        : "The scheduled workflow execution failed.";
+      const status = isExecutionCancelled(error) ? "cancelled" : "failed";
+      const message = error instanceof Error ? error.message : "The scheduled workflow execution failed.";
+      this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, status, message);
+      if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) {
+        runtime.lastRunStatus = status;
+        runtime.lastRunError = message;
+      }
       console.error(
         `Scheduled workflow execution failed for project ${projectId}:`,
         error
@@ -261,11 +280,12 @@ export class WorkflowScheduler {
     let state = this.runtimeStates.get(projectId);
 
     if (!state) {
+      const latest = this.workflowAuditService?.getLatestScheduledOccurrence(projectId);
       state = {
         running: false,
-        lastRunAt: null,
-        lastRunStatus: null,
-        lastRunError: null
+        lastRunAt: latest ? new Date(latest.scheduledAt) : null,
+        lastRunStatus: latest && latest.status !== "running" ? latest.status : null,
+        lastRunError: latest?.error ?? null
       };
       this.runtimeStates.set(projectId, state);
     }
@@ -274,12 +294,8 @@ export class WorkflowScheduler {
   }
 
   private getMinuteKey(date: Date): string {
-    return [
-      date.getFullYear(),
-      date.getMonth(),
-      date.getDate(),
-      date.getHours(),
-      date.getMinutes()
-    ].join(":");
+    // Use the absolute occurrence, including the UTC offset during DST changes.
+    // Missed occurrences are not replayed automatically after downtime.
+    return new Date(Math.floor(date.getTime() / 60_000) * 60_000).toISOString();
   }
 }

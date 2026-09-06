@@ -23,6 +23,10 @@ export function toHttpError(
   error: unknown,
   options: ErrorMappingOptions
 ): MappedHttpError {
+  if (error instanceof Error && error.name === "AbortError") {
+    return toExpectedError(409, "The execution was cancelled.");
+  }
+
   if (error instanceof ValidationError) {
     return toExpectedError(400, error.message);
   }

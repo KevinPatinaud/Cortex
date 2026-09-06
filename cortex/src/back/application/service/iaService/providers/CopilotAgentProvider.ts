@@ -15,12 +15,18 @@ import {
   GITHUB_PULL_REQUESTS_CAPABILITY
 } from "../iaTools/AgentToolRegistry.ts";
 import { McpConfigurationService } from "../McpConfigurationService.ts";
+import { createTextProgress } from "../ExecutionProgress.ts";
 
 type CopilotSession = Awaited<ReturnType<CopilotClient["createSession"]>>;
 
 export class CopilotAgentProvider implements AgentProvider {
   readonly engine = "copilot" as const;
   readonly label = "GitHub Copilot";
+  protected cleanupTimeoutMs = 2_000;
+
+  protected createClient(): CopilotClient {
+    return new CopilotClient({ useLoggedInUser: true });
+  }
 
   constructor(
     private readonly toolRegistry: AgentToolRegistry,
@@ -28,7 +34,7 @@ export class CopilotAgentProvider implements AgentProvider {
   ) {}
 
   async isAvailable(): Promise<boolean> {
-    const client = new CopilotClient({ useLoggedInUser: true });
+    const client = this.createClient();
 
     try {
       await this.withinTimeout(client.start(), 10_000);
@@ -37,7 +43,7 @@ export class CopilotAgentProvider implements AgentProvider {
     } catch {
       return false;
     } finally {
-      await client.stop().catch(() => undefined);
+      await this.cleanup(client);
     }
   }
 
@@ -45,13 +51,18 @@ export class CopilotAgentProvider implements AgentProvider {
     prompt: string,
     options: AgentExecutionOptions = {}
   ): Promise<AgentExecutionResult> {
+    options.signal?.throwIfAborted();
     const configuration = options.configuration ?? DEFAULT_AGENT_CONFIGURATION;
-    const client = new CopilotClient({ useLoggedInUser: true });
+    const client = this.createClient();
     let session: CopilotSession | undefined;
+    let unsubscribe: (() => void) | undefined;
+    const abort = (): void => { void session?.abort().catch(() => undefined); };
+    options.signal?.addEventListener("abort", abort, { once: true });
 
     try {
-      await this.withinTimeout(client.start(), 30_000);
+      await this.withinTimeout(client.start(), 30_000, options.signal);
       const sessionConfiguration: SessionConfig = {
+        streaming: true,
         onPermissionRequest: configuration.allowAll && configuration.autopilot
           ? approveAll
           : () => ({
@@ -59,9 +70,9 @@ export class CopilotAgentProvider implements AgentProvider {
               feedback: "The global configuration does not allow this action."
             }),
         tools: this.toolRegistry.resolve([GITHUB_PULL_REQUESTS_CAPABILITY]),
-        mcpServers: await this.mcpConfigurationService.getCopilotMcpServers(
+        mcpServers: await this.withinTimeout(this.mcpConfigurationService.getCopilotMcpServers(
           options.workingDirectory
-        ),
+        ), 30_000, options.signal),
         mcpOAuthTokenStorage: "persistent",
         enableConfigDiscovery: true
       };
@@ -78,13 +89,25 @@ export class CopilotAgentProvider implements AgentProvider {
         sessionConfiguration.reasoningEffort = options.reasoningEffort;
       }
 
-      session = options.sessionId
-        ? await client.resumeSession(options.sessionId, sessionConfiguration)
-        : await client.createSession(sessionConfiguration);
-      const result = await session.sendAndWait({
+      session = await this.withinTimeout(options.sessionId
+        ? client.resumeSession(options.sessionId, sessionConfiguration)
+        : client.createSession(sessionConfiguration), 30_000, options.signal);
+      options.signal?.throwIfAborted();
+      const reportText = createTextProgress(options.onProgress);
+      unsubscribe = session.on((event) => {
+        if (event.type === "assistant.message_delta") {
+          reportText(event.data.deltaContent);
+        } else if (event.type === "assistant.message") {
+          options.onProgress?.(event.data.content.slice(-4_000));
+        } else {
+          options.onProgress?.("");
+        }
+      });
+      const executionTimeout = options.timeoutMs ?? 15 * 60 * 1000;
+      const result = await this.withinTimeout(session.sendAndWait({
         prompt,
         agentMode: configuration.autopilot ? "autopilot" : "plan"
-      }, 300_000);
+      }, executionTimeout), executionTimeout, options.signal);
       const answer = result?.data.content;
 
       if (!answer) {
@@ -96,18 +119,42 @@ export class CopilotAgentProvider implements AgentProvider {
         sessionId: session.sessionId
       };
     } finally {
-      await session?.disconnect();
-      await client.stop();
+      options.signal?.removeEventListener("abort", abort);
+      unsubscribe?.();
+      await this.cleanup(client, session);
     }
   }
 
-  private withinTimeout<T>(promise: Promise<T>, timeout: number): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<never>((_resolve, reject) => {
-        setTimeout(() => reject(new Error("The Copilot engine timed out.")), timeout);
-      })
-    ]);
+  private async cleanup(client: CopilotClient, session?: CopilotSession): Promise<void> {
+    try {
+      await this.withinTimeout((async () => {
+        await session?.abort();
+        await session?.disconnect();
+        const errors = await client.stop();
+        if (errors.length) throw errors[0];
+      })(), this.cleanupTimeoutMs);
+    } catch {
+      await this.withinTimeout(client.forceStop(), this.cleanupTimeoutMs).catch(() => undefined);
+    }
+  }
+
+  private async withinTimeout<T>(promise: Promise<T>, timeout: number, signal?: AbortSignal): Promise<T> {
+    let timer: NodeJS.Timeout | undefined;
+    let onAbort: (() => void) | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<never>((_resolve, reject) => {
+          onAbort = () => reject(new DOMException("The execution was cancelled.", "AbortError"));
+          timer = setTimeout(() => reject(new Error("The Copilot engine timed out.")), timeout);
+          signal?.addEventListener("abort", onAbort, { once: true });
+          if (signal?.aborted) onAbort();
+        })
+      ]);
+    } finally {
+      clearTimeout(timer);
+      if (onAbort) signal?.removeEventListener("abort", onAbort);
+    }
   }
 }
 

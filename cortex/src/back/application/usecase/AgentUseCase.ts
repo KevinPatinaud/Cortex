@@ -1,3 +1,5 @@
+import { createWorkflowCheckpointFingerprint, readWorkflowCheckpoint } from "../service/workflowExecution/WorkflowCheckpoint.ts";
+import { cancelExecution, isExecutionCancelled, settleWithConcurrency, type WorkflowExecutionLimits } from "../service/workflowExecution/WorkflowExecution.ts";
 import { createHash, randomInt } from "node:crypto";
 import type {
   AgentConfiguration,
@@ -125,6 +127,9 @@ export interface AgentDefinition {
   hasSession: boolean;
   executionStatus: AgentExecutionStatus;
   executionError?: string;
+  executionStartedAt?: string;
+  executionLastActivityAt?: string;
+  executionProgress?: string;
   conversation: AgentConversationMessage[];
   threads: AgentConversationThread[];
   model?: string;
@@ -148,6 +153,8 @@ export interface ProjectInstructions {
 }
 
 export interface AgentProject {
+  workflowResumable: boolean;
+  workflowParameterValues: WorkflowParameterValues;
   projectId: string;
   directoryPath: string;
   engine: AgentEngine;
@@ -196,11 +203,14 @@ interface AgentWorkflowPlan {
 
 export type AgentInputMode = "separate" | "aggregate";
 
-export type AgentExecutionStatus = "idle" | "running" | "failed";
+export type AgentExecutionStatus = "idle" | "running" | "failed" | "cancelled";
 
-interface AgentExecutionState {
+export interface AgentExecutionState {
   status: AgentExecutionStatus;
   error?: string;
+  startedAt?: string;
+  lastActivityAt?: string;
+  progress?: string;
 }
 
 interface LoadedAgentProject {
@@ -347,12 +357,22 @@ export class AgentUseCase {
     WorkflowParameterValues
   >();
   private readonly activeManualAuditRunIds = new Map<string, string>();
+  private readonly executionControllers = new Map<string, AbortController>();
+  private readonly failedThreadIds = new Map<string, Set<string>>();
+  private readonly workflowControllers = new Map<string, AbortController>();
 
   constructor(
     private readonly agentService: AgentService,
     private readonly projectUseCase: ProjectUseCase,
-    private readonly workflowAuditService?: WorkflowAuditService
-  ) {}
+    private readonly workflowAuditService?: WorkflowAuditService,
+    private readonly executionLimits: WorkflowExecutionLimits = {}
+  ) {
+    for (const limit of Object.values(executionLimits)) {
+      if (!Number.isSafeInteger(limit) || limit < 1) {
+        throw new ValidationError("Execution limits must be positive integers.");
+      }
+    }
+  }
 
   getStatus(): Promise<AgentStatus> {
     return this.agentService.getStatus();
@@ -544,7 +564,8 @@ export class AgentUseCase {
   async runAgent(
     projectId: string,
     input: RunAgentInput,
-    workflowAuditContext?: WorkflowRunAuditContext
+    workflowAuditContext?: WorkflowRunAuditContext,
+    workflowExecution = false
   ): Promise<AgentRunOutput> {
     const normalizedProjectId = projectId.trim();
     const agentId = typeof input.agentId === "string"
@@ -591,6 +612,10 @@ export class AgentUseCase {
       );
     }
 
+    if (this.runningWorkflows.has(normalizedProjectId) && !workflowExecution) {
+      throw new ValidationError("The complete workflow is already running.");
+    }
+
     if (this.getAgentExecution(normalizedProjectId, agentId).status === "running") {
       throw new ValidationError("This agent is already running.");
     }
@@ -606,9 +631,10 @@ export class AgentUseCase {
     const storedParameterValues = this.workflowParameterValues.get(
       normalizedProjectId
     );
-    const isRootAgent = !loadedProject.project.agents.some((candidate) =>
-      candidate.nextAgentIds.includes(agent.id)
-    );
+    const isRootAgent = this.getTriggerUpstreamAgents(
+      normalizedProjectId, loadedProject.project, agent,
+      loadedProject.project.agents.filter((candidate) => candidate.nextAgentIds.includes(agent.id))
+    ).length === 0;
 
     if (
       storedParameterValues &&
@@ -637,6 +663,7 @@ export class AgentUseCase {
     const activeParameterValues = this.workflowParameterValues.get(
       normalizedProjectId
     ) ?? {};
+    loadedProject.project.workflowParameterValues = { ...activeParameterValues };
 
     const upstreamItemGroups = this.resolveUpstreamItemGroups(
       normalizedProjectId,
@@ -667,9 +694,13 @@ export class AgentUseCase {
         )
       };
     });
+    const retrying = ["failed", "cancelled"].includes(
+      this.getAgentExecution(normalizedProjectId, agentId).status
+    );
     const plannedExecutions = threadId
-      ? executions.filter((execution) => execution.workflow?.id === threadId)
-      : executions;
+      ? executions.filter((execution) => execution.id === threadId)
+      : executions.filter((execution) => !retrying || !execution.workflow ||
+        this.failedThreadIds.get(this.getAgentExecutionKey(normalizedProjectId, agentId))?.has(execution.id));
 
     if (threadId && plannedExecutions.length !== 1) {
       throw new ValidationError(
@@ -686,202 +717,261 @@ export class AgentUseCase {
         : "workflow"
     );
 
-    this.setAgentExecution(normalizedProjectId, agentId, { status: "running" });
-
-    const settledExecutions = await Promise.allSettled(
-      plannedExecutions.map(async ({ id, upstreamItems, workflow }) => {
-        const sessionId = workflow?.sessionId;
-        const workflowParameterContext = sessionId
-          ? ""
-          : this.formatWorkflowParameterValues(
-            loadedProject.project.parameters,
-            activeParameterValues
+    const controller = new AbortController();
+    const executionKey = this.getAgentExecutionKey(normalizedProjectId, agentId);
+    const pendingThreadIds = new Set(plannedExecutions.map((execution) => execution.id));
+    this.failedThreadIds.set(executionKey, pendingThreadIds);
+    this.executionControllers.set(executionKey, controller);
+    try {
+      const workflowSignal = this.workflowControllers.get(normalizedProjectId)?.signal;
+      const signal = workflowSignal
+        ? AbortSignal.any([controller.signal, workflowSignal])
+        : controller.signal;
+      const startedAt = new Date().toISOString();
+      this.setAgentExecution(normalizedProjectId, agentId, {
+        status: "running", startedAt, lastActivityAt: startedAt,
+        progress: `Starting ${plannedExecutions.length} instance(s)`
+      });
+      this.persistWorkflowCheckpoint(normalizedProjectId);
+      let completedCount = 0;
+      const onProgress = (progress: string): void => {
+        this.setAgentExecution(normalizedProjectId, agentId, {
+          status: "running", startedAt, lastActivityAt: new Date().toISOString(),
+          progress: progress || this.getAgentExecution(normalizedProjectId, agentId).progress
+        });
+      };
+      const settledExecutions = await settleWithConcurrency(
+        plannedExecutions,
+        this.executionLimits.maxConcurrentInstances ?? 4,
+        async ({ id, upstreamItems, workflow }) => {
+          signal.throwIfAborted();
+          const sessionId = workflow?.sessionId;
+          const workflowParameterContext = sessionId
+            ? ""
+            : this.formatWorkflowParameterValues(
+              loadedProject.project.parameters,
+              activeParameterValues
+            );
+          const executionContext = [
+            workflowParameterContext,
+            additionalInstructions
+          ].filter(Boolean).join("\n\n");
+          const baseTaskPrompt = sessionId
+            ? additionalInstructions || agent.prompt
+            : this.withAdditionalInstructions(
+              agent.prompt,
+              executionContext
+            );
+          const taskPrompt = sessionId
+            ? baseTaskPrompt
+            : this.withUpstreamItems(baseTaskPrompt, upstreamItems);
+          const randomizedTaskPrompt = this.withRandomChoiceEntropy(
+            taskPrompt,
+            agent
           );
-        const executionContext = [
-          workflowParameterContext,
-          additionalInstructions
-        ].filter(Boolean).join("\n\n");
-        const baseTaskPrompt = sessionId
-          ? additionalInstructions || agent.prompt
-          : this.withAdditionalInstructions(
-            agent.prompt,
-            executionContext
+          const effectivePrompt = this.withAgentResponseFormat(
+            randomizedTaskPrompt,
+            agent,
+            loadedProject.project
           );
-        const taskPrompt = sessionId
-          ? baseTaskPrompt
-          : this.withUpstreamItems(baseTaskPrompt, upstreamItems);
-        const randomizedTaskPrompt = this.withRandomChoiceEntropy(
-          taskPrompt,
-          agent
-        );
-        const effectivePrompt = this.withAgentResponseFormat(
-          randomizedTaskPrompt,
-          agent,
-          loadedProject.project
-        );
-        const auditExecutionId = auditContext && this.workflowAuditService
-          ? this.workflowAuditService.startExecution({
-            runId: auditContext.runId,
-            agentId: agent.id,
-            agentName: agent.name,
-            threadId: id,
-            engine: loadedProject.project.engine,
-            ...(agent.model ? { model: agent.model } : {}),
-            ...(agent.reasoningEffort
-              ? { reasoningEffort: agent.reasoningEffort }
-              : {}),
-            input: {
-              workflowParameterValues: { ...activeParameterValues },
-              additionalInstructions,
-              upstreamItems: upstreamItems.map((item) => ({ ...item }))
-            },
-            prompt: effectivePrompt
-          })
-          : null;
-        let rawResponse: string | undefined;
-        let returnedSessionId: string | undefined;
-
-        try {
-          const result = await this.agentService.execute(
-            loadedProject.project.engine,
-            effectivePrompt,
-            {
+          const auditExecutionId = auditContext && this.workflowAuditService
+            ? this.workflowAuditService.startExecution({
+              runId: auditContext.runId,
+              agentId: agent.id,
+              agentName: agent.name,
+              threadId: id,
+              engine: loadedProject.project.engine,
               ...(agent.model ? { model: agent.model } : {}),
               ...(agent.reasoningEffort
                 ? { reasoningEffort: agent.reasoningEffort }
                 : {}),
-              persistSession: true,
-              ...(sessionId ? { sessionId } : {}),
-              workingDirectory: loadedProject.directoryPath
+              input: {
+                workflowParameterValues: { ...activeParameterValues },
+                additionalInstructions,
+                upstreamItems: upstreamItems.map((item) => ({ ...item }))
+              },
+              prompt: effectivePrompt
+            })
+            : null;
+          let rawResponse: string | undefined;
+          let returnedSessionId: string | undefined;
+
+          try {
+            const result = await this.agentService.execute(
+              loadedProject.project.engine,
+              effectivePrompt,
+              {
+                ...(agent.model ? { model: agent.model } : {}),
+                ...(agent.reasoningEffort
+                  ? { reasoningEffort: agent.reasoningEffort }
+                  : {}),
+                persistSession: true,
+                ...(sessionId ? { sessionId } : {}),
+                workingDirectory: loadedProject.directoryPath,
+                signal,
+                onProgress
+              }
+            );
+            signal.throwIfAborted();
+            rawResponse = result.answer;
+            returnedSessionId = result.sessionId;
+            this.validateAgentResponseRouting(result.answer, agent);
+            const effectiveSessionId = result.sessionId || sessionId;
+
+            if (!effectiveSessionId) {
+              throw new Error(
+                "The AI engine did not return a session ID."
+              );
             }
-          );
-          rawResponse = result.answer;
-          returnedSessionId = result.sessionId;
-          this.validateAgentResponseRouting(result.answer, agent);
-          const effectiveSessionId = result.sessionId || sessionId;
 
-          if (!effectiveSessionId) {
-            throw new Error(
-              "The AI engine did not return a session ID."
-            );
+            const parsedResponse = parseAgentResponse(result.answer);
+
+            if (auditExecutionId && this.workflowAuditService) {
+              this.workflowAuditService.completeExecution(auditExecutionId, {
+                response: result.answer,
+                nextAgentIds: parsedResponse?.nextAgentIds ?? null,
+                sessionId: effectiveSessionId
+              });
+            }
+
+            const conversation: AgentConversationMessage[] = [
+              ...(workflow?.conversation ?? []),
+              ...(executionContext
+                ? [{ role: "user" as const, content: executionContext }]
+                : []),
+              { role: "agent", content: result.answer }
+            ];
+
+            completedCount += 1;
+            onProgress(`Completed ${completedCount}/${plannedExecutions.length} instance(s)`);
+            const completedThread = {
+              id,
+              sessionId: effectiveSessionId,
+              conversation,
+              upstreamItems: [...upstreamItems]
+            } satisfies AgentWorkflowThreadState;
+            const currentThreads = this.getAgentWorkflow(normalizedProjectId, agent.id) ?? [];
+            this.setAgentWorkflow(normalizedProjectId, agent.id, [
+              ...currentThreads.filter((thread) => thread.id !== id), completedThread
+            ]);
+            pendingThreadIds.delete(id);
+            this.persistWorkflowCheckpoint(normalizedProjectId);
+            return completedThread;
+          } catch (error) {
+            if (auditExecutionId && this.workflowAuditService) {
+              this.workflowAuditService.failExecution(
+                auditExecutionId,
+                this.getErrorMessage(error, "The agent execution failed."),
+                rawResponse,
+                returnedSessionId ?? sessionId,
+                isExecutionCancelled(error) ? "cancelled" : "failed"
+              );
+            }
+            throw error;
           }
-
-          const parsedResponse = parseAgentResponse(result.answer);
-
-          if (auditExecutionId && this.workflowAuditService) {
-            this.workflowAuditService.completeExecution(auditExecutionId, {
-              response: result.answer,
-              nextAgentIds: parsedResponse?.nextAgentIds ?? null,
-              sessionId: effectiveSessionId
-            });
-          }
-
-          const conversation: AgentConversationMessage[] = [
-            ...(workflow?.conversation ?? []),
-            ...(executionContext
-              ? [{ role: "user" as const, content: executionContext }]
-              : []),
-            { role: "agent", content: result.answer }
-          ];
-
-          return {
-            id,
-            sessionId: effectiveSessionId,
-            conversation,
-            upstreamItems: [...upstreamItems]
-          } satisfies AgentWorkflowThreadState;
-        } catch (error) {
-          if (auditExecutionId && this.workflowAuditService) {
-            this.workflowAuditService.failExecution(
-              auditExecutionId,
-              this.getErrorMessage(error, "The agent execution failed."),
-              rawResponse,
-              returnedSessionId ?? sessionId
-            );
-          }
-          throw error;
         }
-      })
-    );
-    const failedExecution = settledExecutions.find(
-      (execution): execution is PromiseRejectedResult =>
-        execution.status === "rejected"
-    );
-
-    if (failedExecution) {
-      const error = failedExecution.reason;
-      this.setAgentExecution(normalizedProjectId, agentId, {
-        status: "failed",
-        error: error instanceof Error
-          ? error.message
-          : "The agent execution failed."
+      );
+      const successfulThreads = settledExecutions.flatMap((execution) =>
+        execution.status === "fulfilled" ? [execution.value] : []
+      );
+      const workflowThreads = executions.flatMap((execution) => {
+        const completed = successfulThreads.find((thread) => thread.id === execution.id);
+        return completed ? [completed] : execution.workflow ? [execution.workflow] : [];
       });
-      if (!workflowAuditContext && auditContext) {
+      this.setAgentWorkflow(normalizedProjectId, agent.id, workflowThreads);
+      agent.hasSession = workflowThreads.length > 0;
+      agent.threads = this.toConversationThreads(workflowThreads);
+      agent.conversation = [...(agent.threads[0]?.conversation ?? [])];
+      const failedExecution = settledExecutions.find(
+        (execution): execution is PromiseRejectedResult =>
+          execution.status === "rejected"
+      );
+
+      if (failedExecution) {
+        const error = signal.aborted ? signal.reason : failedExecution.reason;
+        this.setAgentExecution(normalizedProjectId, agentId, {
+          status: isExecutionCancelled(error) ? "cancelled" : "failed",
+          startedAt, lastActivityAt: new Date().toISOString(),
+          progress: `${successfulThreads.length}/${plannedExecutions.length} instance(s) completed`,
+          error: error instanceof Error
+            ? error.message
+            : "The agent execution failed."
+        });
+        this.persistWorkflowCheckpoint(normalizedProjectId);
+        if (!workflowAuditContext && auditContext) {
+          this.completeManualAuditRun(
+            normalizedProjectId,
+            auditContext.runId,
+            isExecutionCancelled(error) ? "cancelled" : "failed",
+            this.getErrorMessage(error, "The agent execution failed.")
+          );
+        }
+        throw error;
+      }
+
+      const threads = this.toConversationThreads(workflowThreads);
+      const conversation = (
+        threadId
+          ? threads.find((thread) => thread.id === threadId)
+          : threads[0]
+      )?.conversation ?? [];
+      const answer = this.findLastAgentAnswer(conversation) ?? "";
+
+      this.setAgentWorkflow(normalizedProjectId, agent.id, workflowThreads);
+      agent.hasSession = true;
+      agent.conversation = [...conversation];
+      agent.threads = threads;
+      this.setAgentExecution(normalizedProjectId, agentId, {
+        status: "idle", startedAt, lastActivityAt: new Date().toISOString(),
+        progress: `Completed ${workflowThreads.length} instance(s)`
+      });
+      this.failedThreadIds.delete(executionKey);
+      this.invalidateDownstreamAgentWorkflows(
+        normalizedProjectId,
+        loadedProject.project,
+        agent.id
+      );
+      this.persistWorkflowCheckpoint(normalizedProjectId);
+
+      if (
+        !workflowAuditContext &&
+        auditContext &&
+        this.workflowIsComplete(normalizedProjectId, loadedProject.project)
+      ) {
         this.completeManualAuditRun(
           normalizedProjectId,
           auditContext.runId,
-          "failed",
-          this.getErrorMessage(error, "The agent execution failed.")
+          "succeeded"
         );
       }
+
+      return {
+        answer,
+        ...(auditContext ? { auditRunId: auditContext.runId } : {}),
+        hasSession: true,
+        conversation: [...conversation],
+        threads
+      };
+    } catch (error) {
+      const execution = this.getAgentExecution(normalizedProjectId, agentId);
+      if (execution.status === "running") {
+        this.setAgentExecution(normalizedProjectId, agentId, {
+          ...execution,
+          status: isExecutionCancelled(error) ? "cancelled" : "failed",
+          error: this.getErrorMessage(error, "The agent execution failed.")
+        });
+      }
       throw error;
+    } finally {
+      this.executionControllers.delete(executionKey);
     }
-
-    const executedWorkflowThreads = settledExecutions.map(
-      (execution) => (execution as PromiseFulfilledResult<AgentWorkflowThreadState>)
-        .value
-    );
-    const workflowThreads = threadId
-      ? storedWorkflows.map((workflowThread) =>
-        executedWorkflowThreads.find(
-          (executedThread) => executedThread.id === workflowThread.id
-        ) ?? workflowThread
-      )
-      : executedWorkflowThreads;
-    const threads = this.toConversationThreads(workflowThreads);
-    const conversation = (
-      threadId
-        ? threads.find((thread) => thread.id === threadId)
-        : threads[0]
-    )?.conversation ?? [];
-    const answer = this.findLastAgentAnswer(conversation) ?? "";
-
-    this.setAgentWorkflow(normalizedProjectId, agent.id, workflowThreads);
-    agent.hasSession = true;
-    agent.conversation = [...conversation];
-    agent.threads = threads;
-    this.setAgentExecution(normalizedProjectId, agentId, { status: "idle" });
-    this.invalidateDownstreamAgentWorkflows(
-      normalizedProjectId,
-      loadedProject.project,
-      agent.id
-    );
-
-    if (
-      !workflowAuditContext &&
-      auditContext &&
-      this.workflowIsComplete(normalizedProjectId, loadedProject.project)
-    ) {
-      this.completeManualAuditRun(
-        normalizedProjectId,
-        auditContext.runId,
-        "succeeded"
-      );
-    }
-
-    return {
-      answer,
-      ...(auditContext ? { auditRunId: auditContext.runId } : {}),
-      hasSession: true,
-      conversation: [...conversation],
-      threads
-    };
   }
 
   async runWorkflow(
     projectId: string,
     workflowParameterValues?: unknown,
-    trigger: WorkflowAuditTrigger = "scheduled"
+    trigger: WorkflowAuditTrigger = "scheduled",
+    options: { resume?: boolean } = {}
   ): Promise<WorkflowRunOutput> {
     const normalizedProjectId = projectId.trim();
 
@@ -907,15 +997,29 @@ export class AgentUseCase {
     }
 
     this.runningWorkflows.add(normalizedProjectId);
+    const controller = new AbortController();
+    this.workflowControllers.set(normalizedProjectId, controller);
     let auditRunId: string | undefined;
 
     try {
-      const project = await this.loadProject(normalizedProjectId, false);
-      this.clearWorkflowState(normalizedProjectId);
+      const project = await this.loadProject(normalizedProjectId, false, true);
+      controller.signal.throwIfAborted();
+      if (options.resume && (!project.agents.some((agent) =>
+        agent.hasSession || ["failed", "cancelled"].includes(agent.executionStatus)) ||
+        this.workflowIsComplete(normalizedProjectId, project))) {
+        throw new ValidationError("No unfinished workflow is available to resume. Start a new workflow.");
+      }
+      if (!options.resume) this.clearWorkflowState(normalizedProjectId);
+      const storedParameters = this.workflowParameterValues.get(normalizedProjectId);
       const normalizedParameterValues = await this.validateWorkflowParameterValues(
         normalizedProjectId,
-        workflowParameterValues
+        workflowParameterValues ?? (options.resume ? storedParameters : undefined)
       );
+      if (options.resume && storedParameters && !this.workflowParameterValuesAreEqual(storedParameters, normalizedParameterValues)) {
+        throw new ValidationError("The workflow parameters cannot change when resuming an execution.");
+      }
+      this.workflowParameterValues.set(normalizedProjectId, normalizedParameterValues);
+      project.workflowParameterValues = { ...normalizedParameterValues };
       auditRunId = this.workflowAuditService?.createRun({
         projectId: normalizedProjectId,
         trigger,
@@ -927,21 +1031,17 @@ export class AgentUseCase {
       const executedAgentIds: string[] = [];
       const skippedAgentIds: string[] = [];
 
-      for (const agent of project.agents) {
-        if (
-          this.getAgentProgressState(normalizedProjectId, project, agent) ===
-            "skipped"
-        ) {
-          skippedAgentIds.push(agent.id);
-          if (auditRunId) {
-            this.workflowAuditService?.addEvent(
-              auditRunId,
-              null,
-              "agent.skipped",
-              { agentId: agent.id, agentName: agent.name }
-            );
-          }
-          continue;
+      while (!this.workflowIsComplete(normalizedProjectId, project)) {
+        controller.signal.throwIfAborted();
+        if (executedAgentIds.length >= (this.executionLimits.maxWorkflowExecutions ?? 100)) {
+          throw new ValidationError("The workflow reached its execution limit. Check the cycle exit conditions.");
+        }
+        const agent = project.agents.find((candidate) =>
+          this.getAgentProgressState(normalizedProjectId, project, candidate) === "pending" &&
+          this.agentPrerequisitesAreReady(normalizedProjectId, project, candidate)
+        );
+        if (!agent) {
+          throw new ValidationError("The workflow cannot continue: no agent has completed prerequisites.");
         }
 
         await this.runAgent(normalizedProjectId, {
@@ -952,10 +1052,17 @@ export class AgentUseCase {
             project,
             agent
           )
-        }, auditContext);
+        }, auditContext, true);
         executedAgentIds.push(agent.id);
       }
 
+      controller.signal.throwIfAborted();
+      for (const agent of project.agents) {
+        if (this.getAgentProgressState(normalizedProjectId, project, agent) === "skipped") {
+          skippedAgentIds.push(agent.id);
+          if (auditRunId) this.workflowAuditService?.addEvent(auditRunId, null, "agent.skipped", { agentId: agent.id, agentName: agent.name });
+        }
+      }
       if (auditRunId) {
         this.workflowAuditService?.completeRun(auditRunId, "succeeded");
       }
@@ -969,14 +1076,52 @@ export class AgentUseCase {
       if (auditRunId) {
         this.workflowAuditService?.completeRun(
           auditRunId,
-          "failed",
+          isExecutionCancelled(error) ? "cancelled" : "failed",
           this.getErrorMessage(error, "The workflow execution failed.")
         );
       }
       throw error;
     } finally {
       this.runningWorkflows.delete(normalizedProjectId);
+      this.workflowControllers.delete(normalizedProjectId);
     }
+  }
+
+  resumeWorkflow(projectId: string, workflowParameterValues?: unknown): Promise<WorkflowRunOutput> {
+    return this.runWorkflow(projectId, workflowParameterValues, "manual", { resume: true });
+  }
+
+  cancelProjectExecution(projectId: string): boolean {
+    const normalizedProjectId = projectId.trim();
+    let cancelled = false;
+    const workflowController = this.workflowControllers.get(normalizedProjectId);
+    if (workflowController) {
+      cancelExecution(workflowController);
+      cancelled = true;
+    }
+    for (const [key, controller] of this.executionControllers) {
+      if (key.startsWith(`${normalizedProjectId}:`)) {
+        cancelExecution(controller);
+        cancelled = true;
+      }
+    }
+    return cancelled;
+  }
+
+  cancelAllExecutions(): void {
+    for (const controller of this.workflowControllers.values()) cancelExecution(controller);
+    for (const controller of this.executionControllers.values()) cancelExecution(controller);
+  }
+
+  hasActiveExecutions(): boolean {
+    return this.executionControllers.size > 0 || this.workflowControllers.size > 0;
+  }
+
+  private agentPrerequisitesAreReady(projectId: string, project: AgentProject, agent: AgentDefinition): boolean {
+    const upstream = project.agents.filter((candidate) => candidate.nextAgentIds.includes(agent.id));
+    return this.getTriggerUpstreamAgents(projectId, project, agent, upstream).every((candidate) =>
+      this.getAgentProgressState(projectId, project, candidate) !== "pending"
+    );
   }
 
   async validateWorkflowParameterValues(
@@ -1113,8 +1258,7 @@ export class AgentUseCase {
     }
 
     await this.projectUseCase.saveAgentProject(normalizedProjectId, input);
-    this.agentWorkflows.delete(normalizedProjectId);
-    this.deleteProjectExecutions(normalizedProjectId);
+    this.clearWorkflowState(normalizedProjectId);
     this.loadedProjects.delete(normalizedProjectId);
 
     return this.loadProject(normalizedProjectId);
@@ -1122,8 +1266,14 @@ export class AgentUseCase {
 
   async loadProject(
     projectId: string,
-    setAsActualProject = true
+    setAsActualProject = true,
+    reloadWhileRunning = false
   ): Promise<AgentProject> {
+    const activeProject = this.loadedProjects.get(projectId.trim())?.project;
+    if (activeProject && this.isProjectRunning(projectId) && !reloadWhileRunning) {
+      if (setAsActualProject) this.actualLoadedProject = activeProject;
+      return activeProject;
+    }
     const projectContent = await this.projectUseCase.getProjectContent(projectId);
     const detectedConfigurations = agentProjectConfigurations.filter(
       (configuration) => {
@@ -1183,6 +1333,9 @@ export class AgentUseCase {
       agent.hasSession = workflowThreads.length > 0;
       agent.executionStatus = execution.status;
       agent.executionError = execution.error;
+      agent.executionStartedAt = execution.startedAt;
+      agent.executionLastActivityAt = execution.lastActivityAt;
+      agent.executionProgress = execution.progress;
       agent.conversation = [...(threads[0]?.conversation ?? [])];
       agent.threads = threads;
     }
@@ -1196,6 +1349,8 @@ export class AgentUseCase {
     );
 
     const project: AgentProject = {
+      workflowResumable: false,
+      workflowParameterValues: {},
       projectId: projectContent.id,
       directoryPath: projectContent.directoryPath,
       engine: configuration.engine,
@@ -1204,10 +1359,20 @@ export class AgentUseCase {
       parameters
     };
 
+    const previousProject = this.loadedProjects.get(projectContent.id)?.project;
+    const shouldRestoreCheckpoint = !previousProject;
+    const workflowChanged = previousProject &&
+      createWorkflowCheckpointFingerprint(previousProject) !== createWorkflowCheckpointFingerprint(project);
     this.loadedProjects.set(projectContent.id, {
       project,
       directoryPath: projectContent.directoryPath
     });
+    if (workflowChanged) this.clearWorkflowState(projectContent.id);
+    else if (shouldRestoreCheckpoint) this.restoreWorkflowCheckpoint(project);
+    project.workflowParameterValues = { ...(this.workflowParameterValues.get(project.projectId) ?? {}) };
+    project.workflowResumable = !this.isProjectRunning(project.projectId) &&
+      project.agents.some((agent) => agent.hasSession || ["failed", "cancelled"].includes(agent.executionStatus)) &&
+      !this.workflowIsComplete(project.projectId, project);
     if (setAsActualProject) {
       this.actualLoadedProject = project;
     }
@@ -1272,7 +1437,10 @@ export class AgentUseCase {
         this.createAgentWorkflowPrompt(instructions, agents),
         {
           persistSession: false,
-          workingDirectory
+          workingDirectory,
+          ...(this.workflowControllers.has(projectId)
+            ? { signal: this.workflowControllers.get(projectId)!.signal }
+            : {})
         }
       );
       const plan = this.parseAgentWorkflow(result.answer, agents);
@@ -1301,6 +1469,7 @@ export class AgentUseCase {
       }
       return plan.parameters;
     } catch (error) {
+      if (isExecutionCancelled(error)) throw error;
       console.warn(
         "Unable to determine the agent workflow with the local engine. " +
         "A linear sequence based on file order will be retained.",
@@ -2204,7 +2373,7 @@ ${JSON.stringify(context, null, 2)}`;
     agent: AgentDefinition,
     visitingAgentIds = new Set<string>()
   ): "completed" | "pending" | "skipped" {
-    if (this.getAgentExecution(projectId, agent.id).status === "running") {
+    if (["running", "failed", "cancelled"].includes(this.getAgentExecution(projectId, agent.id).status)) {
       return "pending";
     }
 
@@ -2481,6 +2650,7 @@ Use only these results as input data.`;
 
     for (const invalidatedAgentId of invalidatedAgentIds) {
       projectWorkflows?.delete(invalidatedAgentId);
+      this.failedThreadIds.delete(this.getAgentExecutionKey(projectId, invalidatedAgentId));
       this.setAgentExecution(projectId, invalidatedAgentId, { status: "idle" });
       const invalidatedAgent = project.agents.find(
         (agent) => agent.id === invalidatedAgentId
@@ -2542,6 +2712,9 @@ Use only these results as input data.`;
     if (loadedAgent) {
       loadedAgent.executionStatus = execution.status;
       loadedAgent.executionError = execution.error;
+      loadedAgent.executionStartedAt = execution.startedAt;
+      loadedAgent.executionLastActivityAt = execution.lastActivityAt;
+      loadedAgent.executionProgress = execution.progress;
     }
   }
 
@@ -2549,11 +2722,13 @@ Use only these results as input data.`;
     for (const key of this.agentExecutions.keys()) {
       if (key.startsWith(`${projectId}:`)) {
         this.agentExecutions.delete(key);
+        this.failedThreadIds.delete(key);
       }
     }
   }
 
   private clearWorkflowState(projectId: string): void {
+    this.workflowAuditService?.deleteCheckpoint(projectId);
     this.agentWorkflows.delete(projectId);
     this.workflowParameterValues.delete(projectId);
     this.deleteProjectExecutions(projectId);
@@ -2563,10 +2738,16 @@ Use only these results as input data.`;
       return;
     }
 
+    loadedProject.workflowResumable = false;
+    loadedProject.workflowParameterValues = {};
+
     for (const agent of loadedProject.agents) {
       agent.hasSession = false;
       agent.executionStatus = "idle";
       delete agent.executionError;
+      delete agent.executionStartedAt;
+      delete agent.executionLastActivityAt;
+      delete agent.executionProgress;
       agent.conversation = [];
       agent.threads = [];
     }
@@ -2574,6 +2755,44 @@ Use only these results as input data.`;
 
   private getAgentExecutionKey(projectId: string, agentId: string): string {
     return `${projectId}:${agentId}`;
+  }
+
+  private persistWorkflowCheckpoint(projectId: string): void {
+    const project = this.loadedProjects.get(projectId)?.project;
+    if (!project || !this.workflowAuditService) return;
+    this.workflowAuditService.saveCheckpoint(projectId, createWorkflowCheckpointFingerprint(project), {
+      parameterValues: this.workflowParameterValues.get(projectId) ?? {},
+      agents: project.agents.map((agent) => ({
+        id: agent.id,
+        execution: this.getAgentExecution(projectId, agent.id),
+        threads: this.getAgentWorkflow(projectId, agent.id) ?? [],
+        failedThreadIds: [...(this.failedThreadIds.get(this.getAgentExecutionKey(projectId, agent.id)) ?? [])]
+      }))
+    });
+  }
+
+  private restoreWorkflowCheckpoint(project: AgentProject): void {
+    const checkpoint = this.workflowAuditService?.getCheckpoint(project.projectId);
+    if (!checkpoint) return;
+    const state = readWorkflowCheckpoint(checkpoint.state);
+    if (checkpoint.fingerprint !== createWorkflowCheckpointFingerprint(project) || !state ||
+        state.agents.length !== project.agents.length ||
+        state.agents.some((entry) => !project.agents.some((agent) => agent.id === entry.id))) {
+      this.workflowAuditService?.deleteCheckpoint(project.projectId);
+      return;
+    }
+    this.workflowParameterValues.set(project.projectId, state.parameterValues);
+    for (const entry of state.agents) {
+      this.setAgentWorkflow(project.projectId, entry.id, entry.threads);
+      this.failedThreadIds.set(this.getAgentExecutionKey(project.projectId, entry.id), new Set(entry.failedThreadIds));
+      this.setAgentExecution(project.projectId, entry.id, entry.execution.status === "running"
+        ? { ...entry.execution, status: "failed", error: "Cortex stopped before this execution completed. Resume it to continue." }
+        : entry.execution);
+      const agent = project.agents.find((candidate) => candidate.id === entry.id)!;
+      agent.hasSession = entry.threads.length > 0;
+      agent.threads = this.toConversationThreads(entry.threads);
+      agent.conversation = [...(agent.threads[0]?.conversation ?? [])];
+    }
   }
 
   private getOrCreateManualAuditRun(

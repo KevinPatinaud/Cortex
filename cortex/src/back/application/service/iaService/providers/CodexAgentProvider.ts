@@ -8,6 +8,7 @@ import type {
 } from "../AgentProvider.ts";
 import { DEFAULT_AGENT_CONFIGURATION } from "../AgentProvider.ts";
 import { CliAgentProvider } from "../CliAgentProvider.ts";
+import { createCodexProgress } from "../ExecutionProgress.ts";
 
 const AGENT_EXECUTION_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -103,7 +104,10 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     const output = await this.runCommand(this.command, [
       ...this.argumentPrefix,
       ...args
-    ], AGENT_EXECUTION_TIMEOUT_MS, options.workingDirectory, prompt);
+    ], options.timeoutMs ?? AGENT_EXECUTION_TIMEOUT_MS, options.workingDirectory, prompt, {
+      signal: options.signal,
+      onProgress: createCodexProgress(options.onProgress)
+    });
     const result = parseCodexJsonOutput(output, options.sessionId);
 
     if (!result.answer) {
