@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
-  ArrowUpRight,
   Bot,
   Check,
   ChevronRight,
-  CircleAlert,
   FileText,
-  Lightbulb,
   LoaderCircle,
   MoreHorizontal,
   Plus,
@@ -15,9 +12,7 @@ import {
   Save,
   ScanSearch,
   Settings2,
-  ShieldCheck,
   Sparkles,
-  TriangleAlert,
   Trash2,
   Undo2,
   X
@@ -25,11 +20,9 @@ import {
 import {
   improveAgent,
   improveInstructions,
-  reviewProject,
   saveAgentProject,
   type AgentProject,
   type ImproveProjectAgent,
-  type ProjectReview,
   type ProjectReviewFinding
 } from "../../../services/agentApi.ts";
 import {
@@ -39,6 +32,7 @@ import {
 import { useTranslation } from "../../../i18n.tsx";
 import { ConfirmationDialog } from "../../project_manager/components/ConfirmationDialog.tsx";
 import { MarkdownEditor } from "./MarkdownEditor.tsx";
+import { ProjectReviewDialog } from "./ProjectReviewDialog.tsx";
 import { readProjectDraft, removeProjectDraft, saveProjectDraft, type DraftAgent } from "./projectDraft.ts";
 
 interface AgentProjectEditorProps {
@@ -150,7 +144,7 @@ export function AgentProjectEditor({
   const [instructionsImprovement, setInstructionsImprovement] =
     useState<InstructionsImprovementPreview | null>(null);
   const [isReviewingProject, setIsReviewingProject] = useState(false);
-  const [projectReview, setProjectReview] = useState<ProjectReview | null>(null);
+  const [isProjectReviewOpen, setIsProjectReviewOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [error, setError] = useState("");
@@ -160,7 +154,7 @@ export function AgentProjectEditor({
   const [draftStorageAvailable, setDraftStorageAvailable] = useState(true);
 
   useEffect(() => {
-    if (!agentImprovement && !instructionsImprovement && !projectReview) {
+    if (!agentImprovement && !instructionsImprovement) {
       return;
     }
 
@@ -168,13 +162,12 @@ export function AgentProjectEditor({
       if (event.key === "Escape") {
         setAgentImprovement(null);
         setInstructionsImprovement(null);
-        setProjectReview(null);
       }
     }
 
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [agentImprovement, instructionsImprovement, projectReview]);
+  }, [agentImprovement, instructionsImprovement]);
 
   const selectedAgent = agents.find(
     (agent) => agent.clientId === selectedAgentId
@@ -386,32 +379,6 @@ export function AgentProjectEditor({
     setSaveMessage(t("editor.instructionsImproved"));
   }
 
-  async function handleReviewProject(): Promise<void> {
-    setIsReviewingProject(true);
-    setError("");
-    setSaveMessage("");
-
-    try {
-      const review = await reviewProject(content.projectId, {
-        projectName: projectName.trim(),
-        instructions,
-        agents: agents.map((agent) => ({
-          key: agent.clientId,
-          name: agent.name,
-          description: agent.description,
-          prompt: agent.prompt,
-          model: agent.model ?? "",
-          reasoningEffort: agent.reasoningEffort ?? ""
-        }))
-      });
-      setProjectReview(review);
-    } catch (requestError) {
-      setError(getErrorMessage(requestError, t("editor.reviewError")));
-    } finally {
-      setIsReviewingProject(false);
-    }
-  }
-
   function openReviewFinding(finding: ProjectReviewFinding): void {
     if (finding.scope === "agent" && finding.agentKey) {
       setSelectedAgentId(finding.agentKey);
@@ -422,7 +389,7 @@ export function AgentProjectEditor({
       return;
     }
 
-    setProjectReview(null);
+    setIsProjectReviewOpen(false);
   }
 
   function requestClose(): void {
@@ -562,11 +529,12 @@ export function AgentProjectEditor({
           <button
             className="project-editor__review"
             type="button"
-            onClick={() => void handleReviewProject()}
+            onClick={() => setIsProjectReviewOpen(true)}
             disabled={
               isSaving ||
               isDeleting ||
-              isImproving ||
+              isImprovingAgent ||
+              isImprovingInstructions ||
               !projectName.trim()
             }
           >
@@ -575,9 +543,7 @@ export function AgentProjectEditor({
             ) : (
               <ScanSearch aria-hidden="true" size={16} />
             )}
-            {isReviewingProject
-              ? t("editor.reviewing")
-              : t("editor.reviewProject")}
+            {t("editor.reviewProject")}
           </button>
           <button
             className="project-editor__save"
@@ -912,125 +878,17 @@ export function AgentProjectEditor({
         />
       )}
 
-      {projectReview && (
-        <div
-          className="agent-improvement__backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) {
-              setProjectReview(null);
-            }
-          }}
-        >
-          <section
-            className="project-review"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="project-review-title"
-          >
-            <header>
-              <span className="agent-improvement__icon" aria-hidden="true">
-                <ScanSearch size={21} />
-              </span>
-              <div>
-                <span>{t("editor.projectReviewEyebrow")}</span>
-                <h2 id="project-review-title">{t("editor.projectReviewTitle")}</h2>
-                <p>{t("editor.projectReviewHelp")}</p>
-              </div>
-              <span className={`project-review__assessment project-review__assessment--${projectReview.assessment}`}>
-                {projectReview.assessment === "healthy" && (
-                  <ShieldCheck aria-hidden="true" size={15} />
-                )}
-                {projectReview.assessment === "needs_attention" && (
-                  <TriangleAlert aria-hidden="true" size={15} />
-                )}
-                {projectReview.assessment === "critical" && (
-                  <CircleAlert aria-hidden="true" size={15} />
-                )}
-                {t(`editor.reviewAssessment.${projectReview.assessment}`)}
-              </span>
-              <button
-                className="agent-improvement__close"
-                type="button"
-                aria-label={t("common.close")}
-                onClick={() => setProjectReview(null)}
-              >
-                <X aria-hidden="true" size={18} />
-              </button>
-            </header>
-
-            <div className="project-review__content">
-              <section className="project-review__summary">
-                <strong>{t("editor.reviewSummary")}</strong>
-                <p>{projectReview.summary}</p>
-              </section>
-
-              <div className="project-review__findings-heading">
-                <h3>{t("editor.reviewFindings")}</h3>
-                <span>{projectReview.findings.length}</span>
-              </div>
-
-              {projectReview.findings.length > 0 ? (
-                <ol className="project-review__findings">
-                  {projectReview.findings.map((finding, index) => {
-                    const targetLabel = finding.scope === "agent"
-                      ? agents.find((agent) => agent.clientId === finding.agentKey)
-                        ?.name || t("editor.unnamedAgent")
-                      : finding.scope === "instructions"
-                        ? t("workspace.instructionsTab")
-                        : t("editor.reviewWholeProject");
-
-                    return (
-                      <li
-                        className={`project-review__finding project-review__finding--${finding.severity}`}
-                        key={`${finding.scope}-${finding.agentKey ?? "project"}-${index}`}
-                      >
-                        <span className="project-review__finding-icon" aria-hidden="true">
-                          {finding.severity === "critical" && <CircleAlert size={18} />}
-                          {finding.severity === "warning" && <TriangleAlert size={18} />}
-                          {finding.severity === "suggestion" && <Lightbulb size={18} />}
-                        </span>
-                        <div>
-                          <div className="project-review__finding-meta">
-                            <span>{t(`editor.reviewSeverity.${finding.severity}`)}</span>
-                            <em>{targetLabel}</em>
-                          </div>
-                          <h4>{finding.title}</h4>
-                          <p>{finding.description}</p>
-                          <aside>
-                            <strong>{t("editor.reviewRecommendation")}</strong>
-                            {finding.recommendation}
-                          </aside>
-                        </div>
-                        {finding.scope !== "project" && (
-                          <button
-                            type="button"
-                            onClick={() => openReviewFinding(finding)}
-                          >
-                            {t("editor.reviewOpenTarget")}
-                            <ArrowUpRight aria-hidden="true" size={14} />
-                          </button>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ol>
-              ) : (
-                <div className="project-review__empty">
-                  <ShieldCheck aria-hidden="true" size={25} />
-                  <strong>{t("editor.reviewNoFinding")}</strong>
-                  <p>{t("editor.reviewNoFindingHelp")}</p>
-                </div>
-              )}
-            </div>
-
-            <footer>
-              <button type="button" onClick={() => setProjectReview(null)}>
-                {t("common.close")}
-              </button>
-            </footer>
-          </section>
-        </div>
-      )}
+      <ProjectReviewDialog
+        key={content.projectId}
+        projectId={content.projectId}
+        projectName={projectName}
+        instructions={instructions}
+        agents={agents}
+        isOpen={isProjectReviewOpen}
+        onClose={() => setIsProjectReviewOpen(false)}
+        onBusyChange={setIsReviewingProject}
+        onOpenFinding={openReviewFinding}
+      />
 
       {agentImprovement && (
         <div

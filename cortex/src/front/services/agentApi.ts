@@ -179,6 +179,13 @@ export interface ReviewProjectInput {
   projectName: string;
   instructions: string;
   agents: ReviewProjectAgent[];
+  message?: string;
+  conversation?: ProjectReviewMessage[];
+}
+
+export interface ProjectReviewMessage {
+  role: "user" | "assistant";
+  content: string;
 }
 
 export interface ProjectReviewFinding {

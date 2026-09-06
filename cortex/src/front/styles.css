@@ -3783,6 +3783,356 @@ main,
   font-weight: 700;
 }
 
+.project-review.project-review--conversation {
+  display: flex;
+  width: min(60rem, calc(100vw - 2rem));
+  height: min(48rem, calc(100dvh - 2rem));
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--color-text);
+}
+
+.project-review--conversation:not([open]) {
+  display: none;
+}
+
+.project-review--conversation::backdrop {
+  background: rgb(8 27 53 / 60%);
+  backdrop-filter: blur(5px);
+}
+
+.project-review.project-review--conversation > header {
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+}
+
+.project-review.project-review--conversation > header > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.project-review.project-review--conversation > header > div > span {
+  font-size: 0.68rem;
+}
+
+.project-review.project-review--conversation header p {
+  max-width: 43rem;
+  color: #566d8a;
+  font-size: 0.82rem;
+}
+
+.project-review__conversation {
+  min-height: 0;
+  padding: 1.25rem;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  background: #f8faff;
+  overflow-wrap: anywhere;
+}
+
+.project-review__welcome {
+  display: flex;
+  min-height: 100%;
+  max-width: 36rem;
+  margin: 0 auto;
+  padding: 1.75rem 0.75rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #56759c;
+  text-align: center;
+}
+
+.project-review__welcome > svg {
+  box-sizing: content-box;
+  padding: 0.8rem;
+  border: 1px solid #d9e5fc;
+  border-radius: 1rem;
+  background: #eaf2ff;
+  color: #3269c7;
+}
+
+.project-review__welcome h3 {
+  margin: 1rem 0 0.4rem;
+  color: #29496f;
+  font-size: 1.08rem;
+}
+
+.project-review__welcome p {
+  margin: 0;
+  font-size: 0.87rem;
+  line-height: 1.65;
+}
+
+.project-review__turn {
+  padding: 1rem;
+  border: 1px solid #dfe7f3;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.project-review__turn + .project-review__turn {
+  margin-top: 1rem;
+}
+
+.project-review__turn--user {
+  width: fit-content;
+  max-width: 90%;
+  margin-left: auto;
+  border-color: #d5e2fc;
+  border-bottom-right-radius: 4px;
+  background: #edf4ff;
+}
+
+.project-review__turn-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.8rem;
+}
+
+.project-review__turn-heading > strong {
+  color: #2d507c;
+  font-size: 0.82rem;
+}
+
+.project-review--conversation .project-review__assessment {
+  min-height: 1.8rem;
+  margin: 0;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.72rem;
+  white-space: normal;
+}
+
+.project-review__message {
+  margin: 0.6rem 0 0;
+  color: #395574;
+  font-size: 0.88rem;
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+
+.project-review__details {
+  margin-top: 0.9rem;
+}
+
+.project-review__details > summary {
+  width: fit-content;
+  padding: 0.4rem 0;
+  color: #3d6090;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.project-review__details[open] > summary {
+  margin-bottom: 0.45rem;
+}
+
+.project-review--conversation .project-review__finding-meta {
+  flex-wrap: wrap;
+}
+
+.project-review--conversation .project-review__finding-meta span,
+.project-review--conversation .project-review__finding-meta em {
+  color: #586f90;
+  font-size: 0.7rem;
+}
+
+.project-review--conversation .project-review__finding h4 {
+  font-size: 0.86rem;
+}
+
+.project-review--conversation .project-review__finding p,
+.project-review--conversation .project-review__finding aside {
+  color: #536b88;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+
+.project-review--conversation .project-review__finding > button {
+  font-size: 0.75rem;
+}
+
+.project-review__pending {
+  display: flex;
+  margin: 1rem 0 0;
+  padding: 0.25rem;
+  align-items: center;
+  gap: 0.55rem;
+  color: #536d93;
+  font-size: 0.82rem;
+}
+
+.project-review__composer {
+  display: flex;
+  min-width: 0;
+  margin: 0;
+  padding: 1rem 1.25rem;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-top: 1px solid #dfe7f3;
+  background: #fff;
+}
+
+.project-review__composer > label {
+  color: #365779;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.project-review__composer > textarea {
+  display: block;
+  width: 100%;
+  min-height: 5.75rem;
+  max-height: 9rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid #c4d4ef;
+  border-radius: 10px;
+  background: #fbfdff;
+  color: #29496f;
+  font: inherit;
+  font-size: 0.87rem;
+  line-height: 1.5;
+  resize: none;
+}
+
+.project-review__composer > textarea::placeholder {
+  color: #657b99;
+}
+
+.project-review__composer-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.project-review__composer-actions > span {
+  margin-right: auto;
+  color: #627897;
+  font-size: 0.73rem;
+}
+
+.project-review__composer-actions button {
+  display: inline-flex;
+  min-height: 2.5rem;
+  padding: 0.6rem 0.85rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border: 1px solid #c9d8ef;
+  border-radius: 9px;
+  background: #f3f7ff;
+  color: #325f9c;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.project-review__composer-actions button:hover:not(:disabled) {
+  border-color: #91b2e5;
+  background: #e7f0ff;
+}
+
+.project-review__composer-actions .project-review__send {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.project-review__composer-actions .project-review__send:hover:not(:disabled) {
+  border-color: #1d55cb;
+  background: #1d55cb;
+}
+
+.project-review__composer-actions button:disabled,
+.project-review__composer textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.project-review--conversation :is(button, textarea, summary):focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 3px;
+}
+
+.project-review__notice,
+.project-review__error {
+  margin: 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #dfdff6;
+  border-radius: 8px;
+  background: #f4f3ff;
+  color: #555982;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.project-review--conversation > .project-review__notice {
+  margin: 0.75rem 1.25rem 0;
+  flex: 0 0 auto;
+}
+
+.project-review__error {
+  border-color: #efc7cd;
+  background: #fff3f4;
+  color: #a13b4c;
+}
+
+@media (max-width: 600px) {
+  .project-review.project-review--conversation {
+    width: calc(100vw - 1rem);
+    height: calc(100dvh - 1rem);
+    max-height: calc(100dvh - 1rem);
+    border-radius: 13px;
+  }
+
+  .project-review.project-review--conversation > header {
+    padding: 0.85rem;
+    gap: 0.65rem;
+  }
+
+  .project-review--conversation > header .agent-improvement__icon {
+    display: none;
+  }
+
+  .project-review__conversation {
+    padding: 0.8rem;
+  }
+
+  .project-review__turn {
+    padding: 0.8rem;
+  }
+
+  .project-review__turn--user {
+    max-width: 95%;
+  }
+
+  .project-review__composer {
+    padding: 0.75rem 0.85rem;
+  }
+
+  .project-review__composer-actions > span {
+    flex-basis: 100%;
+  }
+
+  .project-review__composer-actions .project-review__send {
+    margin-left: auto;
+  }
+
+  .project-review--conversation > .project-review__notice {
+    margin: 0.6rem 0.85rem 0;
+  }
+}
+
 .instructions-editor {
   width: min(58rem, 100%);
   margin-top: 1rem;

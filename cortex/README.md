@@ -93,6 +93,13 @@ use approximately 200 MB plus buffers at the maximum allowed size.
 
 ## Editing and saving
 
+In the editor, **Project review** opens a conversation where you can describe
+desired changes, ask questions, or request a general analysis. Follow-up messages
+include the previous exchanges and the current unsaved draft. Closing and
+reopening the review keeps the conversation while the editor remains open;
+leaving the editor or reloading the page clears it. Recommendations link to the
+relevant agents or instructions, and edits remain under your control.
+
 Unsaved editor drafts are kept in the current browser, separately for each
 project. Reopening the editor offers **Restore draft** or **Delete draft**.
 Navigation and reload warn before leaving a modified draft. Saving or explicitly
