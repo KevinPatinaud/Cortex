@@ -7,7 +7,9 @@ import type { WorkflowAuditService } from "../workflowAudit/WorkflowAuditService
 import {
   cronMatchesDate,
   getNextCronOccurrence,
-  normalizeCronExpression
+  normalizeCronExpression,
+  normalizeScheduleTimezone,
+  serverTimezone
 } from "./CronExpression.ts";
 
 export type WorkflowScheduleLastRunStatus =
@@ -22,6 +24,8 @@ export interface WorkflowScheduleOutput {
   cron: string;
   enabled: boolean;
   timezone: string;
+  serverTimezone: string;
+  configured: boolean;
   nextRunAt: string | null;
   running: boolean;
   lastRunAt: string | null;
@@ -32,6 +36,7 @@ export interface WorkflowScheduleOutput {
 
 export interface WorkflowScheduleInput {
   cron?: unknown;
+  timezone?: unknown;
   enabled?: unknown;
   parameterValues?: unknown;
 }
@@ -48,8 +53,9 @@ const DEFAULT_CRON_EXPRESSION = "0 9 * * 1-5";
 export class WorkflowScheduler {
   private readonly schedules = new Map<
     string,
-    { cron: string; enabled: boolean; parameterValues: Record<string, string> }
+    { cron: string; timezone?: string; enabled: boolean; parameterValues: Record<string, string> }
   >();
+  private readonly configuredProjects = new Set<string>();
   private readonly runtimeStates = new Map<
     string,
     WorkflowScheduleRuntimeState
@@ -79,6 +85,7 @@ export class WorkflowScheduler {
           .getWorkflowScheduleConfiguration(project.id);
 
         if (schedule) {
+          this.configuredProjects.add(project.id);
           this.schedules.set(project.id, schedule);
         }
       }));
@@ -112,9 +119,11 @@ export class WorkflowScheduler {
     let schedule = this.schedules.get(normalizedProjectId);
 
     if (!schedule) {
-      schedule = await this.projectUseCase.getWorkflowScheduleConfiguration(
+      const stored = await this.projectUseCase.getWorkflowScheduleConfiguration(
         normalizedProjectId
-      ) ?? {
+      );
+      if (stored) this.configuredProjects.add(normalizedProjectId);
+      schedule = stored ?? {
         cron: DEFAULT_CRON_EXPRESSION,
         enabled: false,
         parameterValues: {}
@@ -135,6 +144,11 @@ export class WorkflowScheduler {
       throw new ValidationError("The schedule enabled option must be a boolean.");
     }
 
+    const previous = await this.getSchedule(normalizedProjectId);
+    const timezone = normalizeScheduleTimezone(input.timezone === undefined ? previous.timezone : input.timezone);
+    const cron = normalizeCronExpression(input.cron);
+    // Validate an occurrence before persisting, so an invalid schedule cannot be saved.
+    getNextCronOccurrence(cron, this.now(), timezone);
     const parameterValues = await this.agentUseCase
       .validateWorkflowParameterValues(
         normalizedProjectId,
@@ -142,7 +156,8 @@ export class WorkflowScheduler {
         input.enabled
       );
     const schedule = {
-      cron: normalizeCronExpression(input.cron),
+      cron,
+      timezone,
       enabled: input.enabled,
       parameterValues
     };
@@ -151,8 +166,23 @@ export class WorkflowScheduler {
       schedule
     );
     this.schedules.set(normalizedProjectId, schedule);
+    this.configuredProjects.add(normalizedProjectId);
 
     return this.toOutput(normalizedProjectId, schedule);
+  }
+
+  async previewSchedule(projectId: string, input: WorkflowScheduleInput | null | undefined) {
+    await this.requireProject(projectId);
+    const cron = normalizeCronExpression(input?.cron);
+    const timezone = normalizeScheduleTimezone(input?.timezone);
+    const now = this.now();
+    let after = now;
+    const nextRuns: string[] = [];
+    for (let index = 0; index < 3; index++) {
+      after = getNextCronOccurrence(cron, after, timezone);
+      nextRuns.push(after.toISOString());
+    }
+    return { cron, timezone, serverTimezone: serverTimezone(), now: now.toISOString(), nextRuns };
   }
 
   checkDueSchedules(date: Date): void {
@@ -162,7 +192,7 @@ export class WorkflowScheduler {
       if (
         !schedule.enabled ||
         this.handledMinuteKeys.get(projectId) === minuteKey ||
-        !cronMatchesDate(schedule.cron, date)
+        !cronMatchesDate(schedule.cron, date, schedule.timezone ?? serverTimezone())
       ) {
         continue;
       }
@@ -213,6 +243,7 @@ export class WorkflowScheduler {
       if (!projectExists) {
         this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "skipped", "The project no longer exists.");
         this.schedules.delete(projectId);
+        this.configuredProjects.delete(projectId);
         this.runtimeStates.delete(projectId);
         this.handledMinuteKeys.delete(projectId);
         return;
@@ -258,6 +289,7 @@ export class WorkflowScheduler {
     projectId: string,
     schedule: {
       cron: string;
+      timezone?: string;
       enabled: boolean;
       parameterValues: Record<string, string>;
     }
@@ -267,9 +299,11 @@ export class WorkflowScheduler {
     return {
       ...schedule,
       parameterValues: { ...schedule.parameterValues },
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "local",
+      timezone: schedule.timezone ?? serverTimezone(),
+      serverTimezone: serverTimezone(),
+      configured: this.configuredProjects.has(projectId),
       nextRunAt: schedule.enabled
-        ? getNextCronOccurrence(schedule.cron, this.now()).toISOString()
+        ? getNextCronOccurrence(schedule.cron, this.now(), schedule.timezone ?? serverTimezone()).toISOString()
         : null,
       running: runtime.running,
       lastRunAt: runtime.lastRunAt?.toISOString() ?? null,

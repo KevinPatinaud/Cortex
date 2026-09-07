@@ -4,8 +4,33 @@ import { ValidationError } from "../../error/ValidationError.ts";
 import {
   cronMatchesDate,
   getNextCronOccurrence,
-  normalizeCronExpression
+  normalizeCronExpression,
+  normalizeScheduleTimezone
 } from "./CronExpression.ts";
+
+test("uses the selected timezone across dates and fractional offsets", () => {
+  assert.equal(getNextCronOccurrence("0 9 * * *", new Date("2026-09-07T00:00:00Z"), "Europe/Paris").toISOString(), "2026-09-07T07:00:00.000Z");
+  assert.equal(getNextCronOccurrence("0 9 * * *", new Date("2026-01-07T00:00:00Z"), "Europe/Paris").toISOString(), "2026-01-07T08:00:00.000Z");
+  assert.equal(getNextCronOccurrence("0 9 * * *", new Date("2026-09-07T00:00:00Z"), "Asia/Kathmandu").toISOString(), "2026-09-07T03:15:00.000Z");
+  assert.equal(cronMatchesDate("0 0 * * 2", new Date("2026-09-07T22:00:00Z"), "Europe/Paris"), true);
+  assert.throws(() => normalizeScheduleTimezone("Mars/Olympus"), ValidationError);
+  assert.throws(() => normalizeScheduleTimezone(null), ValidationError);
+});
+
+test("skips missing DST times and previews both repeated absolute occurrences", () => {
+  assert.equal(getNextCronOccurrence("30 2 * * *", new Date("2026-03-29T00:00:00Z"), "Europe/Paris").toISOString(), "2026-03-30T00:30:00.000Z");
+  const first = getNextCronOccurrence("30 2 * * *", new Date("2026-10-25T00:00:00Z"), "Europe/Paris");
+  const second = getNextCronOccurrence("30 2 * * *", first, "Europe/Paris");
+  assert.equal(first.toISOString(), "2026-10-25T00:30:00.000Z");
+  assert.equal(second.toISOString(), "2026-10-25T01:30:00.000Z");
+  for (const date of [first, second]) assert.equal(cronMatchesDate("30 2 * * *", date, "Europe/Paris"), true);
+  assert.equal(getNextCronOccurrence("30 2 * * *", new Date("2026-10-03T14:00:00Z"), "Australia/Lord_Howe").toISOString(), "2026-10-03T15:30:00.000Z");
+});
+
+test("handles leap days and rejects schedules without an occurrence", () => {
+  assert.equal(getNextCronOccurrence("0 9 29 2 *", new Date("2026-03-01T00:00:00Z"), "UTC").toISOString(), "2028-02-29T09:00:00.000Z");
+  assert.throws(() => getNextCronOccurrence("0 9 31 2 *", new Date("2026-03-01T00:00:00Z"), "UTC"), ValidationError);
+});
 
 test("normalise et valide une expression cron standard à cinq champs", () => {
   assert.equal(normalizeCronExpression("  */15   8-18 * * 1-5 "), "*/15 8-18 * * 1-5");

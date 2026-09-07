@@ -45,41 +45,68 @@ export function normalizeCronExpression(value: unknown): string {
   return expression;
 }
 
-export function cronMatchesDate(expression: string, date: Date): boolean {
-  const parsed = parseCronExpression(expression);
-  const dayOfMonthMatches = parsed.dayOfMonth.values.has(date.getDate());
-  const dayOfWeekMatches = parsed.dayOfWeek.values.has(date.getDay());
-  const dayMatches = parsed.dayOfMonth.wildcard
-    ? dayOfWeekMatches
-    : parsed.dayOfWeek.wildcard
-      ? dayOfMonthMatches
-      : dayOfMonthMatches || dayOfWeekMatches;
+export function normalizeScheduleTimezone(value: unknown): string {
+  if (typeof value !== "string" || !value.trim()) {
+    throw new ValidationError("A valid IANA schedule timezone is required.");
+  }
+  try {
+    return new Intl.DateTimeFormat("en", { timeZone: value.trim() }).resolvedOptions().timeZone;
+  } catch {
+    throw new ValidationError("The schedule timezone is invalid.");
+  }
+}
 
-  return parsed.minute.values.has(date.getMinutes()) &&
-    parsed.hour.values.has(date.getHours()) &&
-    dayMatches &&
-    parsed.month.values.has(date.getMonth() + 1);
+export function serverTimezone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function zonedClock(timezone: string): (date: Date) => Date {
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+  });
+  return (date) => {
+    const parts = Object.fromEntries(formatter.formatToParts(date).map(({ type, value }) => [type, value]));
+    return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute));
+  };
+}
+
+export function cronMatchesDate(expression: string, date: Date, timezone = serverTimezone()): boolean {
+  return parsedCronMatchesDate(parseCronExpression(expression), zonedClock(timezone)(date));
 }
 
 export function getNextCronOccurrence(
   expression: string,
-  after = new Date()
+  after = new Date(),
+  timezone = serverTimezone()
 ): Date {
   const parsed = parseCronExpression(expression);
-  const candidate = new Date(after);
-  candidate.setSeconds(0, 0);
-  candidate.setMinutes(candidate.getMinutes() + 1);
+  const maximumMonthDays = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (parsed.dayOfWeek.wildcard && ![...parsed.month.values].some((month) =>
+    [...parsed.dayOfMonth.values].some((day) => day <= maximumMonthDays[month - 1])
+  )) {
+    throw new ValidationError("The cron expression has no occurrence in the supported date range.");
+  }
+  const clock = zonedClock(timezone);
+  const start = Math.floor(after.getTime() / 60_000) * 60_000 + 60_000;
+  if (!Number.isFinite(start)) throw new ValidationError("The schedule date is invalid.");
 
   for (
     let elapsedMinutes = 0;
     elapsedMinutes < MAX_NEXT_OCCURRENCE_MINUTES;
-    elapsedMinutes += 1
+    elapsedMinutes += 60
   ) {
-    if (parsedCronMatchesDate(parsed, candidate)) {
-      return candidate;
+    const windowStart = start + elapsedMinutes * 60_000;
+    // Inspect both ends before skipping an hour, including fractional offsets
+    // and daylight-saving transitions. All iteration uses absolute UTC minutes.
+    const first = clock(new Date(windowStart));
+    const last = clock(new Date(windowStart + 59 * 60_000));
+    const stableOffset = last.getTime() - first.getTime() === 59 * 60_000;
+    if (stableOffset && !parsedCronMatchesDate(parsed, first, true) && !parsedCronMatchesDate(parsed, last, true)) continue;
+    for (let minute = 0; minute < 60; minute++) {
+      const candidate = new Date(windowStart + minute * 60_000);
+      if (parsedCronMatchesDate(parsed, clock(candidate))) return candidate;
     }
-
-    candidate.setMinutes(candidate.getMinutes() + 1);
   }
 
   throw new ValidationError(
@@ -189,18 +216,19 @@ function throwInvalidField(definition: CronFieldDefinition): never {
 
 function parsedCronMatchesDate(
   parsed: ParsedCronExpression,
-  date: Date
+  date: Date,
+  ignoreMinute = false
 ): boolean {
-  const dayOfMonthMatches = parsed.dayOfMonth.values.has(date.getDate());
-  const dayOfWeekMatches = parsed.dayOfWeek.values.has(date.getDay());
+  const dayOfMonthMatches = parsed.dayOfMonth.values.has(date.getUTCDate());
+  const dayOfWeekMatches = parsed.dayOfWeek.values.has(date.getUTCDay());
   const dayMatches = parsed.dayOfMonth.wildcard
     ? dayOfWeekMatches
     : parsed.dayOfWeek.wildcard
       ? dayOfMonthMatches
       : dayOfMonthMatches || dayOfWeekMatches;
 
-  return parsed.minute.values.has(date.getMinutes()) &&
-    parsed.hour.values.has(date.getHours()) &&
+  return (ignoreMinute || parsed.minute.values.has(date.getUTCMinutes())) &&
+    parsed.hour.values.has(date.getUTCHours()) &&
     dayMatches &&
-    parsed.month.values.has(date.getMonth() + 1);
+    parsed.month.values.has(date.getUTCMonth() + 1);
 }

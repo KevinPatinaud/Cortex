@@ -91,6 +91,13 @@ export function createAgentController(
     }, agentErrorMappings.getWorkflowSchedule)
   );
 
+  router.post(
+    "/projects/:projectId/workflow/schedule/preview",
+    asyncRoute<WorkflowScheduleInput, { projectId: string }>(async (request, response) => {
+      response.json(await workflowScheduler.previewSchedule(request.params.projectId, request.body));
+    }, agentErrorMappings.saveWorkflowSchedule)
+  );
+
   router.put(
     "/projects/:projectId/workflow/schedule",
     asyncRoute<WorkflowScheduleInput, { projectId: string }>(async (

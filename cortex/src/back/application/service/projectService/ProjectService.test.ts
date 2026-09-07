@@ -449,6 +449,7 @@ test("persiste la planification cron d'un workflow", async () => {
 
     await service.saveWorkflowScheduleConfiguration(project.id, {
       cron: "0 7 * * 1-5",
+      timezone: "Asia/Kathmandu",
       enabled: true,
       parameterValues: { target: "20" }
     });
@@ -457,6 +458,7 @@ test("persiste la planification cron d'un workflow", async () => {
       await service.getWorkflowScheduleConfiguration(project.id),
       {
         cron: "0 7 * * 1-5",
+        timezone: "Asia/Kathmandu",
         enabled: true,
         parameterValues: { target: "20" }
       }

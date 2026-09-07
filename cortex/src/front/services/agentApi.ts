@@ -126,6 +126,8 @@ export interface WorkflowSchedule {
   cron: string;
   enabled: boolean;
   timezone: string;
+  serverTimezone?: string;
+  configured?: boolean;
   nextRunAt: string | null;
   running: boolean;
   lastRunAt: string | null;
@@ -449,7 +451,7 @@ export function getWorkflowSchedule(
 
 export function saveWorkflowSchedule(
   projectId: string,
-  schedule: Pick<WorkflowSchedule, "cron" | "enabled" | "parameterValues">
+  schedule: Pick<WorkflowSchedule, "cron" | "enabled" | "parameterValues" | "timezone">
 ): Promise<WorkflowSchedule> {
   return requestJson(
     `/api/agents/projects/${encodeURIComponent(projectId)}/workflow/schedule`,
@@ -459,6 +461,22 @@ export function saveWorkflowSchedule(
       body: JSON.stringify(schedule)
     }
   );
+}
+
+export interface WorkflowSchedulePreview {
+  cron: string;
+  timezone: string;
+  serverTimezone: string;
+  now: string;
+  nextRuns: string[];
+}
+
+export function previewWorkflowSchedule(projectId: string, cron: string, timezone: string): Promise<WorkflowSchedulePreview> {
+  return requestJson(`/api/agents/projects/${encodeURIComponent(projectId)}/workflow/schedule/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cron, timezone })
+  });
 }
 
 export function getWorkflowAuditRuns(

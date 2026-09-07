@@ -48,6 +48,7 @@ export interface AgentWorkflowConfiguration {
 
 export interface WorkflowScheduleConfiguration {
   cron: string;
+  timezone?: string;
   enabled: boolean;
   parameterValues: Record<string, string>;
 }
@@ -1122,6 +1123,7 @@ export class ProjectService {
     return this.isRecord(value) &&
       typeof value.cron === "string" &&
       typeof value.enabled === "boolean" &&
+      (value.timezone === undefined || typeof value.timezone === "string") &&
       (
         value.parameterValues === undefined ||
         (
