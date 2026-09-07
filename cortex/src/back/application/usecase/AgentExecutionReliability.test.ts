@@ -28,7 +28,8 @@ function fixture(
   execute: (name: string, prompt: string, options: AgentExecutionOptions) => Promise<AgentExecutionResult>,
   limits: WorkflowExecutionLimits = {},
   repository = new SqliteWorkflowAuditRepository(":memory:"),
-  parameters: WorkflowParameterDefinition[] = []
+  parameters: WorkflowParameterDefinition[] = [],
+  inputModes: Record<string, "separate" | "aggregate"> = {}
 ) {
   let configuration: AgentWorkflowConfiguration | null = null;
   const file = (name: string, relativePath: string, content: string) => ({
@@ -54,7 +55,7 @@ function fixture(
   const service = {
     execute: async (_engine: string, prompt: string, options: AgentExecutionOptions) => {
       if (!options.persistSession) return { answer: JSON.stringify({ agents:
-        Object.entries(graph).map(([name, next]) => ({ id: agentId(name), nextAgentIds: next.map(agentId), inputMode: "separate" })), parameters }) };
+        Object.entries(graph).map(([name, next]) => ({ id: agentId(name), nextAgentIds: next.map(agentId), inputMode: inputModes[name] ?? "separate" })), parameters }) };
       const name = Object.keys(graph).find((candidate) => prompt.includes(`TASK_${candidate}`));
       assert.ok(name, "The task identifies its agent");
       return execute(name, prompt, options);
@@ -63,6 +64,155 @@ function fixture(
   return { repository, content, createUseCase: (storage = repository) =>
     new AgentUseCase(service, project, new WorkflowAuditService(storage), limits) };
 }
+
+test("independent entry points run together and their threaded flows join once", async () => {
+  const graph = { agenda: ["analysis"], news: ["writer"], analysis: ["summary"], writer: ["summary"], summary: ["publisher"], publisher: [] };
+  const startedRoots = new Set<string>();
+  const completedWorkers: string[] = [];
+  let rootPeak = 0;
+  let activeRoots = 0;
+  let summaryCount = 0;
+  const f = fixture(graph, async (name, prompt) => {
+    if (name === "agenda" || name === "news") {
+      startedRoots.add(name);
+      activeRoots++;
+      rootPeak = Math.max(rootPeak, activeRoots);
+      await new Promise(setImmediate);
+      activeRoots--;
+      return response([`${name}-one`, `${name}-two`], graph[name], true);
+    }
+    if (name === "analysis" || name === "writer") {
+      assert.equal(startedRoots.size, 2);
+      await new Promise(setImmediate);
+      const item = /(?:agenda|news)-(?:one|two)/.exec(prompt)![0];
+      completedWorkers.push(item);
+      return response([`Enriched ${item}`], ["summary"]);
+    }
+    if (name === "summary") {
+      summaryCount++;
+      assert.equal(completedWorkers.length, 4);
+      for (const item of completedWorkers) assert.ok(prompt.includes(`Enriched ${item}`));
+    }
+    return response([name], graph[name as keyof typeof graph]);
+  }, {}, undefined, [], { summary: "aggregate" });
+  try {
+    const output = await f.createUseCase().runWorkflow("project");
+    assert.equal(rootPeak, 2);
+    assert.equal(summaryCount, 1);
+    assert.deepEqual(output.executedAgentIds, ["agenda", "news", "analysis", "writer", "summary", "publisher"].map(agentId));
+  } finally { f.repository.close(); }
+});
+
+test("parallel branches share the provider concurrency budget", async () => {
+  const graph = { first: ["left"], second: ["right"], left: [], right: [] };
+  let active = 0;
+  let peak = 0;
+  const f = fixture(graph, async (name) => {
+    active++;
+    peak = Math.max(peak, active);
+    await new Promise(setImmediate);
+    active--;
+    return name === "first" || name === "second"
+      ? response(["one", "two", "three"], graph[name], true)
+      : response([name], []);
+  }, { maxConcurrentInstances: 2 });
+  try {
+    await f.createUseCase().runWorkflow("project");
+    assert.equal(peak, 2);
+  } finally { f.repository.close(); }
+});
+
+test("a fast flow advances while the independent root is still running", async () => {
+  let releaseSlowRoot!: () => void;
+  let slowRootFinished = false;
+  let analysisStarted = false;
+  const slowRootGate = new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("The fast flow did not advance independently")), 2000);
+    releaseSlowRoot = () => { clearTimeout(timeout); resolve(); };
+  });
+  const graph = { agenda: ["analysis"], news: ["writer"], analysis: ["summary"], writer: ["summary"], summary: [] };
+  const f = fixture(graph, async (name) => {
+    if (name === "news") {
+      await slowRootGate;
+      slowRootFinished = true;
+    }
+    if (name === "analysis") {
+      analysisStarted = true;
+      assert.equal(slowRootFinished, false);
+      releaseSlowRoot();
+    }
+    if (name === "summary") {
+      assert.equal(slowRootFinished, true);
+      assert.equal(analysisStarted, true);
+    }
+    return response([name], graph[name as keyof typeof graph]);
+  }, {}, undefined, [], { summary: "aggregate" });
+  try {
+    await f.createUseCase().runWorkflow("project");
+    assert.equal(analysisStarted, true);
+  } finally {
+    releaseSlowRoot();
+    f.repository.close();
+  }
+});
+
+test("a failed root waits for its independent peer and resume preserves the peer result", async () => {
+  let firstCalls = 0;
+  let secondCalls = 0;
+  const f = fixture({ first: ["join"], second: ["join"], join: [] }, async (name) => {
+    if (name === "first" && ++firstCalls === 1) throw new Error("Root unavailable");
+    if (name === "second") {
+      secondCalls++;
+      await new Promise(setImmediate);
+    }
+    return response([name], name === "join" ? [] : ["join"]);
+  });
+  try {
+    const useCase = f.createUseCase();
+    await assert.rejects(useCase.runWorkflow("project"), /Root unavailable/);
+    assert.equal(useCase.hasActiveExecutions(), false);
+    const project = await useCase.loadProject("project");
+    assert.equal(project.agents.find((agent) => agent.id === agentId("second"))?.hasSession, true);
+    await useCase.resumeWorkflow("project");
+    assert.equal(firstCalls, 2);
+    assert.equal(secondCalls, 1);
+  } finally { f.repository.close(); }
+});
+
+test("cancellation stops both active roots and does not launch a queued root", async () => {
+  let started = 0;
+  let bothStarted!: () => void;
+  const ready = new Promise<void>((resolve) => { bothStarted = resolve; });
+  const f = fixture({ first: [], second: [], third: [] }, async (_name, _prompt, options) => {
+    if (++started === 2) bothStarted();
+    return new Promise((_resolve, reject) => {
+      options.signal!.addEventListener("abort", () => reject(options.signal!.reason), { once: true });
+    });
+  }, { maxConcurrentInstances: 2 });
+  try {
+    const useCase = f.createUseCase();
+    const run = useCase.runWorkflow("project");
+    await ready;
+    useCase.cancelProjectExecution("project");
+    await assert.rejects(run, { name: "AbortError" });
+    assert.equal(started, 2);
+    assert.equal(useCase.hasActiveExecutions(), false);
+    assert.equal(f.repository.listRuns("project", 20, 0).items[0].status, "cancelled");
+  } finally { f.repository.close(); }
+});
+
+test("parallel roots cannot exceed the workflow execution budget", async () => {
+  const calls: string[] = [];
+  const f = fixture({ first: [], second: [], third: [] }, async (name) => {
+    calls.push(name);
+    return response([name], []);
+  }, { maxWorkflowExecutions: 2 });
+  try {
+    await assert.rejects(f.createUseCase().runWorkflow("project"), /execution limit/);
+    assert.deepEqual(calls, ["first", "second"]);
+    assert.equal(f.repository.listRuns("project", 20, 0).items[0].agentExecutionCount, 2);
+  } finally { f.repository.close(); }
+});
 
 test("automatic workflows follow feedback edges until the selected exit", async () => {
   let reviewCount = 0;

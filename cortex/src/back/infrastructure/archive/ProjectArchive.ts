@@ -5,6 +5,8 @@ import path from "node:path";
 import { Readable, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { ValidationError } from "../../application/error/ValidationError.ts";
+import type { AgentWorkflowConfiguration } from "../../application/service/projectService/ProjectService.ts";
+import { canonicalizeArchivedWorkflow, projectWorkflowArchivePath } from "../../application/service/projectService/ProjectWorkflowArchive.ts";
 import {
   assertProjectFileManifest, isExcludedProjectPath, isPortableProjectPath,
   maximumFileBytes, maximumProjectBytes, maximumProjectFiles
@@ -24,7 +26,8 @@ export function getCortexArchiveFileName(projectName: string): string {
 
 export async function writeCortexProjectArchive(
   directoryPath: string,
-  destination: Writable
+  destination: Writable,
+  workflow?: AgentWorkflowConfiguration | null
 ): Promise<void> {
   const files: Array<{ relativePath: string; content: Buffer }> = [];
   const directories: string[] = [];
@@ -40,6 +43,7 @@ export async function writeCortexProjectArchive(
     entries.sort((first, second) => first.name.localeCompare(second.name));
     for (const entry of entries) {
       const relativePath = prefix + entry.name;
+      if (relativePath.toLowerCase() === projectWorkflowArchivePath && workflow !== undefined) continue;
       if (isExcludedProjectPath(relativePath)) continue;
       if (!isPortableProjectPath(relativePath)) {
         throw new ValidationError(`The exported path "${relativePath}" is not portable.`);
@@ -91,6 +95,11 @@ export async function writeCortexProjectArchive(
   }
 
   await snapshot(root);
+  if (workflow) {
+    const portableWorkflow = canonicalizeArchivedWorkflow(files, workflow);
+    if (portableWorkflow) files.push({ relativePath: projectWorkflowArchivePath,
+      content: Buffer.from(JSON.stringify({ version: 1, workflow: portableWorkflow }), "utf8") });
+  }
   try {
     assertProjectFileManifest(files.map((file) => ({
       relativePath: file.relativePath, size: file.content.byteLength

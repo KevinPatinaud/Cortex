@@ -35,6 +35,14 @@ interface ProjectOrderRequestBody {
   projectIds?: unknown;
 }
 
+interface ProjectFolderRequestBody {
+  name?: unknown;
+}
+
+interface ProjectFolderAssignmentRequestBody {
+  folderId?: unknown;
+}
+
 interface ImportProjectRequestBody {
   projectName?: unknown;
   relativePaths?: unknown;
@@ -63,6 +71,41 @@ const projectArchiveUpload = multer({
 
 export function createProjectController(projectUseCase: ProjectUseCase): Router {
   const router = Router();
+
+  router.get(
+    "/folders",
+    asyncRoute(async (_request, response) => {
+      response.json(await projectUseCase.getProjectOrganization());
+    }, projectErrorMappings.folders)
+  );
+
+  router.post(
+    "/folders",
+    asyncRoute<ProjectFolderRequestBody>(async (request, response) => {
+      response.status(201).json(await projectUseCase.createProjectFolder(request.body?.name));
+    }, projectErrorMappings.folders)
+  );
+
+  router.patch(
+    "/folders/:folderId",
+    asyncRoute<ProjectFolderRequestBody, { folderId: string }>(async (request, response) => {
+      response.json(await projectUseCase.renameProjectFolder(request.params.folderId, request.body?.name));
+    }, projectErrorMappings.folders)
+  );
+
+  router.delete(
+    "/folders/:folderId",
+    asyncRoute<unknown, { folderId: string }>(async (request, response) => {
+      response.json(await projectUseCase.deleteProjectFolder(request.params.folderId));
+    }, projectErrorMappings.folders)
+  );
+
+  router.put(
+    "/:projectId/folder",
+    asyncRoute<ProjectFolderAssignmentRequestBody, { projectId: string }>(async (request, response) => {
+      response.json(await projectUseCase.setProjectFolder(request.params.projectId, request.body?.folderId));
+    }, projectErrorMappings.folders)
+  );
 
   router.get(
     "/settings",
@@ -183,7 +226,8 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
       response.type(cortexArchiveMimeType);
       response.set("Cache-Control", "no-store");
 
-      await writeCortexProjectArchive(project.directoryPath, response);
+      const workflow = await projectUseCase.getAgentWorkflowConfiguration(project.id);
+      await writeCortexProjectArchive(project.directoryPath, response, workflow);
     }, projectErrorMappings.export)
   );
 

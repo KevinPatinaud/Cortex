@@ -1,4 +1,5 @@
 import { requestBlob, requestJson } from "./apiClient.ts";
+import type { ProjectReviewProposal } from "../../shared/ProjectReviewProposal.ts";
 import type {
   McpConnectionEngine,
   McpConnectionSummary,
@@ -181,6 +182,7 @@ export interface ReviewProjectInput {
   agents: ReviewProjectAgent[];
   message?: string;
   conversation?: ProjectReviewMessage[];
+  currentProposal?: ProjectReviewProposal;
 }
 
 export interface ProjectReviewMessage {
@@ -201,6 +203,7 @@ export interface ProjectReview {
   assessment: ProjectReviewAssessment;
   summary: string;
   findings: ProjectReviewFinding[];
+  proposal?: ProjectReviewProposal | null;
 }
 
 export function getAgentStatus(): Promise<AgentStatus> {

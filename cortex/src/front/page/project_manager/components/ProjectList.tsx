@@ -1,11 +1,12 @@
 import { useState, type DragEvent, type KeyboardEvent } from "react";
-import { Check, Folder, GripVertical, LoaderCircle } from "lucide-react";
+import { Check, Folder, FolderInput, GripVertical, LoaderCircle } from "lucide-react";
+import type { ProjectFolder } from "../../../../shared/ProjectOrganization.ts";
 import type { Project } from "../../../services/projectApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
 
 export type ProjectActivityStatus = "running" | "completed";
 
-interface ProjectListProps {
+export interface ProjectListProps {
   projects: Project[];
   projectActivity: Record<string, ProjectActivityStatus>;
   isLoading: boolean;
@@ -15,7 +16,13 @@ interface ProjectListProps {
   isReorderLocked: boolean;
   onSelect: (project: Project) => void;
   onReorder: (projects: Project[]) => void;
+  folders?: ProjectFolder[];
+  folderId?: string | null;
+  isFolderLocked?: boolean;
+  onMove?: (project: Project, folderId: string | null) => Promise<boolean>;
 }
+
+export const projectDragType = "application/x-cortex-project";
 
 type DropPosition = "before" | "after";
 
@@ -33,10 +40,15 @@ export function ProjectList({
   isInteractionLocked,
   isReorderLocked,
   onSelect,
-  onReorder
+  onReorder,
+  folders = [],
+  folderId = null,
+  isFolderLocked = false,
+  onMove
 }: ProjectListProps) {
   const { t } = useTranslation();
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
+  const [movingProjectId, setMovingProjectId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{
     projectId: string;
     position: DropPosition;
@@ -148,12 +160,14 @@ export function ProjectList({
                 : ""
             }`}
             key={project.id}
+            data-project-id={project.id}
             draggable={!isInteractionLocked && !isReorderLocked}
             title={isReorderLocked ? undefined : t("project.reorderHelp")}
             onDragStart={(event: DragEvent<HTMLLIElement>) => {
               setDraggedProjectId(project.id);
               event.dataTransfer.effectAllowed = "move";
               event.dataTransfer.setData("text/plain", project.id);
+              event.dataTransfer.setData(projectDragType, project.id);
               event.dataTransfer.setDragImage(event.currentTarget, 24, 24);
             }}
             onDragEnd={clearDragState}
@@ -173,8 +187,9 @@ export function ProjectList({
               });
             }}
             onDrop={(event: DragEvent<HTMLLIElement>) => {
-              event.preventDefault();
-              if (draggedProjectId && dropTarget) {
+              if (draggedProjectId && dropTarget && !isInteractionLocked && !isReorderLocked) {
+                event.preventDefault();
+                event.stopPropagation();
                 moveProject(
                   draggedProjectId,
                   dropTarget.projectId,
@@ -237,6 +252,57 @@ export function ProjectList({
                 </span>
               </span>
             </button>
+            {onMove && folders.length > 0 && (
+              <button
+                type="button"
+                className="project-list__move-button"
+                aria-label={t("folders.move", { name: projectName })}
+                title={t("folders.move", { name: projectName })}
+                aria-expanded={movingProjectId === project.id}
+                aria-controls={`project-folder-picker-${project.id}`}
+                disabled={isInteractionLocked || isFolderLocked}
+                onClick={() => setMovingProjectId((current) => current === project.id ? null : project.id)}
+              >
+                <FolderInput aria-hidden="true" size={15} />
+              </button>
+            )}
+            {onMove && movingProjectId === project.id && (
+              <div className="project-list__folder-picker" id={`project-folder-picker-${project.id}`}>
+                <label htmlFor={`project-folder-select-${project.id}`}>
+                  {t("folders.destination", { name: projectName })}
+                </label>
+                <select
+                  id={`project-folder-select-${project.id}`}
+                  autoFocus
+                  value={folderId ?? ""}
+                  disabled={isInteractionLocked || isFolderLocked}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Escape") return;
+                    event.preventDefault();
+                    const button = event.currentTarget.closest("li")?.querySelector<HTMLButtonElement>(".project-list__move-button");
+                    setMovingProjectId(null);
+                    button?.focus();
+                  }}
+                  onChange={async (event) => {
+                    const select = event.currentTarget;
+                    const destination = event.target.value || null;
+                    if (await onMove(project, destination)) {
+                      setMovingProjectId(null);
+                      requestAnimationFrame(() => {
+                        const row = Array.from(document.querySelectorAll<HTMLElement>("[data-project-id]"))
+                          .find((candidate) => candidate.dataset.projectId === project.id);
+                        row?.querySelector<HTMLButtonElement>(".project-list__move-button")?.focus();
+                      });
+                    } else {
+                      requestAnimationFrame(() => { if (select.isConnected) select.focus(); });
+                    }
+                  }}
+                >
+                  <option value="">{t("folders.unfiled")}</option>
+                  {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
+                </select>
+              </div>
+            )}
           </li>
         );
       })}

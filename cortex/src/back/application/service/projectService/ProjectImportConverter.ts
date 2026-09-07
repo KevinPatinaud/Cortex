@@ -8,6 +8,7 @@ import type {
 } from "./ProjectService.ts";
 
 interface ImportConversionResult {
+  agentIdMap?: Map<string, string>;
   files: UploadedProjectFile[];
   sourceEngine: ProjectAgentEngine | null;
   targetEngine: ProjectAgentEngine | null;
@@ -90,6 +91,7 @@ export function prepareImportedProject(
     }
   ];
   const unavailableFileNames = new Set<string>();
+  const agentIdMap = new Map<string, string>();
 
   for (const agent of agents) {
     const fileName = createAgentFileName(
@@ -98,6 +100,7 @@ export function prepareImportedProject(
       unavailableFileNames
     );
     unavailableFileNames.add(fileName.toLowerCase());
+    agentIdMap.set(agent.id!, `${targetConfiguration.rootDirectory}/agents/${fileName}`);
     convertedFiles.push({
       relativePath: `${targetConfiguration.rootDirectory}/agents/${fileName}`,
       content: Buffer.from(serializeImportedAgent(targetEngine, agent), "utf8")
@@ -115,7 +118,8 @@ export function prepareImportedProject(
     files: convertedFiles,
     sourceEngine,
     targetEngine,
-    converted: true
+    converted: true,
+    agentIdMap
   };
 }
 
@@ -157,10 +161,9 @@ function readImportedAgents(
 
   return files
     .filter((file) => configuration.agentFilePattern.test(file.relativePath))
-    .map((file) => engine === "codex"
+    .map((file) => ({ ...(engine === "codex"
       ? readCodexAgent(file)
-      : readMarkdownAgent(file, engine)
-    );
+      : readMarkdownAgent(file, engine)), id: file.relativePath }));
 }
 
 function readCodexAgent(file: UploadedProjectFile): EditableProjectAgent {

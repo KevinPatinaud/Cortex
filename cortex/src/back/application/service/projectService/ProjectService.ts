@@ -12,8 +12,10 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import type { WorkflowParameterDefinition } from "../../../../shared/WorkflowParameter.ts";
+import type { ProjectFolder, ProjectOrganization } from "../../../../shared/ProjectOrganization.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
 import { prepareImportedProject } from "./ProjectImportConverter.ts";
+import { canonicalizeArchivedWorkflow, projectWorkflowArchivePath, remapArchivedWorkflow } from "./ProjectWorkflowArchive.ts";
 import { JsonConfigurationRepository } from "../configuration/JsonConfigurationRepository.ts";
 import { removeOwnedDirectory, withProjectFileTransaction, type ProjectFileChange } from "./ProjectFileTransaction.ts";
 import { assertPortableProjectName, assertProjectFileManifest } from "../../../../shared/ProjectArchivePolicy.ts";
@@ -24,6 +26,7 @@ interface ProjectConfiguration {
   projectsDirectory?: unknown;
   agentWorkflows?: unknown;
   workflowSchedules?: unknown;
+  projectOrganization?: unknown;
 }
 
 interface StoredProject {
@@ -210,6 +213,58 @@ export class ProjectService {
     return this.repository.runExclusive(() => this.getProjectsUnlocked());
   }
 
+  getProjectOrganization(): Promise<ProjectOrganization> {
+    return this.repository.runExclusive(async () => {
+      const projects = await this.getProjectsUnlocked();
+      return this.readProjectOrganization(await this.readConfiguration(), projects);
+    });
+  }
+
+  createProjectFolder(name: string): Promise<ProjectOrganization> {
+    return this.updateProjectOrganization((organization) => {
+      const normalizedName = this.validateProjectFolderName(name, organization.folders);
+      organization.folders.push({
+        id: this.createUniqueId(new Set(organization.folders.map((folder) => folder.id))),
+        name: normalizedName
+      });
+    });
+  }
+
+  renameProjectFolder(folderId: string, name: string): Promise<ProjectOrganization> {
+    return this.updateProjectOrganization((organization) => {
+      const folder = organization.folders.find((candidate) => candidate.id === folderId);
+      if (!folder) throw new NotFoundError("The project folder could not be found.");
+      folder.name = this.validateProjectFolderName(name, organization.folders, folderId);
+    });
+  }
+
+  deleteProjectFolder(folderId: string): Promise<ProjectOrganization> {
+    return this.updateProjectOrganization((organization) => {
+      if (!organization.folders.some((folder) => folder.id === folderId)) {
+        throw new NotFoundError("The project folder could not be found.");
+      }
+      organization.folders = organization.folders.filter((folder) => folder.id !== folderId);
+      organization.projectFolders = Object.fromEntries(
+        Object.entries(organization.projectFolders).filter(([, assignedFolderId]) => assignedFolderId !== folderId)
+      );
+    });
+  }
+
+  setProjectFolder(projectId: string, folderId: string | null): Promise<ProjectOrganization> {
+    return this.updateProjectOrganization((organization, projects) => {
+      if (!projects.some((project) => project.id === projectId)) {
+        throw new NotFoundError("The project could not be found.");
+      }
+      if (folderId !== null && !organization.folders.some((folder) => folder.id === folderId)) {
+        throw new NotFoundError("The project folder could not be found.");
+      }
+      organization.projectFolders = Object.fromEntries([
+        ...Object.entries(organization.projectFolders).filter(([id]) => id !== projectId),
+        ...(folderId === null ? [] : [[projectId, folderId]])
+      ]);
+    });
+  }
+
   saveAgentWorkflowConfiguration(projectId: string, workflow: AgentWorkflowConfiguration): Promise<void> {
     return this.repository.runExclusive(() => this.saveAgentWorkflowConfigurationUnlocked(projectId, workflow));
   }
@@ -308,10 +363,22 @@ export class ProjectService {
     targetEngine?: ProjectAgentEngine | null
   ): Promise<CreateProjectResult> {
     this.validateImportedProject(name, files);
-    const prepared = prepareImportedProject(files, targetEngine);
+    const metadataFile = files.find((file) => file.relativePath.toLowerCase() === projectWorkflowArchivePath);
+    let workflow: AgentWorkflowConfiguration | null = null;
+    if (metadataFile) {
+      let metadata: unknown;
+      try { metadata = JSON.parse(metadataFile.content.toString("utf8")); }
+      catch { throw new TypeError("The archived Cortex workflow metadata is invalid."); }
+      if (!this.isRecord(metadata) || metadata.version !== 1 || !this.isAgentWorkflowConfiguration(metadata.workflow)) {
+        throw new TypeError("The archived Cortex workflow metadata is invalid or unsupported.");
+      }
+      workflow = canonicalizeArchivedWorkflow(files, metadata.workflow);
+    }
+    const prepared = prepareImportedProject(files.filter((file) => file !== metadataFile), targetEngine);
+    if (workflow && prepared.converted) workflow = remapArchivedWorkflow(workflow, prepared.files, prepared.agentIdMap!);
     this.validateImportedProject(name, prepared.files);
     const directory = await this.ensureManagedProjectsDirectory();
-    const result = await this.publishProject(directory, name, prepared.files);
+    const result = await this.publishProject(directory, name, prepared.files, workflow);
     return {
       ...result,
       ...(prepared.converted && prepared.sourceEngine && prepared.targetEngine ? {
@@ -323,7 +390,8 @@ export class ProjectService {
   private async publishProject(
     parentDirectory: string,
     name: string,
-    files: UploadedProjectFile[]
+    files: UploadedProjectFile[],
+    workflow?: AgentWorkflowConfiguration | null
   ): Promise<CreateProjectResult> {
     assertPortableProjectName(name);
     this.validateImportedProject(name, files);
@@ -340,7 +408,7 @@ export class ProjectService {
       }
       await rename(staging, directory);
       published = true;
-      const projects = await this.saveProject(directory);
+      const projects = await this.saveProjectUnlocked(directory, workflow);
       const project = projects.find((candidate) =>
         this.pathsAreEqual(candidate.directoryPath, directory)
       );
@@ -407,7 +475,7 @@ export class ProjectService {
     });
   }
 
-  private async saveProjectUnlocked(directoryPath: string): Promise<Project[]> {
+  private async saveProjectUnlocked(directoryPath: string, workflow?: AgentWorkflowConfiguration | null): Promise<Project[]> {
     if (!directoryPath.trim()) {
       throw new TypeError("The directory path is required.");
     }
@@ -425,7 +493,15 @@ export class ProjectService {
       });
     }
 
-    await this.persistProjects(projects);
+    if (workflow) {
+      const project = projects.find((candidate) => this.pathsAreEqual(candidate.directoryPath, normalizedPath))!;
+      const configuration = await this.readConfiguration();
+      await this.writeConfiguration({ ...configuration, projects,
+        agentWorkflows: { ...(this.isRecord(configuration.agentWorkflows) ? configuration.agentWorkflows : {}),
+          [project.id]: this.cloneAgentWorkflowConfiguration(workflow) } });
+    } else {
+      await this.persistProjects(projects);
+    }
     return this.cloneProjects(projects);
   }
 
@@ -772,6 +848,10 @@ export class ProjectService {
       projects
     };
 
+    if (configuration.projectOrganization !== undefined) {
+      nextConfiguration.projectOrganization = this.readProjectOrganization(configuration, projects);
+    }
+
     for (const property of ["agentWorkflows", "workflowSchedules"] as const) {
       if (!this.isRecord(configuration[property])) {
         continue;
@@ -787,6 +867,60 @@ export class ProjectService {
     }
 
     await this.writeConfiguration(nextConfiguration);
+  }
+
+  private updateProjectOrganization(
+    mutate: (organization: ProjectOrganization, projects: Project[]) => void
+  ): Promise<ProjectOrganization> {
+    return this.repository.runExclusive(async () => {
+      const projects = await this.getProjectsUnlocked();
+      const configuration = await this.readConfiguration();
+      const organization = this.readProjectOrganization(configuration, projects);
+      mutate(organization, projects);
+      await this.writeConfiguration({ ...configuration, projectOrganization: organization });
+      return organization;
+    });
+  }
+
+  private readProjectOrganization(
+    configuration: ProjectConfiguration,
+    projects: Project[]
+  ): ProjectOrganization {
+    const stored = this.isRecord(configuration.projectOrganization)
+      ? configuration.projectOrganization
+      : {};
+    const folders: ProjectFolder[] = [];
+    const folderIds = new Set<string>();
+    const folderNames = new Set<string>();
+    for (const value of Array.isArray(stored.folders) ? stored.folders : []) {
+      if (!this.isRecord(value) || typeof value.id !== "string" || !value.id.trim() ||
+        typeof value.name !== "string") continue;
+      const name = value.name.trim();
+      if (!name || name.length > 80 || folderIds.has(value.id) || folderNames.has(name.toLowerCase())) continue;
+      folders.push({ id: value.id, name });
+      folderIds.add(value.id);
+      folderNames.add(name.toLowerCase());
+    }
+    const projectIds = new Set(projects.map((project) => project.id));
+    const projectFolders = Object.fromEntries(
+      Object.entries(this.isRecord(stored.projectFolders) ? stored.projectFolders : {})
+        .filter(([projectId, folderId]) => projectIds.has(projectId) &&
+          typeof folderId === "string" && folderIds.has(folderId))
+    ) as Record<string, string>;
+    return { folders, projectFolders };
+  }
+
+  private validateProjectFolderName(name: string, folders: ProjectFolder[], folderId?: string): string {
+    const normalizedName = name.trim();
+    if (!normalizedName) throw new TypeError("The project folder name is required.");
+    if (normalizedName.length > 80) {
+      throw new TypeError("The project folder name must not exceed 80 characters.");
+    }
+    if (folders.some((folder) => folder.id !== folderId &&
+      folder.name.toLowerCase() === normalizedName.toLowerCase())) {
+      throw new TypeError("A project folder with this name already exists.");
+    }
+    return normalizedName;
   }
 
   private readConfiguration(): Promise<ProjectConfiguration> {

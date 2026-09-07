@@ -18,6 +18,8 @@ export interface AgentExecutionOptions {
   configuration?: AgentConfiguration;
   model?: string;
   persistSession?: boolean;
+  /** Restrict internal generation to the provider's read-only or planning mode. */
+  readOnly?: boolean;
   reasoningEffort?: string;
   sessionId?: string;
   workingDirectory?: string;

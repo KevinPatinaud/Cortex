@@ -112,20 +112,21 @@ export function getCyclicAgentIds(
 export function getWorkflowFeedbackEdgeKeys(
   agents: readonly WorkflowAgentGraphNode[]
 ): Set<string> {
+  const agentIds = agents.map((agent) => agent.id);
+  const nextAgentIds = new Map(agents.map((agent) => [agent.id, agent.nextAgentIds] as const));
   const positions = new Map(
-    agents.map((agent, index) => [agent.id, index])
+    orderWorkflowAgentIds(agentIds, nextAgentIds).map((agentId, index) => [agentId, index])
   );
-  const cyclicAgentIds = getCyclicAgentIds(agents);
+  const componentByAgentId = new Map<string, number>();
+  for (const [index, component] of getStronglyConnectedComponents(agentIds, nextAgentIds).entries()) {
+    component.forEach((agentId) => componentByAgentId.set(agentId, index));
+  }
   const feedbackEdgeKeys = new Set<string>();
 
   for (const agent of agents) {
-    if (!cyclicAgentIds.has(agent.id)) {
-      continue;
-    }
-
     for (const nextAgentId of agent.nextAgentIds) {
       if (
-        cyclicAgentIds.has(nextAgentId) &&
+        componentByAgentId.get(agent.id) === componentByAgentId.get(nextAgentId) &&
         (positions.get(nextAgentId) ?? Number.POSITIVE_INFINITY) <=
           (positions.get(agent.id) ?? Number.NEGATIVE_INFINITY)
       ) {

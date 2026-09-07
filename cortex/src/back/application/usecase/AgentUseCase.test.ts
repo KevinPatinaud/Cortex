@@ -107,7 +107,8 @@ Combine les résultats des branches.`
 
 function createUseCase(
   answer: string,
-  agentCount = 2
+  agentCount = 2,
+  workflowAnswer = answer
 ): { useCase: AgentUseCase; calls: ExecutionCall[] } {
   const calls: ExecutionCall[] = [];
   const storedAgentWorkflows = new Map<string, AgentWorkflowConfiguration>();
@@ -118,7 +119,7 @@ function createUseCase(
       options: AgentExecutionOptions
     ): Promise<AgentExecutionResult> {
       calls.push({ engine, prompt, options });
-      return { answer };
+      return { answer: options.persistSession ? answer : workflowAnswer };
     },
     async executeActive(
       prompt: string,
@@ -448,6 +449,7 @@ test("configure le graphe des agents selon la réponse du moteur local", async (
   assert.equal(calls[0].engine, "claude");
   assert.deepEqual(calls[0].options, {
     persistSession: false,
+    readOnly: true,
     workingDirectory: "C:\\projects\\sample"
   });
   assert.match(calls[0].prompt, /Toujours analyser avant d'implémenter\./);
@@ -526,7 +528,7 @@ test("recalcule le workflow lorsque le hash du projet change", async () => {
   assert.equal(calls.length, 2);
 });
 
-test("conserve un workflow linéaire si le graphe est invalide", async (t) => {
+test("refuse de remplacer un graphe invalide par un workflow linéaire", async (t) => {
   t.mock.method(console, "warn", () => undefined);
   const { useCase } = createUseCase(JSON.stringify({
     agents: [
@@ -543,16 +545,7 @@ test("conserve un workflow linéaire si le graphe est invalide", async (t) => {
     ]
   }));
 
-  const project = await useCase.loadProject("project-id");
-
-  assert.deepEqual(
-    project.agents.map((agent) => agent.id),
-    [
-      ".claude/agents/implementation.md",
-      ".claude/agents/analysis.md"
-    ]
-  );
-  assert.deepEqual(project.agents[0].nextAgentIds, [project.agents[1].id]);
+  await assert.rejects(useCase.loadProject("project-id"), /Unable to determine the agent workflow/);
 });
 
 test("configure et ordonne un workflow cyclique", async () => {
@@ -1488,7 +1481,7 @@ test("produit une revue globale structuree du projet", async () => {
       recommendation: "Ajouter un critere de validation du livrable final."
     }]
   } as const;
-  const { useCase, calls } = createUseCase(JSON.stringify(review), 2);
+  const { useCase, calls } = createUseCase(JSON.stringify(review), 2, createWorkflowAnswer());
 
   await useCase.loadProject("project-id");
   const result = await useCase.reviewProject("project-id", {
@@ -1770,6 +1763,140 @@ test("rejette une revue qui cible un agent absent du projet", async () => {
     }),
     /invalid project review/i
   );
+});
+
+function createApprovalReviewDraft() {
+  return {
+    projectName: "Journal",
+    instructions: "Rédiger puis publier.",
+    agents: [{
+      key: "redacteur",
+      name: "Rédacteur",
+      description: "Prépare et publie le journal.",
+      prompt: "Rédiger et publier.",
+      model: "",
+      reasoningEffort: "high"
+    }]
+  };
+}
+
+function createApprovalProposal() {
+  return {
+    title: "Validation avant publication",
+    description: "La publication attendra votre accord explicite.",
+    changes: [{
+      type: "update_instructions",
+      instructions: "Rédiger, demander un accord explicite, puis publier."
+    }, {
+      type: "update_agent",
+      agentKey: "redacteur",
+      updates: { prompt: "Rédiger puis présenter le journal. Publier uniquement après accord explicite." }
+    }]
+  };
+}
+
+test("prépare des évolutions applicables sans toucher au projet ni exécuter la proposition", async () => {
+  const review = {
+    assessment: "needs_attention",
+    summary: "Je vous propose d'ajouter une validation avant publication.",
+    findings: [],
+    proposal: createApprovalProposal()
+  };
+  const { useCase, calls } = createUseCase(JSON.stringify(review), 1);
+  await useCase.loadProject("project-id");
+  const loadedBefore = structuredClone(useCase.getActualLoadedProject());
+  const input = createApprovalReviewDraft();
+  const inputBefore = structuredClone(input);
+
+  assert.deepEqual(await useCase.reviewProject("project-id", input), review);
+  assert.deepEqual(input, inputBefore);
+  assert.deepEqual(useCase.getActualLoadedProject(), loadedBefore);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.persistSession, false);
+  assert.match(calls[0].prompt, /proactively propose material improvements/);
+  assert.equal(calls[0].options.readOnly, true);
+  assert.match(calls[0].prompt, /all returned changes remain pending until the user explicitly approves/);
+  assert.match(calls[0].prompt, /Do not use tools, modify files, or perform the project's tasks/);
+  assert.match(calls[0].prompt, /"type":"update_agent"/);
+  assert.match(calls[0].prompt, /"type":"add_agent"/);
+  assert.match(calls[0].prompt, /Cortex will recalculate the workflow when saving/);
+});
+
+test("transmet la proposition en attente complète pour affiner les changements sans gonfler l'historique", async () => {
+  const review = {
+    assessment: "needs_attention",
+    summary: "La validation doit-elle porter sur chaque article ou toute l'édition ?",
+    findings: [],
+    proposal: null
+  };
+  const { useCase, calls } = createUseCase(JSON.stringify(review), 1);
+  await useCase.loadProject("project-id");
+  const loadedBefore = structuredClone(useCase.getActualLoadedProject());
+  const currentProposal = createApprovalProposal();
+  currentProposal.changes[1].updates!.prompt = `Détail exact à conserver. ${"Contrainte. ".repeat(2_000)}`.trim();
+  const input = {
+    ...createApprovalReviewDraft(),
+    message: "Garde ces contraintes, mais affine la validation.",
+    conversation: [{ role: "assistant", content: JSON.stringify({
+      summary: "La publication attendra votre accord.",
+      proposal: { title: currentProposal.title, description: currentProposal.description },
+      proposalStatus: "pending"
+    }) }],
+    currentProposal
+  };
+  const inputBefore = structuredClone(input);
+
+  assert.deepEqual(await useCase.reviewProject("project-id", input), review);
+  assert.deepEqual(input, inputBefore);
+  assert.deepEqual(useCase.getActualLoadedProject(), loadedBefore);
+  assert.equal(calls.length, 1);
+  assert.ok(calls[0].prompt.includes(JSON.stringify(currentProposal, null, 2).trimEnd()));
+  assert.match(calls[0].prompt, /Current pending proposal \(not applied; null when absent\)/);
+  assert.match(calls[0].prompt, /complete replacement proposal against the current draft/);
+});
+
+test("rejette les propositions en attente invalides ou périmées avant tout appel moteur", async (t) => {
+  const { useCase, calls } = createUseCase("unused", 1);
+  await useCase.loadProject("project-id");
+  const invalidProposals = [null, {}, [], {
+    ...createApprovalProposal(),
+    changes: [{ type: "update_agent", agentKey: "ancien-redacteur", updates: { prompt: "Révision." } }]
+  }, {
+    ...createApprovalProposal(),
+    changes: [{ type: "write_file", path: "AGENTS.md", content: "Révision." }]
+  }];
+  for (const [index, currentProposal] of invalidProposals.entries()) {
+    await t.test(`proposition ${index + 1}`, async () => {
+      await assert.rejects(useCase.reviewProject("project-id", {
+        ...createApprovalReviewDraft(), message: "Affiner.", currentProposal
+      }), ValidationError);
+    });
+  }
+  await assert.rejects(useCase.reviewProject("project-id", {
+    ...createApprovalReviewDraft(), currentProposal: createApprovalProposal()
+  }), ValidationError);
+  assert.equal(calls.length, 0);
+});
+
+test("rejette une proposition du moteur invalide même quand le reste de la revue est correct", async (t) => {
+  const invalidProposals = [
+    {},
+    { ...createApprovalProposal(), changes: [] },
+    { ...createApprovalProposal(), changes: [{ type: "remove_agent", agentKey: "absent" }] },
+    { ...createApprovalProposal(), changes: [{ type: "update_agent", agentKey: "redacteur", updates: { prompt: "Rédiger et publier." } }] }
+  ];
+  for (const [index, proposal] of invalidProposals.entries()) {
+    await t.test(`réponse ${index + 1}`, async () => {
+      const { useCase, calls } = createUseCase(JSON.stringify({
+        assessment: "healthy", summary: "Voici une évolution.", findings: [], proposal
+      }), 1);
+      await useCase.loadProject("project-id");
+      const loadedBefore = structuredClone(useCase.getActualLoadedProject());
+      await assert.rejects(useCase.reviewProject("project-id", createApprovalReviewDraft()), /invalid project review proposal/i);
+      assert.equal(calls.length, 1);
+      assert.deepEqual(useCase.getActualLoadedProject(), loadedBefore);
+    });
+  }
 });
 
 test("detects, validates, and propagates workflow parameters", async () => {

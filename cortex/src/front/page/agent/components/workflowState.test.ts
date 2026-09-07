@@ -9,6 +9,7 @@ import {
   getPlannedThreadCount,
   getPrerequisiteMessage,
   getWorkflowLevels,
+  getWorkflowLaneLayout,
   type AgentResultStates
 } from "./workflowState.ts";
 
@@ -57,4 +58,43 @@ test("feedback edges preserve finite levels for cyclic workflow rendering", () =
   const agents = [agent("research", ["review"]), agent("review", ["research", "publish"]), agent("publish")];
   const feedback = getWorkflowFeedbackEdgeKeys(agents);
   assert.deepEqual(getWorkflowLevels(agents, feedback).map((level) => level.map(({ id }) => id)), [["research"], ["review"], ["publish"]]);
+});
+
+test("parallel entry points keep their branches aligned and their shared successor spans both", () => {
+  const agents = [agent("publish"), agent("events", ["calendar"]),
+    agent("calendar", ["summary"]), agent("summary", ["publish"]),
+    agent("research", ["writer"]), agent("writer", ["summary"])];
+  const levels = getWorkflowLevels(agents, new Set());
+  assert.deepEqual(levels.map((level) => level.map(({ id }) => id)), [
+    ["events", "research"], ["calendar", "writer"], ["summary"], ["publish"]
+  ]);
+  const { laneCount, placements } = getWorkflowLaneLayout(levels, new Set());
+  assert.equal(laneCount, 2);
+  assert.deepEqual(placements.get("events"), { start: 1, end: 2 });
+  assert.deepEqual(placements.get("calendar"), placements.get("events"));
+  assert.deepEqual(placements.get("writer"), placements.get("research"));
+  assert.deepEqual(placements.get("summary"), { start: 1, end: 3 });
+  assert.deepEqual(placements.get("publish"), placements.get("summary"));
+});
+
+test("a short independent branch does not shift or widen the other branch", () => {
+  const agents = [agent("first", ["second"]), agent("short"), agent("second", ["third"]), agent("third")];
+  const { placements } = getWorkflowLaneLayout(getWorkflowLevels(agents, new Set()), new Set());
+  assert.deepEqual(placements.get("second"), placements.get("first"));
+  assert.deepEqual(placements.get("third"), placements.get("first"));
+  assert.notDeepEqual(placements.get("short"), placements.get("first"));
+});
+
+test("a split and join retain distinct slots alongside an unfinished sibling", () => {
+  const agents = [agent("root", ["left", "right"]), agent("left", ["merge", "extra"]),
+    agent("right", ["merge"]), agent("merge"), agent("extra")];
+  const levels = getWorkflowLevels(agents, new Set());
+  const { placements } = getWorkflowLaneLayout(levels, new Set());
+  for (const level of levels) {
+    for (let index = 1; index < level.length; index += 1) {
+      const previous = placements.get(level[index - 1].id)!;
+      const current = placements.get(level[index].id)!;
+      assert.ok(previous.end <= current.start || current.end <= previous.start);
+    }
+  }
 });

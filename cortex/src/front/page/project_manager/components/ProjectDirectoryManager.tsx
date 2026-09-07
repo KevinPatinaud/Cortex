@@ -19,10 +19,8 @@ import {
 } from "../../../services/projectApi.ts";
 import { ProjectCreationDialog } from "./ProjectCreationDialog.tsx";
 import { getNavigationIndex, initializeNavigation, updateBrowserUrl } from "../../shared/browserNavigation.ts";
-import {
-  ProjectList,
-  type ProjectActivityStatus
-} from "./ProjectList.tsx";
+import { type ProjectActivityStatus } from "./ProjectList.tsx";
+import { ProjectFolderList } from "./ProjectFolderList.tsx";
 
 interface ProjectDirectoryManagerProps {
   activeProject: Project | null;
@@ -500,11 +498,6 @@ export function ProjectDirectoryManager({
   const selectedProject = projects.find(
     (project) => project.id === selectedProjectId
   );
-  const filteredProjects = projects.filter((project) =>
-    getProjectName(project).toLocaleLowerCase().includes(
-      projectSearch.trim().toLocaleLowerCase()
-    )
-  );
   const isSidebarExpanded = isProjectMenuOpen;
   const isProjectActionPending = isSelecting || isCreating || isReordering || loadingProjectId !== null;
   const isImportDisabled = isProjectActionPending || isEditing || isLoadingProjects;
@@ -573,12 +566,12 @@ export function ProjectDirectoryManager({
               onChange={(event) => setProjectSearch(event.target.value)}
             />
           </label>
-          {filteredProjects.length === 0 && projectSearch.trim() ? (
-            <p className="project-list__state" role="status">{t("sidebar.noSearchResult")}</p>
-          ) : hasProjectListError ? (
+          {hasProjectListError ? (
             <p className="project-list__state">{t("project.listUnavailable")}</p>
-          ) : <ProjectList
-            projects={filteredProjects}
+          ) : <ProjectFolderList
+            projects={projects}
+            search={projectSearch}
+            onClearSearch={() => setProjectSearch("")}
             projectActivity={projectActivity}
             isLoading={isLoadingProjects}
             loadingProjectId={loadingProjectId}

@@ -95,6 +95,52 @@ test("injecte la même configuration dans tous les providers", async () => {
   });
 });
 
+test("restricts review generation without changing global permissions or subsequent executions", async () => {
+  const storedConfiguration = { autopilot: true, allowAll: true };
+  await withConfigurationFile({
+    agentConfiguration: storedConfiguration,
+    projects: [{ id: "project-id", directoryPath: "C:\\project" }]
+  }, async (configurationService, configurationFile) => {
+    const originalFile = await readFile(configurationFile, "utf8");
+    const calls: AgentExecutionOptions[] = [];
+    const provider: AgentProvider = {
+      engine: "codex",
+      label: "Test",
+      async isAvailable() { return true; },
+      async ask(_prompt, options) {
+        calls.push(options!);
+        return { answer: "ok" };
+      }
+    };
+    const service = new AgentService([provider], configurationService);
+
+    await service.executeActive("Prepare a proposal", {
+      persistSession: false,
+      readOnly: true,
+      configuration: { autopilot: true, allowAll: true }
+    });
+    assert.deepEqual(calls[0].configuration, { autopilot: false, allowAll: false });
+    assert.equal(calls[0].persistSession, false);
+    assert.deepEqual(await service.getConfiguration(), storedConfiguration);
+    assert.equal(await readFile(configurationFile, "utf8"), originalFile);
+
+    await service.execute("codex", "Analyze the workflow graph", {
+      persistSession: false,
+      readOnly: true,
+      configuration: { autopilot: true, allowAll: true }
+    });
+    assert.deepEqual(calls[1].configuration, { autopilot: false, allowAll: false });
+
+    await service.executeActive("Perform an authorized task", {});
+    await service.executeActive("Perform another authorized task", { readOnly: false });
+    await service.execute("codex", "Execute a workflow agent", {});
+    assert.deepEqual(calls.slice(2).map(({ configuration }) => configuration), [
+      storedConfiguration, storedConfiguration, storedConfiguration
+    ]);
+    assert.equal(await readFile(configurationFile, "utf8"), originalFile);
+  });
+});
+
 test("shutdown cancels internal generation requests and prevents new engine work", async () => {
   await withConfigurationFile({}, async (configurationService) => {
     let notifyStarted!: () => void;

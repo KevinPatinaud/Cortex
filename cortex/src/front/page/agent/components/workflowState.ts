@@ -402,10 +402,22 @@ export function getWorkflowLevels(
     workflowAgents.map((agent) => [agent.id, 0])
   );
 
+  const pendingPredecessors = new Map(workflowAgents.map((agent) => [agent.id, 0]));
   for (const agent of workflowAgents) {
+    for (const nextAgentId of new Set(agent.nextAgentIds)) {
+      if (agentsById.has(nextAgentId) &&
+        !feedbackEdgeKeys.has(getWorkflowEdgeKey(agent.id, nextAgentId))) {
+        pendingPredecessors.set(nextAgentId, pendingPredecessors.get(nextAgentId)! + 1);
+      }
+    }
+  }
+  const pendingAgents = workflowAgents.filter((agent) => pendingPredecessors.get(agent.id) === 0);
+
+  for (let index = 0; index < pendingAgents.length; index += 1) {
+    const agent = pendingAgents[index];
     const sourceLevel = levelsByAgentId.get(agent.id) ?? 0;
 
-    for (const nextAgentId of agent.nextAgentIds) {
+    for (const nextAgentId of new Set(agent.nextAgentIds)) {
       if (
         !agentsById.has(nextAgentId) ||
         feedbackEdgeKeys.has(getWorkflowEdgeKey(agent.id, nextAgentId))
@@ -417,6 +429,9 @@ export function getWorkflowLevels(
         nextAgentId,
         Math.max(levelsByAgentId.get(nextAgentId) ?? 0, sourceLevel + 1)
       );
+      const remaining = pendingPredecessors.get(nextAgentId)! - 1;
+      pendingPredecessors.set(nextAgentId, remaining);
+      if (remaining === 0) pendingAgents.push(agentsById.get(nextAgentId)!);
     }
   }
 
@@ -429,5 +444,74 @@ export function getWorkflowLevels(
   }
 
   return levels;
+}
+
+export interface WorkflowLanePlacement {
+  start: number;
+  end: number;
+}
+
+/** Keep independent branches in their own columns, including after another
+ * branch ends. Shared successors span their incoming branches at a join. */
+export function getWorkflowLaneLayout(
+  levels: AgentDefinition[][],
+  feedbackEdgeKeys: ReadonlySet<string>
+): { laneCount: number; placements: Map<string, WorkflowLanePlacement> } {
+  const agents = levels.flat();
+  const parents = new Map(agents.map((agent) => [agent.id, agents.filter((source) =>
+    source.nextAgentIds.includes(agent.id) &&
+    !feedbackEdgeKeys.has(getWorkflowEdgeKey(source.id, agent.id))
+  )]));
+  const children = new Map(agents.map((agent) => [agent.id, agents.filter((child) =>
+    parents.get(child.id)?.[0]?.id === agent.id
+  )]));
+  const placements = new Map<string, WorkflowLanePlacement>();
+  let laneCount = 0;
+  const place = (agent: AgentDefinition): void => {
+    if (placements.has(agent.id)) return;
+    const start = laneCount + 1;
+    for (const child of children.get(agent.id) ?? []) place(child);
+    if (laneCount < start) laneCount = start;
+    placements.set(agent.id, { start, end: laneCount + 1 });
+  };
+  for (const agent of agents) {
+    if (parents.get(agent.id)?.length === 0) place(agent);
+  }
+  for (const agent of agents) {
+    if (!placements.has(agent.id)) place(agent);
+  }
+  const branchPlacements = new Map(placements);
+  for (const agent of agents) {
+    const upstream = parents.get(agent.id) ?? [];
+    const inheritsSpan = upstream.length > 1 || (upstream.length === 1 &&
+      upstream[0].nextAgentIds.filter((id) => parents.has(id) &&
+        !feedbackEdgeKeys.has(getWorkflowEdgeKey(upstream[0].id, id))).length === 1);
+    if (inheritsSpan) {
+      const incoming = upstream.map((parent) => placements.get(parent.id)!);
+      const current = placements.get(agent.id)!;
+      placements.set(agent.id, {
+        start: Math.min(current.start, ...incoming.map(({ start }) => start)),
+        end: Math.max(current.end, ...incoming.map(({ end }) => end))
+      });
+    }
+  }
+  // Overlapping spans can occur when a shared successor runs alongside another
+  // child of one predecessor. Preserve a separate column for each visible card.
+  for (const level of levels) {
+    const overlappingAgentIds = new Set<string>();
+    for (const agent of level) {
+      const placement = placements.get(agent.id)!;
+      const overlaps = level.some((other) => other.id !== agent.id &&
+        placements.get(other.id)!.start < placement.end &&
+        placements.get(other.id)!.end > placement.start);
+      if (overlaps) {
+        overlappingAgentIds.add(agent.id);
+      }
+    }
+    for (const agentId of overlappingAgentIds) {
+      placements.set(agentId, branchPlacements.get(agentId)!);
+    }
+  }
+  return { laneCount, placements };
 }
 

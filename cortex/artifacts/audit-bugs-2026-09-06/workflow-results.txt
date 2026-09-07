@@ -1,0 +1,6 @@
+﻿CONCURRENT {"hasActiveExecutions":true,"isProjectRunning":false,"workerStatus":"idle"}
+CONCURRENT_COMPLETED {"resumable":false,"entry":"{\"status\":\"success\",\"items\":[{\"content\":\"INPUT_2\"}],\"isMultiSelectionAllowed\":false,\"isMultiSelectionThreaded\":false,\"nextAgentIds\":[\".claude/agents/worker.md\"],\"notes\":null}","worker":"{\"status\":\"success\",\"items\":[{\"content\":\"STALE_RESULT_FROM_INPUT_1\"}],\"isMultiSelectionAllowed\":false,\"isMultiSelectionThreaded\":false,\"nextAgentIds\":[],\"notes\":null}"}
+RESPONSE_STATUS {"providerStatus":"error","runStatus":"succeeded","resumable":false}
+RESPONSE_STATUS {"providerStatus":"blocked","runStatus":"succeeded","resumable":false}
+RERUN_SUCCESSFUL_THREAD_AFTER_PARTIAL_FAILURE {"before":{"status":"failed","resumable":true,"threads":2},"after":{"status":"idle","resumable":false,"threads":2},"workerBCalls":1,"audit":["succeeded","failed"]}
+

@@ -5,9 +5,10 @@ import {
   useId,
   useRef,
   useState,
-  type KeyboardEvent
+  type KeyboardEvent,
+  type CSSProperties
 } from "react";
-import { ArrowDown, CalendarClock, Download, GitBranch, LoaderCircle, Pencil, Play, Plus, RotateCcw, Square } from "lucide-react";
+import { CalendarClock, Download, LoaderCircle, Pencil, Play, Plus, RotateCcw, Square } from "lucide-react";
 import {
   loadAgentProject,
   getWorkflowSchedule,
@@ -36,7 +37,10 @@ import { MarkdownContent } from "./MarkdownContent.tsx";
 import { AgentCard } from "./AgentCard.tsx";
 import { HandoffToggle } from "./HandoffToggle.tsx";
 import { WorkflowParametersPanel } from "./WorkflowParametersPanel.tsx";
-import { WorkflowFeedbackLoop, type WorkflowFeedbackLoopEdge, type WorkflowFeedbackLoopPlacement } from "./WorkflowFeedbackLoop.tsx";
+import { WorkflowFeedbackLoop, type WorkflowFeedbackLoopPlacement } from "./WorkflowFeedbackLoop.tsx";
+import { WorkflowConnections } from "./WorkflowConnections.tsx";
+import { WorkflowRoutingSummary } from "./WorkflowSemantics.tsx";
+import { getWorkflowConnectionStatus, getWorkflowInstancePresentation, getWorkflowRoutingPresentation } from "./workflowPresentation.ts";
 import {
   findLastAgentResponses,
   getAgentConversationThreads,
@@ -50,6 +54,7 @@ import {
   getUpstreamAgentResult,
   getPlannedThreadCount,
   getWorkflowLevels,
+  getWorkflowLaneLayout,
   type AgentResultState,
   type AgentResultStates
 } from "./workflowState.ts";
@@ -531,6 +536,18 @@ export function AgentProjectWorkspace({
       levelAgents.map((agent) => [agent.id, levelIndex] as const)
     )
   );
+  const workflowLaneLayout = getWorkflowLaneLayout(workflowLevels, workflowFeedbackEdgeKeys);
+  const workflowInstances = new Map(workflowAgents.map((agent) => [agent.id,
+    getWorkflowInstancePresentation(agent, workflowAgents, agentResultStates, workflowFeedbackEdgeKeys)]));
+  const workflowForwardEdges = workflowAgents.flatMap((agent) => agent.nextAgentIds
+    .filter((id) => agentsById.has(id) && !workflowFeedbackEdgeKeys.has(getWorkflowEdgeKey(agent.id, id)))
+    .map((id) => ({ sourceAgentId: agent.id, targetAgentId: id,
+      status: getWorkflowConnectionStatus(agent, agentsById.get(id)!, agentResultStates),
+      instanceCount: workflowInstances.get(id)?.count ?? undefined })));
+  const rootAgentCount = workflowAgents.filter((agent) =>
+    !workflowForwardEdges.some((edge) => edge.targetAgentId === agent.id)).length;
+  const unstartedRootAgents = workflowAgents.filter((agent) =>
+    !launchedAgentIds.has(agent.id) && !workflowForwardEdges.some((edge) => edge.targetAgentId === agent.id));
   const rawWorkflowFeedbackLoopPlacements = workflowFeedbackEdges.flatMap(
     ({ sourceAgentId, targetAgentId }) => {
       const sourceLevelIndex = workflowLevelIndexesByAgentId.get(sourceAgentId);
@@ -567,10 +584,6 @@ export function AgentProjectWorkspace({
         railIndex,
         railCount: placements.length
       }));
-  const firstCycleSplitLevelIndex = workflowLevels.findIndex((levelAgents) =>
-    levelAgents.some((agent) => cyclicAgentIds.has(agent.id)) &&
-    levelAgents.some((agent) => !cyclicAgentIds.has(agent.id))
-  );
   const isGlobalHandoffEnabled = workflowAgents.length > 0 && workflowAgents.every(
     (agent) => handoffEnabledAgentIds.has(agent.id)
   );
@@ -883,33 +896,6 @@ export function AgentProjectWorkspace({
     }
   }
 
-  function getAgentLaunchThreadCount(agent: AgentDefinition): number {
-    const upstreamAgents = workflowAgents.filter(
-      (candidate) => candidate.nextAgentIds.includes(agent.id)
-    );
-
-    if (getPrerequisiteMessage(
-      upstreamAgents,
-      agent.id,
-      agentResultStates,
-      workflowAgents,
-      workflowFeedbackEdgeKeys,
-      t
-    )) {
-      return 1;
-    }
-
-    return getPlannedThreadCount(
-      agent,
-      getApplicableUpstreamAgents(
-        upstreamAgents,
-        agent.id,
-        agentResultStates
-      ),
-      agentResultStates
-    );
-  }
-
   async function handleResetWorkflow(): Promise<void> {
     setIsResetting(true);
     setResetError("");
@@ -1030,6 +1016,21 @@ export function AgentProjectWorkspace({
             </button>
           </div>
           <div className="agent-project__tab-actions">
+            {activeTab === "agents" && unstartedRootAgents.length > 1 && (
+              <button type="button" className="agent-project__resume-button"
+                disabled={isAnyRunning || isStopping || isResetting || missingWorkflowParameters.length > 0 ||
+                  unstartedRootAgents.some((agent) => !agent.prompt.trim())}
+                title={t("workspace.startRootsHelp")}
+                onClick={() => {
+                  setStartedInBrowserByProject((current) => ({ ...current, [projectId]: true }));
+                  setReleasedAgentIds((current) => new Set([
+                    ...current, ...unstartedRootAgents.map((agent) => agent.id)
+                  ]));
+                }}>
+                <Play aria-hidden="true" size={15} />
+                {t("workspace.startRoots", { count: unstartedRootAgents.length })}
+              </button>
+            )}
             {isAnyRunning && <button type="button" className="agent-project__stop-button"
               disabled={isStopping} aria-busy={isStopping}
               title={t("execution.stopHelp")} onClick={() => void handleStop()}>
@@ -1180,13 +1181,18 @@ export function AgentProjectWorkspace({
                   }}
                 />
               )}
+              {rootAgentCount > 1 && <p className="workflow-roots-summary">
+                {t("workflow.roots", { count: rootAgentCount })}
+              </p>}
               <div
-                className={`agent-project__workflow${
+                className={`agent-project__workflow agent-project__workflow--graph${
                   workflowFeedbackLoopPlacements.length > 0
                     ? " agent-project__workflow--has-feedback"
                     : ""
                 }`}
+                style={{ "--workflow-lane-count": workflowLaneLayout.laneCount } as CSSProperties}
               >
+              <WorkflowConnections edges={workflowForwardEdges} />
               {workflowFeedbackLoopPlacements.map((placement) => (
                 <WorkflowFeedbackLoop
                   key={placement.key}
@@ -1194,85 +1200,26 @@ export function AgentProjectWorkspace({
                 />
               ))}
               {workflowLevels.map((levelAgents, levelIndex) => {
-                const nextLevelAgents = workflowLevels[levelIndex + 1] ?? [];
-                const nextLevelPreparesParallelRun =
-                  nextLevelAgents.some(
-                    (agent) => getAgentLaunchThreadCount(agent) > 1
-                  );
-                const usesFlowLanes =
-                  firstCycleSplitLevelIndex >= 0 &&
-                  levelIndex >= firstCycleSplitLevelIndex;
-                const nextLevelIntroducesFlowLanes =
-                  levelIndex + 1 === firstCycleSplitLevelIndex;
-                const cycleContinues = levelAgents.some((agent) =>
-                  cyclicAgentIds.has(agent.id) &&
-                  agent.nextAgentIds.some((nextAgentId) =>
-                    nextLevelAgents.some((nextAgent) =>
-                      nextAgent.id === nextAgentId &&
-                      cyclicAgentIds.has(nextAgent.id)
-                    ) &&
-                    !workflowFeedbackEdgeKeys.has(
-                      getWorkflowEdgeKey(agent.id, nextAgentId)
-                    )
-                  )
-                );
-                const parallelBranchContinues = levelAgents.some((agent) =>
-                  !cyclicAgentIds.has(agent.id) &&
-                  agent.nextAgentIds.some((nextAgentId) =>
-                    nextLevelAgents.some((nextAgent) =>
-                      nextAgent.id === nextAgentId &&
-                      !cyclicAgentIds.has(nextAgent.id)
-                    )
-                  )
-                );
-                const hasTerminalParallelBranch = levelAgents.some((agent) =>
-                  !cyclicAgentIds.has(agent.id) &&
-                  !agent.nextAgentIds.some((nextAgentId) =>
-                    agentsById.has(nextAgentId) &&
-                    !workflowFeedbackEdgeKeys.has(
-                      getWorkflowEdgeKey(agent.id, nextAgentId)
-                    )
-                  )
-                );
-                const cycleLaneAgentCount = levelAgents.filter((agent) =>
-                  cyclicAgentIds.has(agent.id)
-                ).length;
-                const parallelLaneAgentCount = levelAgents.length - cycleLaneAgentCount;
-                const cycleLaneContinuationRows = usesFlowLanes && cycleContinues
-                  ? Math.max(0, parallelLaneAgentCount - cycleLaneAgentCount)
-                  : 0;
-                const parallelLaneContinuationRows =
-                  usesFlowLanes && parallelBranchContinues
-                    ? Math.max(0, cycleLaneAgentCount - parallelLaneAgentCount)
-                    : 0;
                 return (
                   <section
-                    className={`agent-project__workflow-level${
-                      usesFlowLanes
-                        ? " agent-project__workflow-level--lanes"
-                        : ""
-                    }`}
+                    className="agent-project__workflow-level"
                     aria-label={t("workspace.step", { number: levelIndex + 1 })}
                     key={levelIndex}
                     style={{ gridRow: levelIndex + 1 }}
                   >
-                    <ol className={`agent-project__workflow-cards${
-                      usesFlowLanes
-                        ? " agent-project__workflow-cards--lanes"
-                        : ""
-                    }`}>
+                    <ol className="agent-project__workflow-cards agent-project__workflow-cards--graph">
                       {levelAgents.map((agent) => {
                         const flowKind: AgentFlowKind = cyclicAgentIds.has(
                           agent.id
                         )
                           ? "cycle"
-                          : usesFlowLanes
+                          : workflowLaneLayout.laneCount > 1
                             ? "parallel"
                             : "standard";
                         const upstreamAgents = workflowAgents.filter(
                           (candidate) => candidate.nextAgentIds.includes(agent.id)
                         );
-                        const isRootAgent = upstreamAgents.length === 0;
+                        const isRootAgent = !workflowForwardEdges.some((edge) => edge.targetAgentId === agent.id);
                         const prerequisiteMessage = getPrerequisiteMessage(
                           upstreamAgents,
                           agent.id,
@@ -1334,6 +1281,10 @@ export function AgentProjectWorkspace({
                           <li
                             className={`agent-project__workflow-step agent-project__workflow-step--${flowKind}`}
                             data-workflow-agent-id={agent.id}
+                            style={{
+                              "--workflow-column-start": workflowLaneLayout.placements.get(agent.id)?.start,
+                              "--workflow-column-end": workflowLaneLayout.placements.get(agent.id)?.end
+                            } as CSSProperties}
                             id={`workflow-agent-${encodeURIComponent(agent.id)}`}
                             key={`${content.projectId}:${agent.id}`}
                           >
@@ -1356,7 +1307,7 @@ export function AgentProjectWorkspace({
                               shouldAutoRun={
                                 !isResuming && !isStopping && startedInBrowserByProject[projectId] === true &&
                                 agent.executionStatus !== "failed" && agent.executionStatus !== "cancelled" &&
-                                upstreamAgents.length > 0 &&
+                                (upstreamAgents.length > 0 || releasedAgentIds.has(agent.id)) &&
                                 !launchedAgentIds.has(agent.id) &&
                                 (
                                   releasedAgentIds.has(agent.id) ||
@@ -1428,97 +1379,11 @@ export function AgentProjectWorkspace({
                               }}
                               onHandoffEnabledChange={handleAgentHandoffChange}
                             />
+                            <WorkflowRoutingSummary presentation={getWorkflowRoutingPresentation(agent, agentResultStates)} />
                           </li>
                         );
                       })}
-                      {cycleLaneContinuationRows > 0 && (
-                        <li
-                          className="agent-project__workflow-lane-continuation agent-project__workflow-lane-continuation--cycle"
-                          aria-hidden="true"
-                          style={{
-                            gridRow: `${cycleLaneAgentCount + 1} / span ${cycleLaneContinuationRows}`
-                          }}
-                        >
-                          <span>
-                            <ArrowDown size={34} strokeWidth={1.65} />
-                          </span>
-                        </li>
-                      )}
-                      {parallelLaneContinuationRows > 0 && (
-                        <li
-                          className="agent-project__workflow-lane-continuation agent-project__workflow-lane-continuation--parallel"
-                          aria-hidden="true"
-                          style={{
-                            gridRow: `${parallelLaneAgentCount + 1} / span ${parallelLaneContinuationRows}`
-                          }}
-                        >
-                          <span>
-                            <ArrowDown size={34} strokeWidth={1.65} />
-                          </span>
-                        </li>
-                      )}
                     </ol>
-                    {levelIndex < workflowLevels.length - 1 && (
-                      usesFlowLanes ? (
-                        <div
-                          className="agent-project__lane-transition"
-                          aria-hidden="true"
-                        >
-                          <span
-                            className="agent-project__lane-transition-item agent-project__lane-transition-item--cycle"
-                          >
-                            {cycleContinues && cycleLaneContinuationRows === 0 && (
-                              <ArrowDown size={17} strokeWidth={1.7} />
-                            )}
-                          </span>
-                          <span
-                            className="agent-project__lane-transition-item agent-project__lane-transition-item--parallel"
-                          >
-                            {parallelBranchContinues &&
-                              parallelLaneContinuationRows === 0 && (
-                              <ArrowDown size={17} strokeWidth={1.7} />
-                            )}
-                            {!parallelBranchContinues &&
-                              hasTerminalParallelBranch && (
-                                <>
-                                  <i />
-                                  <small>{t("workspace.branchEnd")}</small>
-                                </>
-                              )}
-                          </span>
-                        </div>
-                      ) : (
-                        <div
-                          className={`agent-project__workflow-connector${
-                            nextLevelIntroducesFlowLanes
-                              ? " agent-project__workflow-connector--split"
-                              : nextLevelPreparesParallelRun
-                                ? " agent-project__workflow-connector--parallel"
-                                : ""
-                          }`}
-                          aria-hidden="true"
-                        >
-                          {nextLevelIntroducesFlowLanes ? (
-                            <span className="agent-project__split-connector">
-                              <ArrowDown size={19} strokeWidth={1.7} />
-                              <ArrowDown size={19} strokeWidth={1.7} />
-                            </span>
-                          ) : nextLevelPreparesParallelRun ? (
-                            <span className="agent-project__parallel-connector">
-                              <i />
-                              <i />
-                              <i />
-                            </span>
-                          ) : levelAgents.some(
-                            (agent) => agent.nextAgentIds.length > 1
-                          ) ? (
-                            <GitBranch size={19} strokeWidth={1.5} />
-                          ) : (
-                            <ArrowDown size={18} strokeWidth={1.5} />
-                          )}
-                        </div>
-                      )
-                    )}
                   </section>
                 );
               })}

@@ -12,6 +12,13 @@ import {
 } from "../../../services/agentApi.ts";
 import { trapDialogFocus } from "../../shared/dialogFocus.ts";
 import type { DraftAgent } from "./projectDraft.ts";
+import { toProjectReviewDraft } from "./projectReviewDraft.ts";
+import {
+  parseProjectReviewProposal,
+  type ProjectReviewDraft,
+  type ProjectReviewProposal
+} from "../../../../shared/ProjectReviewProposal.ts";
+import { ProjectReviewProposalPreview, type ReviewProposalStatus } from "./ProjectReviewProposalPreview.tsx";
 
 interface ProjectReviewDialogProps {
   projectId: string;
@@ -22,15 +29,37 @@ interface ProjectReviewDialogProps {
   onClose: () => void;
   onBusyChange: (busy: boolean) => void;
   onOpenFinding: (finding: ProjectReviewFinding) => void;
+  onApplyProposal: (proposal: ProjectReviewProposal, expectedDraft: string) => Promise<ProjectReviewDraft>;
 }
 
 type ReviewTurn =
   | { role: "user"; content: string }
-  | { role: "assistant"; review: ProjectReview };
+  | { role: "assistant"; review: ProjectReview; original: ProjectReviewDraft; proposalStatus?: ReviewProposalStatus };
+
+function reviewTurnContent(turn: ReviewTurn): string {
+  if (turn.role === "user") return turn.content;
+  if (!turn.review.proposal) return JSON.stringify(turn.review);
+  // Keep completed exchanges small. The full pending proposal is sent separately
+  // so follow-up requests can refine its exact text without duplicating every version.
+  return JSON.stringify({
+    ...turn.review,
+    proposal: {
+      title: turn.review.proposal.title,
+      description: turn.review.proposal.description,
+      changes: turn.review.proposal.changes.map((change) => ({
+        type: change.type,
+        ...("agentKey" in change ? { agentKey: change.agentKey } : {}),
+        ...(change.type === "add_agent" ? { name: change.agent.name } : {}),
+        ...(change.type === "update_agent" ? { fields: Object.keys(change.updates) } : {})
+      }))
+    },
+    proposalStatus: turn.proposalStatus
+  });
+}
 
 export function ProjectReviewDialog({
   projectId, projectName, instructions, agents, isOpen,
-  onClose, onBusyChange, onOpenFinding
+  onClose, onBusyChange, onOpenFinding, onApplyProposal
 }: ProjectReviewDialogProps) {
   const { t } = useTranslation();
   const titleId = useId();
@@ -44,30 +73,25 @@ export function ProjectReviewDialog({
   const [turns, setTurns] = useState<ReviewTurn[]>([]);
   const [message, setMessage] = useState("");
   const [isPending, setIsPending] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
   const [pendingMessage, setPendingMessage] = useState("");
   const [error, setError] = useState("");
   const [reviewedDraft, setReviewedDraft] = useState<string | null>(null);
-  const draft = {
-    projectName: projectName.trim(),
-    instructions,
-    agents: agents.map((agent) => ({
-      key: agent.clientId,
-      name: agent.name,
-      description: agent.description,
-      prompt: agent.prompt,
-      model: agent.model ?? "",
-      reasoningEffort: agent.reasoningEffort ?? ""
-    }))
-  };
+  const draft = toProjectReviewDraft(projectName, instructions, agents);
+  const busy = isPending || isApplying;
   const draftSnapshot = JSON.stringify(draft);
   const conversation: ProjectReviewMessage[] = turns.map((turn) => ({
     role: turn.role,
-    content: turn.role === "user" ? turn.content : JSON.stringify(turn.review)
+    content: reviewTurnContent(turn)
   }));
   const historyLimitReached = conversation.length > 40 ||
     conversation.some((turn) => turn.content.length > 20_000) ||
     conversation.reduce((length, turn) => length + turn.content.length, 0) > 120_000;
   const draftChanged = reviewedDraft !== null && reviewedDraft !== draftSnapshot;
+  const latestTurn = turns.at(-1);
+  const currentProposal = latestTurn?.role === "assistant" &&
+    latestTurn.proposalStatus === "pending" && JSON.stringify(latestTurn.original) === draftSnapshot
+    ? latestTurn.review.proposal : undefined;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -105,12 +129,15 @@ export function ProjectReviewDialog({
       const review = await reviewProject(projectId, {
         ...draft,
         ...(requestMessage ? { message: requestMessage } : {}),
-        conversation
+        conversation,
+        ...(currentProposal ? { currentProposal } : {})
       });
+      if (review.proposal) review.proposal = parseProjectReviewProposal(review.proposal, draft);
       setTurns((current) => [
-        ...current,
+        ...current.map((turn): ReviewTurn => turn.role === "assistant" && turn.proposalStatus === "pending"
+          ? { ...turn, proposalStatus: "superseded" } : turn),
         ...(requestMessage ? [{ role: "user" as const, content: requestMessage }] : []),
-        { role: "assistant", review }
+        { role: "assistant", review, original: draft, ...(review.proposal ? { proposalStatus: "pending" as const } : {}) }
       ]);
       setReviewedDraft(draftSnapshot);
       if (includeMessage) setMessage("");
@@ -123,6 +150,43 @@ export function ProjectReviewDialog({
       onBusyChange(false);
       if (dialogRef.current?.open) messageRef.current?.focus();
     }
+  }
+
+  async function approveProposal(index: number): Promise<void> {
+    const turn = turns[index];
+    if (pendingRef.current || index !== turns.length - 1 || turn?.role !== "assistant" ||
+      turn.proposalStatus !== "pending" || !turn.review.proposal) return;
+    const expectedDraft = JSON.stringify(turn.original);
+    if (expectedDraft !== draftSnapshot) {
+      setError(t("editor.reviewProposalStale"));
+      return;
+    }
+    pendingRef.current = true;
+    setIsApplying(true);
+    onBusyChange(true);
+    setError("");
+    try {
+      const savedDraft = await onApplyProposal(turn.review.proposal, expectedDraft);
+      setTurns((current) => current.map((item, turnIndex) => item.role === "assistant" && turnIndex === index
+        ? { ...item, proposalStatus: "applied" } : item));
+      setReviewedDraft(JSON.stringify(savedDraft));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : t("editor.reviewApplyError"));
+    } finally {
+      pendingRef.current = false;
+      setIsApplying(false);
+      onBusyChange(false);
+      if (dialogRef.current?.open) messageRef.current?.focus();
+    }
+  }
+
+  function declineProposal(index: number): void {
+    if (pendingRef.current || index !== turns.length - 1) return;
+    setTurns((current) => current.map((turn, turnIndex) => turn.role === "assistant" &&
+      turnIndex === index && turn.proposalStatus === "pending"
+      ? { ...turn, proposalStatus: "declined" } : turn));
+    setError("");
+    messageRef.current?.focus();
   }
 
   function renderFindings(review: ProjectReview, isLatest: boolean) {
@@ -164,7 +228,7 @@ export function ProjectReviewDialog({
                   </aside>
                 </div>
                 {canOpen && (
-                  <button type="button" disabled={isPending} onClick={() => onOpenFinding(finding)}>
+                  <button type="button" disabled={busy} onClick={() => onOpenFinding(finding)}>
                     {t("editor.reviewOpenTarget")}
                     <ArrowUpRight aria-hidden="true" size={14} />
                   </button>
@@ -222,6 +286,18 @@ export function ProjectReviewDialog({
             </div>
             <p className="project-review__message">{turn.role === "user" ? turn.content : turn.review.summary}</p>
             {turn.role === "assistant" && renderFindings(turn.review, index === turns.length - 1)}
+            {turn.role === "assistant" && turn.review.proposal && (
+              <ProjectReviewProposalPreview
+                proposal={turn.review.proposal}
+                original={turn.original}
+                status={turn.proposalStatus ?? "pending"}
+                stale={JSON.stringify(turn.original) !== draftSnapshot}
+                busy={busy}
+                applying={isApplying && index === turns.length - 1}
+                onApply={() => void approveProposal(index)}
+                onDecline={() => declineProposal(index)}
+              />
+            )}
           </article>
         ))}
         {isPending && pendingMessage && (
@@ -251,7 +327,7 @@ export function ProjectReviewDialog({
           value={message}
           rows={3}
           maxLength={12_000}
-          readOnly={isPending}
+          readOnly={busy}
           aria-describedby={messageHelpId}
           placeholder={t("editor.reviewMessagePlaceholder")}
           onChange={(event) => { setMessage(event.target.value); setError(""); }}
@@ -265,16 +341,16 @@ export function ProjectReviewDialog({
         <div className="project-review__composer-actions">
           <span id={messageHelpId}>{t("editor.reviewMessageHelp")}</span>
           {historyLimitReached && (
-            <button type="button" className="project-review__analyze" disabled={isPending} onClick={() => {
+            <button type="button" className="project-review__analyze" disabled={busy} onClick={() => {
               setTurns([]); setReviewedDraft(null); setError(""); messageRef.current?.focus();
             }}>{t("editor.reviewNewConversation")}</button>
           )}
           {turns.length === 0 && (
-            <button type="button" className="project-review__analyze" disabled={isPending || !projectName.trim()} onClick={() => void submitReview(false)}>
+            <button type="button" className="project-review__analyze" disabled={busy || !projectName.trim()} onClick={() => void submitReview(false)}>
               <ScanSearch aria-hidden="true" size={16} />{t("editor.reviewAnalyze")}
             </button>
           )}
-          <button type="submit" className="project-review__send" disabled={isPending || historyLimitReached || !message.trim() || !projectName.trim()}>
+          <button type="submit" className="project-review__send" disabled={busy || historyLimitReached || !message.trim() || !projectName.trim()}>
             {isPending ? <LoaderCircle aria-hidden="true" className="spin" size={16} /> : <Send aria-hidden="true" size={16} />}
             {t("editor.reviewSend")}
           </button>

@@ -33,6 +33,12 @@ import { useTranslation } from "../../../i18n.tsx";
 import { ConfirmationDialog } from "../../project_manager/components/ConfirmationDialog.tsx";
 import { MarkdownEditor } from "./MarkdownEditor.tsx";
 import { ProjectReviewDialog } from "./ProjectReviewDialog.tsx";
+import { toProjectReviewDraft } from "./projectReviewDraft.ts";
+import {
+  applyProjectReviewProposal,
+  type ProjectReviewDraft,
+  type ProjectReviewProposal
+} from "../../../../shared/ProjectReviewProposal.ts";
 import { readProjectDraft, removeProjectDraft, saveProjectDraft, type DraftAgent } from "./projectDraft.ts";
 
 interface AgentProjectEditorProps {
@@ -215,7 +221,7 @@ export function AgentProjectEditor({
     isReviewingProject;
 
   function updateSelectedAgent(changes: Partial<DraftAgent>): void {
-    if (!selectedAgentId) {
+    if (!selectedAgentId || isSaving || isImproving) {
       return;
     }
 
@@ -226,6 +232,7 @@ export function AgentProjectEditor({
   }
 
   function addAgent(): void {
+    if (isSaving || isImproving) return;
     const clientId = createClientId();
     const newAgent: DraftAgent = {
       clientId,
@@ -263,7 +270,7 @@ export function AgentProjectEditor({
   }
 
   function restoreDeletedAgent(): void {
-    if (!deletedAgent) {
+    if (!deletedAgent || isSaving || isImproving) {
       return;
     }
 
@@ -392,6 +399,53 @@ export function AgentProjectEditor({
     setIsProjectReviewOpen(false);
   }
 
+  async function handleApplyReviewProposal(
+    proposal: ProjectReviewProposal,
+    expectedDraft: string
+  ): Promise<ProjectReviewDraft> {
+    const current = toProjectReviewDraft(projectName, instructions, agents);
+    if (JSON.stringify(current) !== expectedDraft) {
+      throw new Error(t("editor.reviewProposalStale"));
+    }
+    const proposed = applyProjectReviewProposal(current, proposal);
+    const existingAgents = new Map(agents.map((agent) => [agent.clientId, agent]));
+    setIsSaving(true);
+    setError("");
+    setSaveMessage("");
+    try {
+      const savedContent = await saveAgentProject(content.projectId, {
+        name: proposed.projectName,
+        engine: content.engine,
+        instructions: proposed.instructions,
+        agents: proposed.agents.map(({ key, model, reasoningEffort, ...agent }) => ({
+          ...agent,
+          ...(existingAgents.get(key)?.id ? { id: existingAgents.get(key)!.id } : {}),
+          ...(model ? { model } : {}),
+          ...(reasoningEffort ? { reasoningEffort } : {})
+        }))
+      });
+      const savedAgents = toDraftAgents(savedContent);
+      const savedInstructions = savedContent.instructions.content ?? "";
+      const savedName = getProjectName({ ...project, directoryPath: savedContent.directoryPath });
+      // Rebase only after saving succeeds; failures leave both the proposal and draft intact.
+      initialDraft.current = serializeDraft(savedName, savedInstructions, savedAgents);
+      setProjectName(savedName);
+      setInstructions(savedInstructions);
+      setAgents(savedAgents);
+      const selectedId = existingAgents.get(selectedAgentId ?? "")?.id;
+      setSelectedAgentId(savedAgents.find((agent) => agent.id === selectedId)?.clientId ??
+        savedAgents[0]?.clientId ?? null);
+      setDeletedAgent(null);
+      setRecovery(null);
+      removeProjectDraft(project.id);
+      setSaveMessage(t("editor.reviewProposalApplied"));
+      onSaved(savedContent);
+      return toProjectReviewDraft(savedName, savedInstructions, savedAgents);
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   function requestClose(): void {
     if (
       (isDirty || recovery !== null) &&
@@ -481,7 +535,7 @@ export function AgentProjectEditor({
               ? "editor.draftRecoveryHelp"
               : "editor.draftRecoveryConflict")}</p>
           </div>
-          <button type="button" onClick={() => {
+          <button type="button" disabled={isSaving || isImproving} onClick={() => {
             setProjectName(recovery.value.projectName);
             setInstructions(recovery.value.instructions);
             setAgents(recovery.value.agents);
@@ -489,7 +543,7 @@ export function AgentProjectEditor({
             setRecovery(null);
             setSaveMessage(t("editor.draftRestored"));
           }}>{t("editor.restoreDraft")}</button>
-          <button type="button" onClick={() => {
+          <button type="button" disabled={isSaving || isImproving} onClick={() => {
             if (!window.confirm(t("editor.discardDraftConfirm"))) return;
             removeProjectDraft(project.id);
             setRecovery(null);
@@ -679,7 +733,7 @@ export function AgentProjectEditor({
                 <Bot aria-hidden="true" size={25} />
                 <strong>{t("editor.emptyWorkflow")}</strong>
                 <p>{t("editor.firstAgentHelp")}</p>
-                <button type="button" onClick={addAgent}>
+                <button type="button" disabled={isSaving || isImproving} onClick={addAgent}>
                   <Plus aria-hidden="true" size={15} /> {t("editor.firstAgent")}
                 </button>
               </div>
@@ -845,7 +899,7 @@ export function AgentProjectEditor({
           ) : deletedAgent ? (
             <>
               <span>{t("editor.deletedOnSave", { name: deletedAgent.agent.name })}</span>
-              <button type="button" onClick={restoreDeletedAgent}>
+              <button type="button" disabled={isSaving || isImproving} onClick={restoreDeletedAgent}>
                 <Undo2 aria-hidden="true" size={14} /> {t("common.cancel")}
               </button>
             </>
@@ -888,6 +942,7 @@ export function AgentProjectEditor({
         onClose={() => setIsProjectReviewOpen(false)}
         onBusyChange={setIsReviewingProject}
         onOpenFinding={openReviewFinding}
+        onApplyProposal={handleApplyReviewProposal}
       />
 
       {agentImprovement && (

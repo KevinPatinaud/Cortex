@@ -1,0 +1,17 @@
+{
+  "sourceProjectId": "1442b75c-5d1b-41d9-9473-25ff62b134d7",
+  "newProjectId": "20fe1571-ecd7-4576-84fe-a3a210330155",
+  "archivedFiles": 10,
+  "unchangedProjectFiles": 9,
+  "agentCount": 6,
+  "engineProvidersAvailable": 0,
+  "loadedWithoutInference": true,
+  "roots": [
+    "Détecteur d’événements Google Agenda",
+    "Enquêteur"
+  ],
+  "aggregateAgents": [
+    "Synthèse",
+    "Publieur"
+  ]
+}

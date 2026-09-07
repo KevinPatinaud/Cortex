@@ -58,6 +58,17 @@ The creation dialog offers two modes:
 In both modes, choose Codex, Claude, or Copilot for the project's agent format.
 You can then edit the global instructions and add agents in the project editor.
 
+## Organizing projects
+
+Select **New folder** in the left sidebar to create a collapsible folder, then
+drag projects into it or use the **Organize** button beside a project to choose
+its folder. Choose **Unfiled** to return a project to the root of the list.
+Folders can be renamed or deleted; deleting a folder returns its projects to
+Unfiled and keeps their files intact. Organization is saved in Cortex's
+configuration and survives reloads without moving project directories.
+Search also finds projects inside collapsed folders. Within each folder,
+drag projects or use **Alt + ↑ / ↓** on a project to change their order.
+
 ## Importing an existing project
 
 The import controls accept either a project folder or a Cortex `.ctx` archive
@@ -83,6 +94,15 @@ A `.ctx` file is a standard ZIP archive whose root contains the project files,
 so it can be inspected or extracted with regular ZIP tools on Windows, Linux,
 and macOS.
 
+Exports also carry a validated execution graph in `.cortex/workflow.json` when
+one has been determined for the current instructions. Import restores that graph
+under the new project ID, including independent entry points and aggregation,
+and remaps agent IDs when converting engines. This metadata is kept in Cortex's
+configuration, without editing project instructions. Sessions, parameter values
+and schedules are not transferred. An older archive without this metadata still
+requires workflow analysis on its destination machine. If analysis fails, Cortex
+reports an error instead of executing a guessed sequence based on filenames.
+
 Exports use the same exclusions and limits as imports. Generated directories,
 environment secrets, common credential files, private keys, audit databases and
 transaction backups are excluded. Symbolic links and nonportable paths are
@@ -98,7 +118,12 @@ desired changes, ask questions, or request a general analysis. Follow-up message
 include the previous exchanges and the current unsaved draft. Closing and
 reopening the review keeps the conversation while the editor remains open;
 leaving the editor or reloading the page clears it. Recommendations link to the
-relevant agents or instructions, and edits remain under your control.
+relevant agents or instructions. The review also prepares concrete proposals to
+update global instructions, edit agent settings, or add and remove agents.
+Expand **View changes** to compare the full before/after content. **Apply and
+save** approves that exact proposal and saves it together with the current
+editor draft, keeping the discussion open. You can decline or refine a proposal;
+editing the draft makes an older proposal unavailable until it is updated.
 
 Unsaved editor drafts are kept in the current browser, separately for each
 project. Reopening the editor offers **Restore draft** or **Delete draft**.
@@ -147,6 +172,12 @@ Automatic workflows follow selected branches and loops until completion, with
 a default maximum of 100 agent executions per run. Each agent launch executes at
 most four instances concurrently. Engine executions have a default 15-minute
 timeout. These limits are configurable using the variables below.
+
+Independent ready agents run concurrently, sharing the workflow's instance
+concurrency limit. A convergence waits for all applicable branches before
+combining their results. In manual mode, a project with multiple entry points
+can start them together while preserving each agent's manual/automatic setting
+and additional instructions.
 
 ## Workflow parameters
 

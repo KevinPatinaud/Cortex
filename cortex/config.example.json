@@ -1,5 +1,9 @@
 {
   "projects": [],
+  "projectOrganization": {
+    "folders": [],
+    "projectFolders": {}
+  },
   "agentOrders": {},
   "agentWorkflows": {},
   "agentConfiguration": {

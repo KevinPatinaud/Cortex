@@ -1,0 +1,6 @@
+﻿B_EDITOR_BEFORE_A_SAVE_RESPONSE 1
+B_EDITOR_AFTER_A_SAVE_RESPONSE 0
+B_RECOVERABLE Unsaved important B
+BEFORE_EDIT {"choices":[false,true],"details":"Important manual follow-up instructions"}
+AFTER_EDIT_WITHOUT_CHANGES {"choices":[true,false],"details":""}
+

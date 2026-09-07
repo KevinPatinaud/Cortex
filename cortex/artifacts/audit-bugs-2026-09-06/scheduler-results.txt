@@ -1,0 +1,4 @@
+﻿IMPOSSIBLE_CRON {"error":"The cron expression has no occurrence in the supported date range.","stored":{"cron":"0 0 31 2 *","enabled":true,"parameterValues":{}},"elapsedMs":1255}
+GET_PERSISTED_SCHEDULE_ERROR The cron expression has no occurrence in the supported date range.
+DST {"timezone":"Europe/Paris","after":"Sun Oct 25 2026 02:45:00 GMT+0200 (heure d’été d’Europe centrale)","next":"2026-10-26T01:30:00.000Z","earlierMatchingOccurrence":"2026-10-25T01:30:00.000Z","matches":true}
+

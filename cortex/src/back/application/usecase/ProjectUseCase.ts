@@ -13,6 +13,7 @@ import type {
 } from "../service/projectService/ProjectService.ts";
 import { NotFoundError } from "../error/NotFoundError.ts";
 import { ValidationError } from "../error/ValidationError.ts";
+import type { ProjectOrganization } from "../../../shared/ProjectOrganization.ts";
 
 export type ProjectOutput = Project;
 export type ProjectContentOutput = ProjectContent;
@@ -55,6 +56,45 @@ export class ProjectUseCase {
 
   getProjects(): Promise<Project[]> {
     return this.projectService.getProjects();
+  }
+
+  getProjectOrganization(): Promise<ProjectOrganization> {
+    return this.projectService.getProjectOrganization();
+  }
+
+  async createProjectFolder(name: unknown): Promise<ProjectOrganization> {
+    const folderName = this.getRequiredString(name, "The project folder name is required.");
+    return this.mapProjectFolderValidation(() => this.projectService.createProjectFolder(folderName));
+  }
+
+  async renameProjectFolder(folderId: string, name: unknown): Promise<ProjectOrganization> {
+    const id = this.getRequiredString(folderId, "The project folder ID is required.");
+    const folderName = this.getRequiredString(name, "The project folder name is required.");
+    return this.mapProjectFolderValidation(() => this.projectService.renameProjectFolder(id, folderName));
+  }
+
+  async deleteProjectFolder(folderId: string): Promise<ProjectOrganization> {
+    return this.projectService.deleteProjectFolder(
+      this.getRequiredString(folderId, "The project folder ID is required.")
+    );
+  }
+
+  async setProjectFolder(projectId: string, folderId: unknown): Promise<ProjectOrganization> {
+    const id = this.getRequiredString(projectId, "The project ID is required.");
+    const normalizedFolderId = folderId === null ? null :
+      this.getRequiredString(folderId, "The project folder ID is required, or null to unfile the project.");
+    return this.projectService.setProjectFolder(id, normalizedFolderId);
+  }
+
+  private async mapProjectFolderValidation(
+    operation: () => Promise<ProjectOrganization>
+  ): Promise<ProjectOrganization> {
+    try {
+      return await operation();
+    } catch (error) {
+      if (error instanceof TypeError) throw new ValidationError(error.message);
+      throw error;
+    }
   }
 
   async reorderProjects(projectIds: unknown): Promise<Project[]> {

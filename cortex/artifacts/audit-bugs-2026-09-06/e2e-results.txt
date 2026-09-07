@@ -1,0 +1,261 @@
+﻿
+> cortex@1.0.0 test:e2e
+> playwright test
+
+node.exe : [WebServer] (node:6936) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+Au caractère Ligne:1 : 1
++ & "C:\Program Files\nodejs/node.exe" "C:\Users\kevin\AppData\Roaming\ ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([WebServer] (no... env being set.:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] (node:6936) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 172 tests using 1 worker
+
+(node:28284) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok   1 [chromium-390] › tests\e2e\cortex.spec.ts:19:1 › creation, editing, execution and audit use the real API (7.2s)
+  ok   2 [chromium-390] › tests\e2e\cortex.spec.ts:42:1 › an unsaved draft survives reload and can be restored (4.5s)
+  ok   3 [chromium-390] › tests\e2e\cortex.spec.ts:57:1 › back navigation can be cancelled without losing the draft or changing project (3.3s)
+  ok   4 [chromium-390] › tests\e2e\cortex.spec.ts:80:1 › project creation dialogue supports keyboard dismissal (2.2s)
+  ok   5 [chromium-390] › tests\e2e\cortex.spec.ts:93:1 › a long execution reports progress and can be stopped then retried (4.5s)
+[WebServer] Unable to run the agent: Error: Échec simulé du moteur.
+[WebServer]     at Object.ask (C:\dev\Cortex\cortex\tests\e2e\server.ts:45:44)
+[WebServer]     at <anonymous> (C:\dev\Cortex\cortex\src\back\application\service\iaService\AgentService.ts:192:23)
+[WebServer]     at async AgentService.trackExecution 
+(C:\dev\Cortex\cortex\src\back\application\service\iaService\AgentService.ts:55:14)
+[WebServer]     at async <anonymous> (C:\dev\Cortex\cortex\src\back\application\usecase\AgentUseCase.ts:842:28)
+[WebServer]     at async <anonymous> 
+(C:\dev\Cortex\cortex\src\back\application\service\workflowExecution\WorkflowExecution.ts:26:56)
+[WebServer]     at async Promise.all (index 0)
+[WebServer]     at async settleWithConcurrency 
+(C:\dev\Cortex\cortex\src\back\application\service\workflowExecution\WorkflowExecution.ts:22:3)
+[WebServer]     at async AgentUseCase.runAgent 
+(C:\dev\Cortex\cortex\src\back\application\usecase\AgentUseCase.ts:785:33)
+[WebServer]     at async <anonymous> 
+(C:\dev\Cortex\cortex\src\back\infrastructure\web\controller\AgentController.ts:113:22)
+  ok   6 [chromium-390] › tests\e2e\cortex.spec.ts:111:1 › engine errors remain visible and allow a retry (4.2s)
+  ok   7 [chromium-390] › tests\e2e\cortex.spec.ts:123:1 › exported archives can be imported through the UI (2.0s)
+  ok   8 [chromium-390] › tests\e2e\cortex.spec.ts:136:1 › workflow and editor fit the viewport and expose accessible controls (8.7s)
+  ok   9 [chromium-390] › tests\e2e\forms-audit.spec.ts:36:1 › sign-in distinguishes network failures from invalid passwords and keeps correction focused (1.9s)
+  ok  10 [chromium-390] › tests\e2e\forms-audit.spec.ts:67:1 › Markdown tabs and formatting tools support keyboard navigation without losing the selection (3.1s)
+  ok  11 [chromium-390] › tests\e2e\forms-audit.spec.ts:105:1 › MCP editing blocks writes after a failed load and offers recovery with focus restored (3.9s)
+  ok  12 [chromium-390] › tests\e2e\forms-audit.spec.ts:145:1 › MCP form explains invalid entries and does not validate fields hidden by transport changes (4.7s)
+  ok  13 [chromium-390] › tests\e2e\forms-audit.spec.ts:182:1 › settings cannot overwrite unloaded values and report save failures in the active General tab (3.1s)
+  ok  14 [chromium-390] › tests\e2e\project-creation.spec.ts:42:1 › creation modes preserve their fields and validate only the active mode (2.7s)
+  ok  15 [chromium-390] › tests\e2e\project-creation.spec.ts:78:3 › creation without AI persists global instructions and no agents (2.7s)
+  ok  16 [chromium-390] › tests\e2e\project-creation.spec.ts:78:3 › creation without AI persists a minimal instruction template and no agents (2.5s)
+  ok  17 [chromium-390] › tests\e2e\project-creation.spec.ts:97:1 › creation with AI sends the description and opens the generated project (2.3s)
+  ok  18 [chromium-390] › tests\e2e\project-creation.spec.ts:116:1 › creation without AI remains available when engine detection fails (2.4s)
+  ok  19 [chromium-390] › tests\e2e\project-creation.spec.ts:130:1 › creation without AI completes while engine detection is still pending (2.5s)
+  -   20 [chromium-390] › tests\e2e\project-creation.spec.ts:168:1 › empty projects retain their selected engine for all three file formats
+  ok  21 [chromium-390] › tests\e2e\project-creation.spec.ts:180:1 › both creation modes fit the viewport and expose accessible controls (7.4s)
+  ok  22 [chromium-390] › tests\e2e\project-review-proposals.spec.ts:114:1 › review proposals show exact changes and persist them only after explicit approval (10.2s)
+  ok  23 [chromium-390] › tests\e2e\project-review-proposals.spec.ts:211:1 › rejecting and refining proposals never saves and only the latest proposal remains actionable (3.1s)
+  ok  24 [chromium-390] › tests\e2e\project-review-proposals.spec.ts:244:1 › editing the draft makes a proposal stale until a new review uses the current draft (3.3s)
+  ok  25 [chromium-390] › tests\e2e\project-review-proposals.spec.ts:274:1 › a failed approval preserves the proposal, composer and draft and can be retried (3.1s)
+  ok  26 [chromium-390] › tests\e2e\project-review.spec.ts:56:1 › project review discusses wishes and follows up with completed history and the current unsaved draft (4.2s)
+  ok  27 [chromium-390] › tests\e2e\project-review.spec.ts:136:1 › a pending review survives closing and a failed wish can be retried without duplicate turns (4.2s)
+  ok  28 [chromium-390] › tests\e2e\project-review.spec.ts:203:1 › general project analysis remains available before a conversation (2.1s)
+  ok  29 [chromium-390] › tests\e2e\project-review.spec.ts:228:1 › project review keeps its composer reachable with long results and supports keyboard dismissal (3.3s)
+  ok  30 [chromium-390] › tests\e2e\ux-audit.spec.ts:30:1 › a connection failure offers a retry without asking for a password (3.2s)
+  ok  31 [chromium-390] › tests\e2e\ux-audit.spec.ts:49:1 › a project list failure can be retried in place (1.3s)
+  ok  32 [chromium-390] › tests\e2e\ux-audit.spec.ts:67:1 › the empty mobile workspace is reachable and its project list can close (1.8s)
+  ok  33 [chromium-390] › tests\e2e\ux-audit.spec.ts:88:1 › an invalid project link explains the problem instead of opening another project (1.1s)
+  ok  34 [chromium-390] › tests\e2e\ux-audit.spec.ts:102:1 › projects can be reordered with keyboard shortcuts (1.2s)
+  ok  35 [chromium-390] › tests\e2e\ux-audit.spec.ts:134:1 › a late project response cannot replace a newer browser navigation (1.6s)
+  ok  36 [chromium-390] › tests\e2e\ux-audit.spec.ts:175:1 › secondary views expose accessible creation, history and engine settings (11.0s)
+  ok  37 [chromium-390] › tests\e2e\workflow-continue.spec.ts:50:1 › automatic mode announces mixed agents and preserves manual instructions (2.0s)
+  ok  38 [chromium-390] › tests\e2e\workflow-continue.spec.ts:73:3 › Continue runs automatic successors exactly once in the same session (3.5s)
+  ok  39 [chromium-390] › tests\e2e\workflow-continue.spec.ts:120:3 › Continue runs the next manual agent from the completed card in the same session (4.0s)
+  ok  40 [chromium-390] › tests\e2e\workflow-continue.spec.ts:73:3 › Continue runs automatic successors exactly once after reload (4.1s)
+  ok  41 [chromium-390] › tests\e2e\workflow-continue.spec.ts:120:3 › Continue runs the next manual agent from the completed card after reload (3.9s)
+  ok  42 [chromium-390] › tests\e2e\workflow-selection-audit.spec.ts:59:1 › single response choices remain exclusive and Markdown links stay independent (2.1s)
+  ok  43 [chromium-390] › tests\e2e\workflow-selection-audit.spec.ts:79:1 › multiple response choices can be excluded and restored independently (1.8s)
+(node:53056) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  44 [chromium-700] › tests\e2e\cortex.spec.ts:19:1 › creation, editing, execution and audit use the real API (3.6s)
+  ok  45 [chromium-700] › tests\e2e\cortex.spec.ts:42:1 › an unsaved draft survives reload and can be restored (3.3s)
+  ok  46 [chromium-700] › tests\e2e\cortex.spec.ts:57:1 › back navigation can be cancelled without losing the draft or changing project (2.6s)
+  ok  47 [chromium-700] › tests\e2e\cortex.spec.ts:80:1 › project creation dialogue supports keyboard dismissal (2.0s)
+  ok  48 [chromium-700] › tests\e2e\cortex.spec.ts:93:1 › a long execution reports progress and can be stopped then retried (1.7s)
+[WebServer] Unable to run the agent: Error: Échec simulé du moteur.
+[WebServer]     at Object.ask (C:\dev\Cortex\cortex\tests\e2e\server.ts:45:44)
+[WebServer]     at <anonymous> (C:\dev\Cortex\cortex\src\back\application\service\iaService\AgentService.ts:192:23)
+[WebServer]     at async AgentService.trackExecution 
+(C:\dev\Cortex\cortex\src\back\application\service\iaService\AgentService.ts:55:14)
+[WebServer]     at async <anonymous> (C:\dev\Cortex\cortex\src\back\application\usecase\AgentUseCase.ts:842:28)
+[WebServer]     at async <anonymous> 
+(C:\dev\Cortex\cortex\src\back\application\service\workflowExecution\WorkflowExecution.ts:26:56)
+[WebServer]     at async Promise.all (index 0)
+[WebServer]     at async settleWithConcurrency 
+(C:\dev\Cortex\cortex\src\back\application\service\workflowExecution\WorkflowExecution.ts:22:3)
+[WebServer]     at async AgentUseCase.runAgent 
+(C:\dev\Cortex\cortex\src\back\application\usecase\AgentUseCase.ts:785:33)
+[WebServer]     at async <anonymous> 
+(C:\dev\Cortex\cortex\src\back\infrastructure\web\controller\AgentController.ts:113:22)
+  ok  49 [chromium-700] › tests\e2e\cortex.spec.ts:111:1 › engine errors remain visible and allow a retry (1.7s)
+  ok  50 [chromium-700] › tests\e2e\cortex.spec.ts:123:1 › exported archives can be imported through the UI (919ms)
+  ok  51 [chromium-700] › tests\e2e\cortex.spec.ts:136:1 › workflow and editor fit the viewport and expose accessible controls (4.9s)
+  ok  52 [chromium-700] › tests\e2e\forms-audit.spec.ts:36:1 › sign-in distinguishes network failures from invalid passwords and keeps correction focused (798ms)
+  ok  53 [chromium-700] › tests\e2e\forms-audit.spec.ts:67:1 › Markdown tabs and formatting tools support keyboard navigation without losing the selection (2.0s)
+  ok  54 [chromium-700] › tests\e2e\forms-audit.spec.ts:105:1 › MCP editing blocks writes after a failed load and offers recovery with focus restored (4.7s)
+  ok  55 [chromium-700] › tests\e2e\forms-audit.spec.ts:145:1 › MCP form explains invalid entries and does not validate fields hidden by transport changes (4.2s)
+  ok  56 [chromium-700] › tests\e2e\forms-audit.spec.ts:182:1 › settings cannot overwrite unloaded values and report save failures in the active General tab (1.8s)
+  ok  57 [chromium-700] › tests\e2e\project-creation.spec.ts:42:1 › creation modes preserve their fields and validate only the active mode (1.4s)
+  ok  58 [chromium-700] › tests\e2e\project-creation.spec.ts:78:3 › creation without AI persists global instructions and no agents (1.4s)
+  ok  59 [chromium-700] › tests\e2e\project-creation.spec.ts:78:3 › creation without AI persists a minimal instruction template and no agents (3.0s)
+  ok  60 [chromium-700] › tests\e2e\project-creation.spec.ts:97:1 › creation with AI sends the description and opens the generated project (1.4s)
+  ok  61 [chromium-700] › tests\e2e\project-creation.spec.ts:116:1 › creation without AI remains available when engine detection fails (1.7s)
+  ok  62 [chromium-700] › tests\e2e\project-creation.spec.ts:130:1 › creation without AI completes while engine detection is still pending (1.9s)
+  -   63 [chromium-700] › tests\e2e\project-creation.spec.ts:168:1 › empty projects retain their selected engine for all three file formats
+  ok  64 [chromium-700] › tests\e2e\project-creation.spec.ts:180:1 › both creation modes fit the viewport and expose accessible controls (4.3s)
+  ok  65 [chromium-700] › tests\e2e\project-review-proposals.spec.ts:114:1 › review proposals show exact changes and persist them only after explicit approval (5.9s)
+  ok  66 [chromium-700] › tests\e2e\project-review-proposals.spec.ts:211:1 › rejecting and refining proposals never saves and only the latest proposal remains actionable (2.4s)
+  ok  67 [chromium-700] › tests\e2e\project-review-proposals.spec.ts:244:1 › editing the draft makes a proposal stale until a new review uses the current draft (2.2s)
+  ok  68 [chromium-700] › tests\e2e\project-review-proposals.spec.ts:274:1 › a failed approval preserves the proposal, composer and draft and can be retried (3.3s)
+  ok  69 [chromium-700] › tests\e2e\project-review.spec.ts:56:1 › project review discusses wishes and follows up with completed history and the current unsaved draft (3.6s)
+  ok  70 [chromium-700] › tests\e2e\project-review.spec.ts:136:1 › a pending review survives closing and a failed wish can be retried without duplicate turns (4.2s)
+  ok  71 [chromium-700] › tests\e2e\project-review.spec.ts:203:1 › general project analysis remains available before a conversation (2.9s)
+  ok  72 [chromium-700] › tests\e2e\project-review.spec.ts:228:1 › project review keeps its composer reachable with long results and supports keyboard dismissal (4.9s)
+  ok  73 [chromium-700] › tests\e2e\ux-audit.spec.ts:30:1 › a connection failure offers a retry without asking for a password (2.4s)
+  ok  74 [chromium-700] › tests\e2e\ux-audit.spec.ts:49:1 › a project list failure can be retried in place (917ms)
+  ok  75 [chromium-700] › tests\e2e\ux-audit.spec.ts:67:1 › the empty mobile workspace is reachable and its project list can close (1.4s)
+  ok  76 [chromium-700] › tests\e2e\ux-audit.spec.ts:88:1 › an invalid project link explains the problem instead of opening another project (1.1s)
+  ok  77 [chromium-700] › tests\e2e\ux-audit.spec.ts:102:1 › projects can be reordered with keyboard shortcuts (1.2s)
+  ok  78 [chromium-700] › tests\e2e\ux-audit.spec.ts:134:1 › a late project response cannot replace a newer browser navigation (2.2s)
+  ok  79 [chromium-700] › tests\e2e\ux-audit.spec.ts:175:1 › secondary views expose accessible creation, history and engine settings (10.6s)
+  ok  80 [chromium-700] › tests\e2e\workflow-continue.spec.ts:50:1 › automatic mode announces mixed agents and preserves manual instructions (1.9s)
+  ok  81 [chromium-700] › tests\e2e\workflow-continue.spec.ts:73:3 › Continue runs automatic successors exactly once in the same session (3.2s)
+  ok  82 [chromium-700] › tests\e2e\workflow-continue.spec.ts:120:3 › Continue runs the next manual agent from the completed card in the same session (3.4s)
+  ok  83 [chromium-700] › tests\e2e\workflow-continue.spec.ts:73:3 › Continue runs automatic successors exactly once after reload (3.6s)
+  ok  84 [chromium-700] › tests\e2e\workflow-continue.spec.ts:120:3 › Continue runs the next manual agent from the completed card after reload (4.1s)
+  ok  85 [chromium-700] › tests\e2e\workflow-selection-audit.spec.ts:59:1 › single response choices remain exclusive and Markdown links stay independent (2.5s)
+  ok  86 [chromium-700] › tests\e2e\workflow-selection-audit.spec.ts:79:1 › multiple response choices can be excluded and restored independently (1.8s)
+(node:18328) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok  87 [chromium-980] › tests\e2e\cortex.spec.ts:19:1 › creation, editing, execution and audit use the real API (6.8s)
+  ok  88 [chromium-980] › tests\e2e\cortex.spec.ts:42:1 › an unsaved draft survives reload and can be restored (2.8s)
+  ok  89 [chromium-980] › tests\e2e\cortex.spec.ts:57:1 › back navigation can be cancelled without losing the draft or changing project (2.7s)
+  ok  90 [chromium-980] › tests\e2e\cortex.spec.ts:80:1 › project creation dialogue supports keyboard dismissal (4.9s)
+  ok  91 [chromium-980] › tests\e2e\cortex.spec.ts:93:1 › a long execution reports progress and can be stopped then retried (3.4s)
+[WebServer] Unable to run the agent: Error: Échec simulé du moteur.
+[WebServer]     at Object.ask (C:\dev\Cortex\cortex\tests\e2e\server.ts:45:44)
+[WebServer]     at <anonymous> (C:\dev\Cortex\cortex\src\back\application\service\iaService\AgentService.ts:192:23)
+[WebServer]     at async AgentService.trackExecution 
+(C:\dev\Cortex\cortex\src\back\application\service\iaService\AgentService.ts:55:14)
+[WebServer]     at async <anonymous> (C:\dev\Cortex\cortex\src\back\application\usecase\AgentUseCase.ts:842:28)
+[WebServer]     at async <anonymous> 
+(C:\dev\Cortex\cortex\src\back\application\service\workflowExecution\WorkflowExecution.ts:26:56)
+[WebServer]     at async Promise.all (index 0)
+[WebServer]     at async settleWithConcurrency 
+(C:\dev\Cortex\cortex\src\back\application\service\workflowExecution\WorkflowExecution.ts:22:3)
+[WebServer]     at async AgentUseCase.runAgent 
+(C:\dev\Cortex\cortex\src\back\application\usecase\AgentUseCase.ts:785:33)
+[WebServer]     at async <anonymous> 
+(C:\dev\Cortex\cortex\src\back\infrastructure\web\controller\AgentController.ts:113:22)
+  ok  92 [chromium-980] › tests\e2e\cortex.spec.ts:111:1 › engine errors remain visible and allow a retry (2.1s)
+  ok  93 [chromium-980] › tests\e2e\cortex.spec.ts:123:1 › exported archives can be imported through the UI (3.5s)
+  ok  94 [chromium-980] › tests\e2e\cortex.spec.ts:136:1 › workflow and editor fit the viewport and expose accessible controls (10.4s)
+  ok  95 [chromium-980] › tests\e2e\forms-audit.spec.ts:36:1 › sign-in distinguishes network failures from invalid passwords and keeps correction focused (1.6s)
+  ok  96 [chromium-980] › tests\e2e\forms-audit.spec.ts:67:1 › Markdown tabs and formatting tools support keyboard navigation without losing the selection (3.0s)
+  ok  97 [chromium-980] › tests\e2e\forms-audit.spec.ts:105:1 › MCP editing blocks writes after a failed load and offers recovery with focus restored (3.2s)
+  ok  98 [chromium-980] › tests\e2e\forms-audit.spec.ts:145:1 › MCP form explains invalid entries and does not validate fields hidden by transport changes (3.4s)
+  ok  99 [chromium-980] › tests\e2e\forms-audit.spec.ts:182:1 › settings cannot overwrite unloaded values and report save failures in the active General tab (2.3s)
+  ok 100 [chromium-980] › tests\e2e\project-creation.spec.ts:42:1 › creation modes preserve their fields and validate only the active mode (2.4s)
+  ok 101 [chromium-980] › tests\e2e\project-creation.spec.ts:78:3 › creation without AI persists global instructions and no agents (2.1s)
+  ok 102 [chromium-980] › tests\e2e\project-creation.spec.ts:78:3 › creation without AI persists a minimal instruction template and no agents (2.1s)
+  ok 103 [chromium-980] › tests\e2e\project-creation.spec.ts:97:1 › creation with AI sends the description and opens the generated project (2.1s)
+  ok 104 [chromium-980] › tests\e2e\project-creation.spec.ts:116:1 › creation without AI remains available when engine detection fails (2.3s)
+  ok 105 [chromium-980] › tests\e2e\project-creation.spec.ts:130:1 › creation without AI completes while engine detection is still pending (2.3s)
+  -  106 [chromium-980] › tests\e2e\project-creation.spec.ts:168:1 › empty projects retain their selected engine for all three file formats
+  ok 107 [chromium-980] › tests\e2e\project-creation.spec.ts:180:1 › both creation modes fit the viewport and expose accessible controls (5.3s)
+  ok 108 [chromium-980] › tests\e2e\project-review-proposals.spec.ts:114:1 › review proposals show exact changes and persist them only after explicit approval (13.8s)
+  ok 109 [chromium-980] › tests\e2e\project-review-proposals.spec.ts:211:1 › rejecting and refining proposals never saves and only the latest proposal remains actionable (2.9s)
+  ok 110 [chromium-980] › tests\e2e\project-review-proposals.spec.ts:244:1 › editing the draft makes a proposal stale until a new review uses the current draft (2.4s)
+  ok 111 [chromium-980] › tests\e2e\project-review-proposals.spec.ts:274:1 › a failed approval preserves the proposal, composer and draft and can be retried (2.7s)
+  ok 112 [chromium-980] › tests\e2e\project-review.spec.ts:56:1 › project review discusses wishes and follows up with completed history and the current unsaved draft (4.3s)
+  ok 113 [chromium-980] › tests\e2e\project-review.spec.ts:136:1 › a pending review survives closing and a failed wish can be retried without duplicate turns (3.8s)
+  ok 114 [chromium-980] › tests\e2e\project-review.spec.ts:203:1 › general project analysis remains available before a conversation (3.2s)
+  ok 115 [chromium-980] › tests\e2e\project-review.spec.ts:228:1 › project review keeps its composer reachable with long results and supports keyboard dismissal (4.0s)
+  ok 116 [chromium-980] › tests\e2e\ux-audit.spec.ts:30:1 › a connection failure offers a retry without asking for a password (2.2s)
+  ok 117 [chromium-980] › tests\e2e\ux-audit.spec.ts:49:1 › a project list failure can be retried in place (1.6s)
+  -  118 [chromium-980] › tests\e2e\ux-audit.spec.ts:67:1 › the empty mobile workspace is reachable and its project list can close
+  ok 119 [chromium-980] › tests\e2e\ux-audit.spec.ts:88:1 › an invalid project link explains the problem instead of opening another project (1.2s)
+  ok 120 [chromium-980] › tests\e2e\ux-audit.spec.ts:102:1 › projects can be reordered with keyboard shortcuts (1.7s)
+  ok 121 [chromium-980] › tests\e2e\ux-audit.spec.ts:134:1 › a late project response cannot replace a newer browser navigation (2.6s)
+  ok 122 [chromium-980] › tests\e2e\ux-audit.spec.ts:175:1 › secondary views expose accessible creation, history and engine settings (14.4s)
+  ok 123 [chromium-980] › tests\e2e\workflow-continue.spec.ts:50:1 › automatic mode announces mixed agents and preserves manual instructions (2.7s)
+  ok 124 [chromium-980] › tests\e2e\workflow-continue.spec.ts:73:3 › Continue runs automatic successors exactly once in the same session (6.8s)
+  ok 125 [chromium-980] › tests\e2e\workflow-continue.spec.ts:120:3 › Continue runs the next manual agent from the completed card in the same session (6.3s)
+  ok 126 [chromium-980] › tests\e2e\workflow-continue.spec.ts:73:3 › Continue runs automatic successors exactly once after reload (5.4s)
+  ok 127 [chromium-980] › tests\e2e\workflow-continue.spec.ts:120:3 › Continue runs the next manual agent from the completed card after reload (3.5s)
+  ok 128 [chromium-980] › tests\e2e\workflow-selection-audit.spec.ts:59:1 › single response choices remain exclusive and Markdown links stay independent (2.4s)
+  ok 129 [chromium-980] › tests\e2e\workflow-selection-audit.spec.ts:79:1 › multiple response choices can be excluded and restored independently (1.6s)
+(node:47148) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ok 130 [chromium-1440] › tests\e2e\cortex.spec.ts:19:1 › creation, editing, execution and audit use the real API (4.3s)
+  ok 131 [chromium-1440] › tests\e2e\cortex.spec.ts:42:1 › an unsaved draft survives reload and can be restored (3.1s)
+  ok 132 [chromium-1440] › tests\e2e\cortex.spec.ts:57:1 › back navigation can be cancelled without losing the draft or changing project (3.1s)
+  ok 133 [chromium-1440] › tests\e2e\cortex.spec.ts:80:1 › project creation dialogue supports keyboard dismissal (2.6s)
+  ok 134 [chromium-1440] › tests\e2e\cortex.spec.ts:93:1 › a long execution reports progress and can be stopped then retried (2.1s)
+[WebServer] Unable to run the agent: Error: Échec simulé du moteur.
+[WebServer]     at Object.ask (C:\dev\Cortex\cortex\tests\e2e\server.ts:45:44)
+[WebServer]     at <anonymous> (C:\dev\Cortex\cortex\src\back\application\service\iaService\AgentService.ts:192:23)
+[WebServer]     at async AgentService.trackExecution 
+(C:\dev\Cortex\cortex\src\back\application\service\iaService\AgentService.ts:55:14)
+[WebServer]     at async <anonymous> (C:\dev\Cortex\cortex\src\back\application\usecase\AgentUseCase.ts:842:28)
+[WebServer]     at async <anonymous> 
+(C:\dev\Cortex\cortex\src\back\application\service\workflowExecution\WorkflowExecution.ts:26:56)
+[WebServer]     at async Promise.all (index 0)
+[WebServer]     at async settleWithConcurrency 
+(C:\dev\Cortex\cortex\src\back\application\service\workflowExecution\WorkflowExecution.ts:22:3)
+[WebServer]     at async AgentUseCase.runAgent 
+(C:\dev\Cortex\cortex\src\back\application\usecase\AgentUseCase.ts:785:33)
+[WebServer]     at async <anonymous> 
+(C:\dev\Cortex\cortex\src\back\infrastructure\web\controller\AgentController.ts:113:22)
+  ok 135 [chromium-1440] › tests\e2e\cortex.spec.ts:111:1 › engine errors remain visible and allow a retry (2.3s)
+  ok 136 [chromium-1440] › tests\e2e\cortex.spec.ts:123:1 › exported archives can be imported through the UI (1.9s)
+  ok 137 [chromium-1440] › tests\e2e\cortex.spec.ts:136:1 › workflow and editor fit the viewport and expose accessible controls (8.1s)
+  ok 138 [chromium-1440] › tests\e2e\forms-audit.spec.ts:36:1 › sign-in distinguishes network failures from invalid passwords and keeps correction focused (829ms)
+  ok 139 [chromium-1440] › tests\e2e\forms-audit.spec.ts:67:1 › Markdown tabs and formatting tools support keyboard navigation without losing the selection (2.2s)
+  ok 140 [chromium-1440] › tests\e2e\forms-audit.spec.ts:105:1 › MCP editing blocks writes after a failed load and offers recovery with focus restored (2.4s)
+  ok 141 [chromium-1440] › tests\e2e\forms-audit.spec.ts:145:1 › MCP form explains invalid entries and does not validate fields hidden by transport changes (3.4s)
+  ok 142 [chromium-1440] › tests\e2e\forms-audit.spec.ts:182:1 › settings cannot overwrite unloaded values and report save failures in the active General tab (2.3s)
+  ok 143 [chromium-1440] › tests\e2e\project-creation.spec.ts:42:1 › creation modes preserve their fields and validate only the active mode (2.0s)
+  ok 144 [chromium-1440] › tests\e2e\project-creation.spec.ts:78:3 › creation without AI persists global instructions and no agents (2.1s)
+  ok 145 [chromium-1440] › tests\e2e\project-creation.spec.ts:78:3 › creation without AI persists a minimal instruction template and no agents (2.3s)
+  ok 146 [chromium-1440] › tests\e2e\project-creation.spec.ts:97:1 › creation with AI sends the description and opens the generated project (1.9s)
+  ok 147 [chromium-1440] › tests\e2e\project-creation.spec.ts:116:1 › creation without AI remains available when engine detection fails (2.2s)
+  ok 148 [chromium-1440] › tests\e2e\project-creation.spec.ts:130:1 › creation without AI completes while engine detection is still pending (2.8s)
+  ok 149 [chromium-1440] › tests\e2e\project-creation.spec.ts:168:1 › empty projects retain their selected engine for all three file formats (146ms)
+  ok 150 [chromium-1440] › tests\e2e\project-creation.spec.ts:180:1 › both creation modes fit the viewport and expose accessible controls (4.3s)
+  ok 151 [chromium-1440] › tests\e2e\project-review-proposals.spec.ts:114:1 › review proposals show exact changes and persist them only after explicit approval (5.9s)
+  ok 152 [chromium-1440] › tests\e2e\project-review-proposals.spec.ts:211:1 › rejecting and refining proposals never saves and only the latest proposal remains actionable (2.6s)
+  ok 153 [chromium-1440] › tests\e2e\project-review-proposals.spec.ts:244:1 › editing the draft makes a proposal stale until a new review uses the current draft (2.7s)
+  ok 154 [chromium-1440] › tests\e2e\project-review-proposals.spec.ts:274:1 › a failed approval preserves the proposal, composer and draft and can be retried (2.8s)
+  ok 155 [chromium-1440] › tests\e2e\project-review.spec.ts:56:1 › project review discusses wishes and follows up with completed history and the current unsaved draft (3.9s)
+  ok 156 [chromium-1440] › tests\e2e\project-review.spec.ts:136:1 › a pending review survives closing and a failed wish can be retried without duplicate turns (3.1s)
+  ok 157 [chromium-1440] › tests\e2e\project-review.spec.ts:203:1 › general project analysis remains available before a conversation (1.8s)
+  ok 158 [chromium-1440] › tests\e2e\project-review.spec.ts:228:1 › project review keeps its composer reachable with long results and supports keyboard dismissal (3.5s)
+  ok 159 [chromium-1440] › tests\e2e\ux-audit.spec.ts:30:1 › a connection failure offers a retry without asking for a password (1.6s)
+  ok 160 [chromium-1440] › tests\e2e\ux-audit.spec.ts:49:1 › a project list failure can be retried in place (789ms)
+  -  161 [chromium-1440] › tests\e2e\ux-audit.spec.ts:67:1 › the empty mobile workspace is reachable and its project list can close
+  ok 162 [chromium-1440] › tests\e2e\ux-audit.spec.ts:88:1 › an invalid project link explains the problem instead of opening another project (910ms)
+  ok 163 [chromium-1440] › tests\e2e\ux-audit.spec.ts:102:1 › projects can be reordered with keyboard shortcuts (866ms)
+  ok 164 [chromium-1440] › tests\e2e\ux-audit.spec.ts:134:1 › a late project response cannot replace a newer browser navigation (1.7s)
+  ok 165 [chromium-1440] › tests\e2e\ux-audit.spec.ts:175:1 › secondary views expose accessible creation, history and engine settings (9.3s)
+  ok 166 [chromium-1440] › tests\e2e\workflow-continue.spec.ts:50:1 › automatic mode announces mixed agents and preserves manual instructions (2.2s)
+  ok 167 [chromium-1440] › tests\e2e\workflow-continue.spec.ts:73:3 › Continue runs automatic successors exactly once in the same session (3.4s)
+  ok 168 [chromium-1440] › tests\e2e\workflow-continue.spec.ts:120:3 › Continue runs the next manual agent from the completed card in the same session (3.6s)
+  ok 169 [chromium-1440] › tests\e2e\workflow-continue.spec.ts:73:3 › Continue runs automatic successors exactly once after reload (4.0s)
+  ok 170 [chromium-1440] › tests\e2e\workflow-continue.spec.ts:120:3 › Continue runs the next manual agent from the completed card after reload (4.5s)
+  ok 171 [chromium-1440] › tests\e2e\workflow-selection-audit.spec.ts:59:1 › single response choices remain exclusive and Markdown links stay independent (2.2s)
+  ok 172 [chromium-1440] › tests\e2e\workflow-selection-audit.spec.ts:79:1 › multiple response choices can be excluded and restored independently (1.9s)
+
+  5 skipped
+  167 passed (9.6m)
+

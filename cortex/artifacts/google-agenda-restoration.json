@@ -1,0 +1,61 @@
+{
+  "projectId": "1442b75c-5d1b-41d9-9473-25ff62b134d7",
+  "previous": null,
+  "workflow": {
+    "hash": "f3b9dc97c470259a78cd82cd66b0f12a1d8a8f73e937e4b8d200b604a4feacc7",
+    "agents": [
+      {
+        "id": ".codex/agents/analyse-d-evenement-calendrier.toml",
+        "nextAgentIds": [
+          ".codex/agents/synthese.toml"
+        ],
+        "inputMode": "separate"
+      },
+      {
+        "id": ".codex/agents/chercheur-evenements.toml",
+        "nextAgentIds": [
+          ".codex/agents/analyse-d-evenement-calendrier.toml"
+        ],
+        "inputMode": "separate"
+      },
+      {
+        "id": ".codex/agents/enqueteur.toml",
+        "nextAgentIds": [
+          ".codex/agents/redacteur-journalistique.toml"
+        ],
+        "inputMode": "separate"
+      },
+      {
+        "id": ".codex/agents/publieur.toml",
+        "nextAgentIds": [],
+        "inputMode": "aggregate"
+      },
+      {
+        "id": ".codex/agents/redacteur-journalistique.toml",
+        "nextAgentIds": [
+          ".codex/agents/synthese.toml"
+        ],
+        "inputMode": "separate"
+      },
+      {
+        "id": ".codex/agents/synthese.toml",
+        "nextAgentIds": [
+          ".codex/agents/publieur.toml"
+        ],
+        "inputMode": "aggregate"
+      }
+    ],
+    "parameters": []
+  },
+  "sourceFileHashes": {
+    ".codex/agents/analyse-d-evenement-calendrier.toml": "181f9b12387b21bf8c2a37863f6aeca4d450b9bf1ef2562c79b63c777e9912f7",
+    ".codex/agents/chercheur-evenements.toml": "ac2f55ddc4a2992d20dc288a64391d47f69d45005e168c38834690ee812eda4c",
+    ".codex/agents/enqueteur.toml": "2fc8c87f9eb5fdd88916aaa5e4e4aaed0be9d37dcbf42270ab2506dd76bf155a",
+    ".codex/agents/publieur.toml": "3d5d473bb60b5795f05eb3840f2e679b61684f463accc1788dda463849104572",
+    ".codex/agents/redacteur-journalistique.toml": "b3ba8ccedd03925c12325a245349e74d2fe15997ae6e8e16dcded5618d557a6c",
+    ".codex/agents/synthese.toml": "c10f19c7b778d06724acd496bfeb86c71420ba2c40c861d258f902c4f313ea01",
+    "agenda-septembre-2026.html": "c7a4c105e2f9fd522fede1141c84e4c4d23a844186814b997b76252d834af677",
+    "AGENTS.md": "d075fa45b87a41d90ca68ac1000db93f10fe8f9457b4290313b6db37f4fc1577",
+    "forum-associations-moussy-le-neuf.html": "8f5218d673a08faabd1423abea7d8e5d41ec1d4aade1c38a14e4f1574412afd1"
+  }
+}

@@ -187,7 +187,9 @@ export class AgentService {
         );
       }
 
-      const configuration = await this.configurationService.getConfiguration();
+      const configuration = options.readOnly
+        ? { autopilot: false, allowAll: false }
+        : await this.configurationService.getConfiguration();
       options.signal?.throwIfAborted();
       return provider.ask(prompt, {
         ...options, configuration, timeoutMs: options.timeoutMs ?? this.executionTimeoutMs
@@ -208,7 +210,9 @@ export class AgentService {
         );
       }
 
-      const configuration = await this.configurationService.getConfiguration();
+      const configuration = options.readOnly
+        ? { autopilot: false, allowAll: false }
+        : await this.configurationService.getConfiguration();
 
       options.signal?.throwIfAborted();
       return provider.ask(prompt, {
