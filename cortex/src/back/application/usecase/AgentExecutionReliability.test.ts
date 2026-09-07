@@ -14,6 +14,38 @@ import { WorkflowAuditService } from "../service/workflowAudit/WorkflowAuditServ
 import { SqliteWorkflowAuditRepository } from "../../infrastructure/audit/SqliteWorkflowAuditRepository.ts";
 
 const agentId = (name: string): string => `.claude/agents/${name}.md`;
+
+for (const status of ["blocked", "error"] as const) {
+  for (const scope of ["workflow", "agent"] as const) test(`${scope}: ${status} responses stop routing, retain the explanation and session, and can be retried`, async () => {
+    let blocked = true;
+    const calls: string[] = [];
+    const f = fixture({ source: ["next"], next: [] }, async (name, _prompt, options) => {
+      calls.push(name);
+      if (name === "source" && blocked) return {
+        sessionId: "blocked-session",
+        answer: JSON.stringify({ ...JSON.parse(response(["Mandat incomplet"], ["next"]).answer), status, notes: "Précisez le mandat." })
+      };
+      if (name === "source") assert.equal(options.sessionId, "blocked-session");
+      return response(["Done"], name === "source" ? ["next"] : []);
+    });
+    try {
+      const useCase = f.createUseCase();
+      await useCase.loadProject("project");
+      await assert.rejects(scope === "workflow" ? useCase.runWorkflow("project") : useCase.runAgent("project", { agentId: agentId("source") }), /Précisez le mandat/);
+      assert.deepEqual(calls, ["source"]);
+      const saved = await useCase.loadProject("project", false);
+      assert.equal(saved.workflowInstance?.status, "failed");
+      assert.equal(saved.agents[0].executionStatus, "failed");
+      assert.ok(saved.agents[0].conversation.at(-1)?.content.includes("Mandat incomplet"));
+      const run = f.repository.listRuns("project", 20, 0).items[0];
+      assert.equal(run.status, "failed");
+      assert.equal(f.repository.getRun("project", run.id)?.executions[0].status, "failed");
+      blocked = false;
+      await useCase.runWorkflow("project", {}, "manual", { resume: true });
+      assert.deepEqual(calls, ["source", "source", "next"]);
+    } finally { f.repository.close(); }
+  });
+}
 function response(items: string[], next: string[], threaded = false): AgentExecutionResult {
   return {
     answer: JSON.stringify({ status: "success", items: items.map((content) => ({ content })),
@@ -561,14 +593,17 @@ test("a sleeping checkpoint and its inbox survive closing and reopening SQLite",
   assert.equal(calls, 2);
 });
 
-test("a failed wake retains its event for explicit retry and does not automatically repeat effects", async (t) => {
+for (const failure of ["exception", "blocked"] as const) test(`a ${failure} wake retains its event for explicit retry and does not automatically repeat effects`, async (t) => {
   t.mock.method(console, "error", () => undefined);
   let calls = 0;
   const f = fixture({ hotel: [] }, async (_name, prompt) => {
     calls++;
     if (calls === 1) return waitingResponse(new Date(Date.now() + 3600_000).toISOString());
     assert.match(prompt, /mail-to-retry/);
-    if (calls === 2) throw new Error("Temporary engine error");
+    if (calls === 2) {
+      if (failure === "exception") throw new Error("Temporary engine error");
+      return { sessionId: "blocked-wake", answer: JSON.stringify({ ...JSON.parse(response(["Temporary engine error"], []).answer), status: "blocked" }) };
+    }
     return response(["Confirmed after recovery"], []);
   });
   const useCase = f.createUseCase();

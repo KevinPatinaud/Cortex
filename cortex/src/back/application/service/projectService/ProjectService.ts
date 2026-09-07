@@ -35,6 +35,8 @@ interface StoredProject {
 }
 
 export interface AgentWorkflowConfiguration {
+  /** Internal branches inferred from project instructions and preserved in archives. */
+  dossierBranches?: Array<{ sourceAgentId: string; targetAgentId: string }>;
   hash: string;
   agents: Array<{
     id: string;
@@ -935,6 +937,7 @@ export class ProjectService {
     workflow: AgentWorkflowConfiguration
   ): AgentWorkflowConfiguration {
     return {
+      ...(workflow.dossierBranches ? { dossierBranches: workflow.dossierBranches.map(branch => ({ ...branch })) } : {}),
       hash: workflow.hash,
       agents: workflow.agents.map((agent) => ({
         ...agent,

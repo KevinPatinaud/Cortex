@@ -14,7 +14,7 @@ type Part = { mimeType?: string; body?: { data?: string }; parts?: Part[]; heade
 type Message = { id: string; threadId: string; internalDate: string; labelIds?: string[]; snippet?: string; payload?: Part };
 type Thread = { id: string; messages?: Message[] };
 type WatchRow = { id: string; value: string; seen: string };
-type WorkflowAccess = Pick<AgentUseCase, "loadProject" | "receiveWorkflowEvent">;
+type WorkflowAccess = Pick<AgentUseCase, "loadProject" | "receiveWorkflowEvent"> & Partial<Pick<AgentUseCase, "loadWorkflowInstance">>;
 
 /** Local Gmail OAuth connection. No credentials are exposed to agents or project exports. */
 export class GmailService {
@@ -156,7 +156,9 @@ export class GmailService {
   }
   async watch(projectId: string, input: unknown): Promise<GmailWatch> {
     if (!isRecord(input) || typeof input.instanceId !== "string" || typeof input.eventKey !== "string" || typeof input.threadId !== "string") throw new ValidationError("Sélectionnez une attente et un fil Gmail.");
-    const project = await this.agents.loadProject(projectId, false);
+    const project = this.agents.loadWorkflowInstance
+      ? await this.agents.loadWorkflowInstance(projectId, input.instanceId)
+      : await this.agents.loadProject(projectId, false);
     if (project.workflowInstance?.id !== input.instanceId || !["running", "waiting"].includes(project.workflowInstance.status) ||
       !project.workflowWaits?.some(wait => wait.eventKey === input.eventKey && !wait.wake)) throw new ValidationError("Cette attente n’est plus active.");
     const generation = this.generation;
@@ -199,7 +201,9 @@ export class GmailService {
       if (watch.status === "finished") continue;
       const seen = new Set<string>(JSON.parse(row.seen));
       try {
-        const project = await this.agents.loadProject(watch.projectId, false);
+        const project = this.agents.loadWorkflowInstance
+          ? await this.agents.loadWorkflowInstance(watch.projectId, watch.instanceId)
+          : await this.agents.loadProject(watch.projectId, false);
         const instance = project.workflowInstance;
         if (!instance || instance.id !== watch.instanceId || ["completed", "cancelled"].includes(instance.status) ||
           (instance.status === "waiting" && !project.workflowWaits?.some(wait => wait.eventKey === watch.eventKey))) {

@@ -1,4 +1,5 @@
 import { requestBlob, requestJson } from "./apiClient.ts";
+import type { WorkflowDispatchRule } from "../../shared/WorkflowAutomation.ts";
 import type { WorkflowInstanceState, WorkflowWaitingThread } from "../../shared/WorkflowWait.ts";
 import type { ProjectReviewProposal } from "../../shared/ProjectReviewProposal.ts";
 import type {
@@ -90,6 +91,7 @@ export interface ProjectInstructions {
 }
 
 export interface AgentProject {
+  dispatchRules?: WorkflowDispatchRule[];
   workflowInstance?: WorkflowInstanceState;
   workflowWaits?: WorkflowWaitingThread[];
   projectId: string;

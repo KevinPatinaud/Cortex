@@ -1,0 +1,30 @@
+{
+  "source": {
+    "id": "c14e940a-50df-45fc-b70f-3a5c1c404804",
+    "directoryPath": "C:\\dev\\Cortex\\cortex\\projects\\Immobilier - Veille horaire"
+  },
+  "target": {
+    "id": "080138f0-efb2-4e29-9a67-87ee368460cc",
+    "directoryPath": "C:\\dev\\Cortex\\cortex\\projects\\Immobilier - Négociations"
+  },
+  "rule": {
+    "id": "6abbc231-2346-4b64-87f9-54c362e3ec6e",
+    "sourceProjectId": "c14e940a-50df-45fc-b70f-3a5c1c404804",
+    "sourceAgentId": ".codex/agents/02-selection.toml",
+    "targetProjectId": "080138f0-efb2-4e29-9a67-87ee368460cc",
+    "enabled": false,
+    "createdAt": "2026-09-07T13:21:03.085Z",
+    "parameterValues": {}
+  },
+  "schedule": {
+    "cron": "0 * * * *",
+    "enabled": false,
+    "parameterValues": {},
+    "timezone": "Europe/Paris",
+    "nextRunAt": null,
+    "running": false,
+    "lastRunAt": null,
+    "lastRunStatus": null,
+    "lastRunError": null
+  }
+}

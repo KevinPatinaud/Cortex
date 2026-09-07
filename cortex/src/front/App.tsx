@@ -35,6 +35,15 @@ export function App() {
   const confirmProjectChange = useCallback(() => !hasUnsavedChanges ||
     window.confirm(t("editor.leaveWithDraftConfirm")), [hasUnsavedChanges, t]);
   const refreshContent = useCallback((content: AgentProject) => {
+    setProjectActivity(current => {
+      if (content.workflowInstance?.status === "running" || content.agents.some(agent => agent.executionStatus === "running")) {
+        return { ...current, [content.projectId]: "running" };
+      }
+      if (!current[content.projectId]) return current;
+      const next = { ...current };
+      delete next[content.projectId];
+      return next;
+    });
     setSelection((currentSelection) => currentSelection &&
         currentSelection.project.id === content.projectId
       ? { ...currentSelection, content }

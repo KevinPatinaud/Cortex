@@ -26,6 +26,7 @@ import {
   type Project
 } from "../../../services/projectApi.ts";
 import type { AgentResponsePayload } from "../../../../shared/AgentResponse.ts";
+import { getDossierAgentIds } from "../../../../shared/WorkflowAutomation.ts";
 import {
   getCyclicAgentIds,
   getWorkflowEdgeKey,
@@ -37,6 +38,7 @@ import { MarkdownContent } from "./MarkdownContent.tsx";
 import { AgentCard } from "./AgentCard.tsx";
 import { HandoffToggle } from "./HandoffToggle.tsx";
 import { WorkflowWaitPanel } from "./WorkflowWaitPanel.tsx";
+import { WorkflowDossiers } from "./WorkflowDossiers.tsx";
 import { WorkflowParametersPanel } from "./WorkflowParametersPanel.tsx";
 import { WorkflowFeedbackLoop, type WorkflowFeedbackLoopPlacement } from "./WorkflowFeedbackLoop.tsx";
 import { WorkflowConnections } from "./WorkflowConnections.tsx";
@@ -179,12 +181,20 @@ export function AgentProjectWorkspace({
   onContentRefresh,
   onRunStateChange
 }: AgentProjectWorkspaceProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const tabsId = useId();
   const instructionsTabRef = useRef<HTMLButtonElement>(null);
   const agentsTabRef = useRef<HTMLButtonElement>(null);
   const auditTabRef = useRef<HTMLButtonElement>(null);
   const [activeTab, setActiveTab] = useState<WorkspaceTab>(getWorkspaceTabFromUrl);
+  useEffect(() => {
+    const selected = activeTab === "instructions" ? instructionsTabRef.current : activeTab === "agents" ? agentsTabRef.current : auditTabRef.current;
+    const list = selected?.parentElement;
+    if (selected && list) {
+      if (selected.offsetLeft < list.scrollLeft) list.scrollLeft = selected.offsetLeft;
+      else if (selected.offsetLeft + selected.offsetWidth > list.scrollLeft + list.clientWidth) list.scrollLeft = selected.offsetLeft + selected.offsetWidth - list.clientWidth;
+    }
+  }, [activeTab, content?.projectId]);
   const [agentResultStates, setAgentResultStates] = useState<AgentResultStates>(
     {}
   );
@@ -507,6 +517,11 @@ export function AgentProjectWorkspace({
   const workflowAgents = content.agents.map((agent) => locallyRunning.has(agent.id)
     ? { ...agent, executionStatus: "running" as const }
     : agent);
+  const internalRules = (content.dispatchRules ?? []).filter(rule => rule.targetProjectId === content.projectId && rule.targetAgentId);
+  const dossierAgentIds = getDossierAgentIds(content, internalRules);
+  const graphAgents = workflowAgents.map(agent => ({ ...agent, nextAgentIds: [...new Set([
+    ...agent.nextAgentIds, ...internalRules.filter(rule => rule.sourceAgentId === agent.id).map(rule => rule.targetAgentId!)
+  ])] }));
   const isAnyRunning = locallyRunning.size > 0 || workflowAgents.some((agent) => agent.executionStatus === "running");
   const workflowParameters = content.parameters ?? [];
   const missingWorkflowParameters = getMissingWorkflowParameters(
@@ -529,7 +544,7 @@ export function AgentProjectWorkspace({
   );
   const cyclicAgentIds = getCyclicAgentIds(workflowAgents);
   const workflowLevels = getWorkflowLevels(
-    workflowAgents,
+    graphAgents,
     workflowFeedbackEdgeKeys
   );
   const workflowLevelIndexesByAgentId = new Map(
@@ -540,10 +555,13 @@ export function AgentProjectWorkspace({
   const workflowLaneLayout = getWorkflowLaneLayout(workflowLevels, workflowFeedbackEdgeKeys);
   const workflowInstances = new Map(workflowAgents.map((agent) => [agent.id,
     getWorkflowInstancePresentation(agent, workflowAgents, agentResultStates, workflowFeedbackEdgeKeys)]));
-  const workflowForwardEdges = workflowAgents.flatMap((agent) => agent.nextAgentIds
+  const workflowForwardEdges = graphAgents.flatMap((agent) => agent.nextAgentIds
     .filter((id) => agentsById.has(id) && !workflowFeedbackEdgeKeys.has(getWorkflowEdgeKey(agent.id, id)))
     .map((id) => ({ sourceAgentId: agent.id, targetAgentId: id,
-      status: getWorkflowConnectionStatus(agent, agentsById.get(id)!, agentResultStates),
+      asynchronous: internalRules.some(rule => rule.sourceAgentId === agent.id && rule.targetAgentId === id),
+      status: internalRules.some(rule => rule.sourceAgentId === agent.id && rule.targetAgentId === id)
+        ? internalRules.some(rule => rule.sourceAgentId === agent.id && rule.targetAgentId === id && rule.enabled) ? "pending" as const : "inactive" as const
+        : getWorkflowConnectionStatus(agent, agentsById.get(id)!, agentResultStates),
       instanceCount: workflowInstances.get(id)?.count ?? undefined })));
   const rootAgentCount = workflowAgents.filter((agent) =>
     !workflowForwardEdges.some((edge) => edge.targetAgentId === agent.id)).length;
@@ -1153,6 +1171,7 @@ export function AgentProjectWorkspace({
             onStartRun={() => selectTab("agents")}
           />
           </Suspense>
+          <WorkflowDossiers key={`${projectId}-history`} project={content} />
         </div>
       ) : (
         <section
@@ -1187,7 +1206,7 @@ export function AgentProjectWorkspace({
                 {t("workflow.roots", { count: rootAgentCount })}
               </p>}
               {(workflowForwardEdges.length > 0 || workflowFeedbackLoopPlacements.length > 0) && <WorkflowConnectionLegend
-                hasFeedback={workflowFeedbackLoopPlacements.length > 0} />}
+                hasFeedback={workflowFeedbackLoopPlacements.length > 0} hasAsynchronous={internalRules.length > 0} />}
               <div
                 className={`agent-project__workflow agent-project__workflow--graph${
                   workflowFeedbackLoopPlacements.length > 0
@@ -1212,7 +1231,10 @@ export function AgentProjectWorkspace({
                     style={{ gridRow: levelIndex + 1 }}
                   >
                     <ol className="agent-project__workflow-cards agent-project__workflow-cards--graph">
-                      {levelAgents.map((agent) => {
+                      {levelAgents.map((layoutAgent) => {
+                        const agent = agentsById.get(layoutAgent.id)!;
+                        const dossierAgent = dossierAgentIds.has(agent.id);
+                        const dispatches = internalRules.filter(rule => rule.sourceAgentId === agent.id);
                         const flowKind: AgentFlowKind = cyclicAgentIds.has(
                           agent.id
                         )
@@ -1224,7 +1246,9 @@ export function AgentProjectWorkspace({
                           (candidate) => candidate.nextAgentIds.includes(agent.id)
                         );
                         const isRootAgent = !workflowForwardEdges.some((edge) => edge.targetAgentId === agent.id);
-                        const prerequisiteMessage = getPrerequisiteMessage(
+                        const prerequisiteMessage = dossierAgent
+                          ? (language === "fr" ? "Cet agent s’exécute indépendamment dans chaque dossier." : "This agent executes independently in each dossier.")
+                          : getPrerequisiteMessage(
                           upstreamAgents,
                           agent.id,
                           agentResultStates,
@@ -1293,6 +1317,9 @@ export function AgentProjectWorkspace({
                             key={`${content.projectId}:${agent.id}`}
                           >
                             <AgentCard
+                              dispatchEnabled={content.dispatchRules?.some(rule => rule.sourceAgentId === agent.id)
+                                ? content.dispatchRules.some(rule => rule.sourceAgentId === agent.id && rule.enabled) : undefined}
+                              dossierTemplate={dossierAgent}
                               agent={agent}
                               compactCompleted={workflowAgents.length > 8}
                               nextAgentNamesById={new Map(
@@ -1309,7 +1336,7 @@ export function AgentProjectWorkspace({
                                 workflowFeedbackEdgeKeys
                               ).length > 0}
                               shouldAutoRun={
-                                !content.workflowInstance?.automatic && !isResuming && !isStopping && startedInBrowserByProject[projectId] === true &&
+                                !dossierAgent && !content.workflowInstance?.automatic && !isResuming && !isStopping && startedInBrowserByProject[projectId] === true &&
                                 agent.executionStatus !== "failed" && agent.executionStatus !== "cancelled" &&
                                 (upstreamAgents.length > 0 || releasedAgentIds.has(agent.id)) &&
                                 !launchedAgentIds.has(agent.id) &&
@@ -1384,7 +1411,10 @@ export function AgentProjectWorkspace({
                               }}
                               onHandoffEnabledChange={handleAgentHandoffChange}
                             />
-                            <WorkflowRoutingSummary presentation={getWorkflowRoutingPresentation(agent, agentResultStates)} />
+                            {dispatches.length ? <p className="agent-project__dispatch-link">
+                              {language === "fr" ? "Un dossier par résultat retenu" : "One dossier per qualifying result"} → {dispatches.map(rule => agentsById.get(rule.targetAgentId!)?.name ?? rule.targetAgentId).join(", ")}
+                            </p> : <WorkflowRoutingSummary presentation={getWorkflowRoutingPresentation(agent, agentResultStates)} />}
+                            {internalRules.filter(rule => rule.targetAgentId === agent.id).map(rule => <WorkflowDossiers key={rule.id} project={content} rule={rule} />)}
                           </li>
                         );
                       })}

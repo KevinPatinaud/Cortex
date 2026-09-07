@@ -7,6 +7,7 @@ import { findLastAgentResponses, getAgentConversationThreads } from "./workflowS
 import { HandoffToggle } from "./HandoffToggle.tsx";
 import { MarkdownContent } from "./MarkdownContent.tsx";
 import { ExecutionActivity } from "./ExecutionActivity.tsx";
+import { AgentResultContent } from "./AgentResultContent.tsx";
 
 function getErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
@@ -14,6 +15,7 @@ function getErrorMessage(error: unknown, fallback: string): string {
 
 function ConversationMessageContent({
   message,
+  dispatchEnabled,
   nextAgentNamesById,
   itemIndexOffset = 0,
   selectedItemIndexes = [],
@@ -21,6 +23,7 @@ function ConversationMessageContent({
   disabled = false
 }: {
   message: AgentConversationMessage;
+  dispatchEnabled?: boolean;
   nextAgentNamesById: ReadonlyMap<string, string>;
   itemIndexOffset?: number;
   selectedItemIndexes?: number[];
@@ -76,7 +79,7 @@ function ConversationMessageContent({
     <div className="agent-card__conversation-response-content">
       {response.items.length === 1 ? (
         <div className="agent-card__conversation-response">
-          <MarkdownContent content={response.items[0].content} />
+          <AgentResultContent content={response.items[0].content} />
         </div>
       ) : response.items.length > 1 ? (
         <>
@@ -95,7 +98,7 @@ function ConversationMessageContent({
               : undefined}
           >
             {response.items.map((item, itemIndex) => {
-              const isSelected = selectedItemIndexes.includes(
+              const isSelected = dispatchEnabled === undefined && selectedItemIndexes.includes(
                 itemIndexOffset + itemIndex
               );
 
@@ -123,7 +126,7 @@ function ConversationMessageContent({
                       </label>
                     )}
                     <div id={`${selectionHelpId}-result-${itemIndex}`}>
-                      <MarkdownContent content={item.content} />
+                      <AgentResultContent content={item.content} />
                     </div>
                   </div>
                 </li>
@@ -141,7 +144,10 @@ function ConversationMessageContent({
           <MarkdownContent content={response.notes} />
         </div>
       )}
-      {response.status !== "waiting" && response.nextAgentIds !== null && (
+      {dispatchEnabled !== undefined && response.status === "success" && <p className="agent-card__conversation-routing">
+        {t(dispatchEnabled ? "agent.dispatchActive" : "agent.dispatchPaused")}
+      </p>}
+      {(response.status === "success" || response.status === "partial") && response.nextAgentIds !== null && (dispatchEnabled === undefined || response.nextAgentIds.length > 0) && (
         <div className="agent-card__conversation-routing">
           <span>{t("agent.selectedBranch")}</span>
           {response.nextAgentIds.length > 0 ? (
@@ -192,6 +198,8 @@ interface AgentCardProps {
   onContinue: () => void;
   onHandoffEnabledChange: (agentId: string, enabled: boolean) => void;
   compactCompleted?: boolean;
+  dossierTemplate?: boolean;
+  dispatchEnabled?: boolean;
 }
 
 interface AgentThreadPresentation {
@@ -201,6 +209,7 @@ interface AgentThreadPresentation {
 }
 
 interface AgentThreadConversationProps {
+  dispatchEnabled?: boolean;
   agentName: string;
   disabled: boolean;
   nextAgentNamesById: ReadonlyMap<string, string>;
@@ -210,6 +219,7 @@ interface AgentThreadConversationProps {
 }
 
 function AgentThreadConversation({
+  dispatchEnabled,
   agentName,
   disabled,
   nextAgentNamesById,
@@ -257,6 +267,7 @@ function AgentThreadConversation({
           >
             <span>{message.role === "user" ? t("agent.you") : message.role === "event" ? "Cortex" : "Agent"}</span>
             <ConversationMessageContent
+              dispatchEnabled={dispatchEnabled}
               message={message}
               disabled={disabled}
               nextAgentNamesById={nextAgentNamesById}
@@ -267,7 +278,7 @@ function AgentThreadConversation({
                   : []
               }
               onSelectedItemIndexesChange={
-                messageIndex === lastAgentMessageIndex
+                messageIndex === lastAgentMessageIndex && dispatchEnabled === undefined
                   ? onSelectedItemIndexesChange
                   : undefined
               }
@@ -394,7 +405,9 @@ export function AgentCard({
   onRunEnd,
   onContinue,
   onHandoffEnabledChange,
-  compactCompleted = false
+  compactCompleted = false,
+  dossierTemplate = false,
+  dispatchEnabled
 }: AgentCardProps) {
   const { t } = useTranslation();
   const additionalInstructionsId = useId();
@@ -410,7 +423,7 @@ export function AgentCard({
   const [isExpanded, setIsExpanded] = useState(!compactCompleted);
   const isRunning = runningThreadId !== null || agent.executionStatus === "running";
   const isWaiting = agent.executionStatus === "waiting";
-  const isAsynchronous = isWaiting || threads.some((thread) =>
+  const isAsynchronous = dossierTemplate || isWaiting || threads.some((thread) =>
     thread.conversation.some((message) => message.role === "event" ||
       (message.role === "agent" && parseAgentResponse(message.content)?.status === "waiting"))
   );
@@ -582,7 +595,7 @@ export function AgentCard({
           )}
         </div>
         <div className="agent-card__header-actions">
-          <HandoffToggle
+          {!dossierTemplate && <HandoffToggle
             checked={handoffEnabled}
             label={t("agent.handoffLabel", { name: agent.name })}
             disabled={Boolean(executionLockMessage)}
@@ -591,7 +604,7 @@ export function AgentCard({
               : t("agent.auto", { name: agent.name })
             }
             onChange={(enabled) => onHandoffEnabledChange(agent.id, enabled)}
-          />
+          />}
           {(agent.model || agent.reasoningEffort) && (
             <dl className="agent-card__model">
               {agent.model && (
@@ -675,6 +688,7 @@ export function AgentCard({
             <div className="agent-instances-zone__track">
               {threadPresentation.map((presentation, index) => (
                 <AgentInstanceCard
+                  dispatchEnabled={dispatchEnabled}
                   agentName={agent.name}
                   disabled={isDisabled || isRunning}
                   nextAgentNamesById={nextAgentNamesById}
@@ -724,6 +738,7 @@ export function AgentCard({
         <>
           {threadPresentation[0] && (
             <AgentThreadConversation
+              dispatchEnabled={dispatchEnabled}
               agentName={agent.name}
               disabled={isDisabled || isRunning}
               nextAgentNamesById={nextAgentNamesById}

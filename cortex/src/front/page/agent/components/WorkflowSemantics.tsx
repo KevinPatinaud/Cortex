@@ -2,13 +2,14 @@ import { CircleStop, GitBranch, GitFork } from "lucide-react";
 import { useTranslation } from "../../../i18n.tsx";
 import type { WorkflowRoutingPresentation } from "./workflowPresentation.ts";
 
-export function WorkflowConnectionLegend({ hasFeedback }: { hasFeedback: boolean }) {
-  const { t } = useTranslation();
+export function WorkflowConnectionLegend({ hasFeedback, hasAsynchronous = false }: { hasFeedback: boolean; hasAsynchronous?: boolean }) {
+  const { t, language } = useTranslation();
   return <ul className="workflow-connection-legend" aria-label={t("workflow.legend.title")}>
     {(["pending", "selected", "running", "inactive", ...(hasFeedback ? ["feedback" as const] : [])] as const).map((status) =>
       <li key={status}><svg width="32" height="14" viewBox="0 0 32 14" aria-hidden="true"
         className={`agent-project__connection--${status}`}><path d="M 2 7 H 28 M 23 3 L 28 7 L 23 11" /></svg>
         {t(`workflow.legend.${status}`)}</li>)}
+    {hasAsynchronous && <li><svg width="32" height="14" viewBox="0 0 32 14" aria-hidden="true" className="agent-project__connection--asynchronous"><path d="M 2 7 H 28 M 23 3 L 28 7 L 23 11" /></svg>{language === "fr" ? "Dossier asynchrone" : "Asynchronous dossier"}</li>}
   </ul>;
 }
 

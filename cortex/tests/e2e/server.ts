@@ -16,11 +16,14 @@ import { WorkflowAuditService } from "../../src/back/application/service/workflo
 import { SqliteWorkflowAuditRepository } from "../../src/back/infrastructure/audit/SqliteWorkflowAuditRepository.ts";
 import { createCortexApplication } from "../../src/back/infrastructure/web/controller/CortexApplication.ts";
 import { GmailService } from "../../src/back/application/service/gmail/GmailService.ts";
+import { WorkflowAutomationService } from "../../src/back/application/service/workflowAutomation/WorkflowAutomationService.ts";
+import { SqliteWorkflowAutomationRepository } from "../../src/back/infrastructure/automation/SqliteWorkflowAutomationRepository.ts";
 
 // This fixture uses the real HTTP application and storage, exclusively inside
 // its own temporary directory. It never discovers installed engines or tools.
 const directory = await mkdtemp(path.join(tmpdir(), "cortex-e2e-"));
 const configuration = new AgentConfigurationService(path.join(directory, "config.json"));
+let automationScan = 0;
 const simulatedProvider: AgentProvider = {
   engine: "codex",
   label: "Codex",
@@ -34,15 +37,35 @@ const simulatedProvider: AgentProvider = {
     }
     if (prompt.startsWith("Design the execution graph for a multi-agent workflow.")) {
       const context = JSON.parse(prompt.split("Context to analyze:\n")[1]) as {
-        agents: Array<{ id: string }>;
+        agents: Array<{ id: string; prompt: string }>;
       };
+      const sourceIndex = context.agents.findIndex(agent => agent.prompt.includes("E2E_AUTOMATION_SCAN"));
+      const entry = sourceIndex >= 0 ? context.agents[sourceIndex + 1] : undefined;
       return { answer: JSON.stringify({
         agents: context.agents.map((agent, index) => ({
-          id: agent.id, nextAgentIds: context.agents[index + 1] ? [context.agents[index + 1].id] : [],
+          id: agent.id, nextAgentIds: index === sourceIndex && entry ? [] : context.agents[index + 1] ? [context.agents[index + 1].id] : [],
           inputMode: "separate"
         })),
+        dossierBranches: entry ? [{ sourceAgentId: context.agents[sourceIndex].id, targetAgentId: entry.id }] : [],
         parameters: []
       }) };
+    }
+    if (prompt.includes("E2E_AUTOMATION_SCAN")) {
+      if (prompt.includes("E2E_SCAN_SLOW")) await delay(2500, undefined, { signal: options.signal });
+      automationScan += 1;
+      const keys = automationScan === 1 ? ["PROPERTY_A", "PROPERTY_B"] : ["PROPERTY_A", "PROPERTY_B", "PROPERTY_C"];
+      return { sessionId: options.sessionId ?? randomUUID(), answer: JSON.stringify({ status: "success",
+        items: keys.map(key => ({ content: JSON.stringify({ key, title: `Bien ${key.at(-1)}`, payload: `Négocier ${key}.\\n\\nInformations documentées.` }) })),
+        nextAgentIds: [], isMultiSelectionAllowed: true, isMultiSelectionThreaded: false, notes: null }) };
+    }
+    if (prompt.includes("E2E_AUTOMATION_NEGOTIATE") || (prompt.includes("E2E_BLOCKED") && prompt.includes("Demander les informations sans offre"))) {
+      const wake = prompt.includes("Cortex durable workflow wake");
+      const next = JSON.parse(prompt.split("JSON Schema:\n").at(-1)!).properties.nextAgentIds.items.enum ?? [];
+      return { sessionId: options.sessionId ?? randomUUID(), answer: JSON.stringify({ status: wake ? "success" : "waiting",
+        items: [{ content: wake ? (prompt.includes("CONFIRMED") ? "Accord confirmé." : "Négociation terminée sans accord.") : "Premier mail envoyé. Attente de la réponse." }],
+        nextAgentIds: wake && prompt.includes("CONFIRMED") ? next : [], isMultiSelectionAllowed: null, isMultiSelectionThreaded: null, notes: null,
+        ...(!wake ? { wait: { reason: "Réponse de l’agence immobilière", eventKey: "agency-reply", wakeAfterSeconds: null,
+          deadlineAt: new Date(Date.now() + 7200000).toISOString(), state: "Premier mail déjà envoyé. Ne pas le renvoyer." } } : {}) }) };
     }
     if (prompt.includes("E2E_DURABLE_WAIT") && !prompt.includes("Cortex durable workflow wake")) {
       return { sessionId: options.sessionId ?? randomUUID(), answer: JSON.stringify({ status: "waiting",
@@ -52,6 +75,10 @@ const simulatedProvider: AgentProvider = {
           deadlineAt: new Date(Date.now() + 3600_000).toISOString(), state: "Demande initiale déjà envoyée." } }) };
     }
     if (prompt.includes("E2E_FAIL")) throw new Error("Échec simulé du moteur.");
+    if (prompt.includes("E2E_BLOCKED")) return { sessionId: options.sessionId ?? randomUUID(), answer: JSON.stringify({
+      status: "blocked", items: [{ content: "Le mandat doit être précisé." }], notes: "Précisez le mandat avant de contacter une agence.",
+      nextAgentIds: [], isMultiSelectionAllowed: false, isMultiSelectionThreaded: false
+    }) };
     options.signal?.throwIfAborted();
     options.onProgress?.("Analyse des informations en cours…");
     await delay(prompt.includes("E2E_SLOW") ? 8_000 : 150, undefined, { signal: options.signal });
@@ -74,6 +101,14 @@ const audit = new WorkflowAuditService(repository);
 const agentUseCase = new AgentUseCase(agentService, projectUseCase, audit);
 const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => new Date(), audit);
 const waitScheduler = new WorkflowWaitScheduler(agentUseCase, 100);
+const automationStore = new SqliteWorkflowAutomationRepository(path.join(directory, "automation.sqlite"));
+const automations = new WorkflowAutomationService(automationStore, agentUseCase, projectUseCase, audit);
+let failNextDispatch = false;
+const enqueue = automationStore.enqueue.bind(automationStore);
+automationStore.enqueue = (...args) => {
+  if (failNextDispatch) { failNextDispatch = false; throw new Error("Simulated dispatch storage failure"); }
+  return enqueue(...args);
+};
 let gmailReply = false;
 const gmail = new GmailService(path.join(directory, "gmail.sqlite"), "http://127.0.0.1:4317/api/gmail/callback", agentUseCase, (async (input) => {
   const url = String(input);
@@ -89,11 +124,17 @@ const gmail = new GmailService(path.join(directory, "gmail.sqlite"), "http://127
   throw new Error("Unexpected fake Gmail URL");
 }) as typeof fetch);
 const app = createCortexApplication({ projectUseCase, agentUseCase, workflowScheduler,
-  authentication: null, clientDirectory: path.resolve("dist"), gmail });
+  authentication: null, clientDirectory: path.resolve("dist"), gmail, automations });
 // Test-only endpoint outside /api, never registered by production.
 app.post("/__test/gmail-reply", async (_request, response) => { gmailReply = true; await gmail.poll(); response.json({ ok: true }); });
+app.post("/__test/scheduled-scan", (request, response) => {
+  workflowScheduler.checkDueSchedules(new Date(request.body.at)); response.json({ ok: true });
+});
+app.post("/__test/automation-reset-scan", (_request, response) => { automationScan = 0; response.json({ ok: true }); });
+app.post("/__test/fail-next-dispatch", (_request, response) => { failNextDispatch = true; response.json({ ok: true }); });
 const server = app.listen(4317, "127.0.0.1", () => {
   waitScheduler.start();
+  void automations.start();
   console.log("Cortex test fixture ready on http://127.0.0.1:4317");
 });
 let closing = false;
@@ -102,6 +143,7 @@ async function close() {
   closing = true;
   workflowScheduler.stop();
   waitScheduler.stop();
+  await automations.stop();
   agentUseCase.cancelAllExecutions();
   agentService.cancelAllExecutions();
   const expiresAt = Date.now() + 5_000;
@@ -109,6 +151,7 @@ async function close() {
   server.closeAllConnections();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await gmail.close();
+  automationStore.close();
   repository.close();
   const resolved = path.resolve(directory);
   if (path.dirname(resolved) !== path.resolve(tmpdir()) || !path.basename(resolved).startsWith("cortex-e2e-")) {

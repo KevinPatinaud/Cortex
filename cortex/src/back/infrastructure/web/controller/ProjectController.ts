@@ -22,6 +22,7 @@ import {
   writeCortexProjectArchive
 } from "../../archive/ProjectArchive.ts";
 import { readCortexProjectArchive } from "../../archive/ProjectArchiveReader.ts";
+import type { WorkflowAutomationService } from "../../../application/service/workflowAutomation/WorkflowAutomationService.ts";
 
 interface ProjectPathRequestBody {
   directoryPath?: unknown;
@@ -69,7 +70,7 @@ const projectArchiveUpload = multer({
   }
 }).single("archive");
 
-export function createProjectController(projectUseCase: ProjectUseCase): Router {
+export function createProjectController(projectUseCase: ProjectUseCase, automations?: WorkflowAutomationService): Router {
   const router = Router();
 
   router.get(
@@ -166,6 +167,7 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
           content: file.buffer
         }))
       );
+      await automations?.restoreImportedBranches(result.project.id);
 
       response.status(201).json({
         message: "The project was imported.",
@@ -194,6 +196,7 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
         archive.projectName,
         archive.files
       );
+      await automations?.restoreImportedBranches(result.project.id);
 
       response.status(201).json({
         message: "The Cortex project was imported.",
@@ -226,7 +229,11 @@ export function createProjectController(projectUseCase: ProjectUseCase): Router 
       response.type(cortexArchiveMimeType);
       response.set("Cache-Control", "no-store");
 
+      if (automations?.rules(project.id).length) await automations.target(project.id);
       const workflow = await projectUseCase.getAgentWorkflowConfiguration(project.id);
+      if (workflow && automations) workflow.dossierBranches = automations.rules(project.id)
+        .filter(rule => rule.targetProjectId === project.id && rule.targetAgentId)
+        .map(rule => ({ sourceAgentId: rule.sourceAgentId, targetAgentId: rule.targetAgentId! }));
       await writeCortexProjectArchive(project.directoryPath, response, workflow);
     }, projectErrorMappings.export)
   );

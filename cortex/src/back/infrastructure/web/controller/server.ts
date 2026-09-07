@@ -18,6 +18,8 @@ import { WorkflowScheduler } from "../../../application/service/workflowSchedule
 import { WorkflowWaitScheduler } from "../../../application/service/workflowScheduler/WorkflowWaitScheduler.ts";
 import { GmailService } from "../../../application/service/gmail/GmailService.ts";
 import { WorkflowAuditService } from "../../../application/service/workflowAudit/WorkflowAuditService.ts";
+import { WorkflowAutomationService } from "../../../application/service/workflowAutomation/WorkflowAutomationService.ts";
+import { SqliteWorkflowAutomationRepository } from "../../automation/SqliteWorkflowAutomationRepository.ts";
 import { SqliteWorkflowAuditRepository } from "../../audit/SqliteWorkflowAuditRepository.ts";
 import {
   PasswordAuthentication,
@@ -94,13 +96,15 @@ const workflowScheduler = new WorkflowScheduler(
   workflowAuditService
 );
 
+const automationRepository = new SqliteWorkflowAutomationRepository(auditDatabaseFile);
+const automations = new WorkflowAutomationService(automationRepository, agentUseCase, projectUseCase, workflowAuditService);
 const gmail = new GmailService(
   path.join(workspaceDirectory, "data", "gmail", "connection.sqlite"),
   process.env.CORTEX_GMAIL_REDIRECT_URI?.trim() || `http://127.0.0.1:${port}/api/gmail/callback`,
   agentUseCase
 );
 const app = createCortexApplication({
-  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail
+  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations
 });
 
 const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase);
@@ -112,7 +116,7 @@ const httpServer = app.listen(port, host, () => {
     : host;
   const applicationUrl = `http://${browserHost}:${port}`;
   console.log(`Server available at ${applicationUrl}`);
-  void workflowScheduler.start().catch((error: unknown) => {
+  void automations.start().then(() => { if (!shuttingDown) return workflowScheduler.start(); }).catch((error: unknown) => {
     console.error("Unable to start the workflow scheduler:", error);
   });
 
@@ -127,6 +131,7 @@ async function shutdown(): Promise<void> {
   shuttingDown = true;
   workflowScheduler.stop();
   workflowWaitScheduler.stop();
+  const automationsStopped = automations.stop();
   void gmail.stop();
   agentUseCase.cancelAllExecutions();
   agentService.cancelAllExecutions();
@@ -146,6 +151,8 @@ async function shutdown(): Promise<void> {
   httpServer.closeAllConnections();
   await closed;
   await gmail.close();
+  await automationsStopped;
+  automationRepository.close();
   workflowAuditRepository.close();
   clearTimeout(deadline);
 }

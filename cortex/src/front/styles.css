@@ -9367,3 +9367,96 @@ button:disabled {
 .gmail-panel :focus-visible { outline: 2px solid #326dc3; outline-offset: 3px; }
 .gmail-panel__hint { font-size: .85rem; overflow-wrap: anywhere; }
 .gmail-panel__watch { display: grid; gap: .5rem; padding: .8rem; border: 1px solid #d9d6cd; border-radius: 8px; overflow-wrap: anywhere; }
+
+/* Scheduled detectors and independent, durable workflow dossiers. */
+.automation-panel { display: grid; gap: 1.25rem; color: #24466f; min-width: 0; }
+.automation-panel__intro { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; }
+.automation-panel__intro h2 { margin: .4rem 0 .65rem; color: #13294b; font-size: clamp(1.4rem, 2.5vw, 2rem); }
+.automation-panel p { line-height: 1.65; font-size: .86rem; }
+.automation-panel__eyebrow { color: #653493; font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
+.automation-panel button { display: inline-flex; align-items: center; justify-content: center; gap: .45rem; padding: .65rem .8rem; min-height: 40px; border: 1px solid #b9cce7; border-radius: 8px; color: #24466f; background: #f8fbff; font: inherit; font-size: .8rem; cursor: pointer; }
+.automation-panel button:hover:not(:disabled) { background: #edf3ff; border-color: #668fc7; }
+.automation-panel button:disabled { opacity: .55; cursor: not-allowed; }
+.automation-panel__intro > button { flex-shrink: 0; }
+.automation-panel__flow { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; padding: 1rem; border-radius: 12px; background: #f4edfc; color: #653493; font-size: .8rem; font-weight: 650; }
+.automation-panel__flow span { display: inline-flex; align-items: center; gap: .5rem; }
+.automation-panel__section { position: relative; min-width: 0; padding: 1.4rem; border: 1px solid #d5dfed; border-radius: 14px; background: #fff; }
+.automation-panel__section h3 { margin: 0 0 .8rem; color: #13294b; }
+.automation-panel__section > p { margin: .6rem 0 1rem; }
+.automation-panel__form { display: grid; grid-template-columns: 1fr 2fr; align-items: center; gap: .8rem; margin: 1.2rem 0; }
+.automation-panel label { display: block; font-size: .8rem; font-weight: 600; }
+.automation-panel input, .automation-panel select, .automation-panel textarea { display: block; box-sizing: border-box; width: 100%; min-width: 0; padding: .7rem; border: 1px solid #b9cce7; border-radius: 8px; background: #fff; color: #24466f; font: inherit; font-size: .85rem; }
+.automation-panel textarea { min-height: 100px; resize: vertical; margin: .6rem 0; }
+.automation-panel__form > button { grid-column: 2; justify-self: start; color: #fff; background: #653493; border-color: #653493; }
+.automation-panel__form > button:hover:not(:disabled) { background: #54277f; color: #fff; }
+.automation-panel__parameter { display: grid; grid-column: 1 / -1; grid-template-columns: 1fr 2fr; gap: .8rem; align-items: center; }
+.automation-panel__rules, .automation-panel__jobs { padding: 0; margin: 1rem 0 0; list-style: none; display: grid; gap: .65rem; }
+.automation-panel__rules li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .7rem; padding: .8rem; border-radius: 9px; background: #f5f8fd; }
+.automation-panel__rules li > div { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; font-size: .8rem; min-width: 0; overflow-wrap: anywhere; }
+.automation-panel__rules small { color: #526681; }
+.automation-panel .automation-panel__help { font-size: .76rem; color: #526681; }
+.automation-panel__jobs li > button { width: 100%; justify-content: space-between; gap: 1rem; padding: 1rem; text-align: left; }
+.automation-panel__jobs li > button[aria-pressed="true"] { border-color: #8b5cc7; background: #f4edfc; }
+.automation-panel__jobs strong, .automation-panel__jobs small { display: block; overflow-wrap: anywhere; }
+.automation-panel__jobs small { margin-top: .4rem; color: #526681; font-size: .72rem; }
+.automation-panel__status { display: inline-block; padding: .3rem .55rem; border-radius: 6px; font-size: .72rem; background: #edf3ff; color: #24466f; flex-shrink: 0; }
+.automation-panel__status--waiting { color: #653493; background: #ece0fb; }
+.automation-panel__status--blocked { color: #754609; background: #fff1cf; }
+.workflow-dossiers__reason { display: -webkit-box !important; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line; }
+.workflow-dossiers__blocker { color: #754609; background: #fff7e5; padding: 1rem; border-radius: 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.automation-panel__status--completed { color: #176648; background: #e6f6ed; }
+.automation-panel__status--failed, .automation-panel__status--interrupted { color: #9c3044; background: #fff0f2; }
+.automation-panel__pagination, .automation-panel__detail-actions { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
+.automation-panel__detail { border-left: 4px solid #8b5cc7; }
+.automation-panel__detail > h3 { padding-right: 2rem; overflow-wrap: anywhere; }
+.automation-panel .automation-panel__close { position: absolute; right: .6rem; top: .6rem; padding: .5rem; }
+.automation-panel__wait { margin: 1rem 0; padding: 1rem; border: 1px solid #d8c6f0; border-radius: 10px; background: #f8f3ff; }
+.automation-panel__wait p { margin: .5rem 0; }
+.automation-panel__agent { margin-top: 1rem; border-top: 1px solid #d5dfed; padding-top: 1rem; }
+.automation-panel summary { cursor: pointer; font-size: .85rem; font-weight: 600; line-height: 1.6; }
+.automation-panel__message { overflow-wrap: anywhere; margin: .8rem 0; padding: .8rem; background: #f6f9fe; border-radius: 8px; font-size: .8rem; }
+.automation-panel__message pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.automation-panel__error { border: 1px solid #efb8c1; border-radius: 8px; padding: .8rem; background: #fff0f2; color: #9c3044; overflow-wrap: anywhere; }
+@media (max-width: 700px) {
+  .automation-panel__intro { align-items: flex-start; flex-direction: column; gap: .6rem; }
+  .automation-panel__section { padding: 1rem; }
+  .automation-panel__form, .automation-panel__parameter { grid-template-columns: minmax(0, 1fr); }
+  .automation-panel__form > button { grid-column: 1; }
+  .automation-panel__jobs li > button { align-items: flex-start; flex-direction: column; gap: .6rem; }
+}
+.agent-project__connection--asynchronous {
+  --workflow-edge-color: #8b5cf6;
+  --workflow-edge-dash: 7 5;
+  --workflow-edge-width: 2.2;
+}
+
+.agent-result-dossier {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 0.88rem;
+  line-height: 1.65;
+}
+
+.agent-result-dossier h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.agent-project__dispatch-link {
+  color: #5b21b6;
+  background: #f5f3ff;
+  border: 1px solid #c4b5fd;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: .8rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.agent-project__dispatch-link { margin-top: 12px; width: 100%; }
+.workflow-dossiers { width: 100%; max-width: 50rem; margin-top: 1rem; padding: 1rem; gap: .7rem; align-content: start; border: 1px solid #ddd0ee; border-radius: 12px; background: #faf8ff; min-width: 0; overflow-wrap: anywhere; }
+.workflow-dossiers > h3 { margin: 0; font-size: 1rem; }
+.workflow-dossiers > p { margin: 0; color: #536783; font-size: .86rem; line-height: 1.5; }
+.workflow-dossiers .automation-panel__detail { padding: 1rem; }

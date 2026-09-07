@@ -136,6 +136,7 @@ export interface AgentStatusResponse {
 }
 
 export interface AgentProjectResponse {
+  dispatchRules?: AgentProject["dispatchRules"];
   workflowInstance?: AgentProject["workflowInstance"];
   workflowWaits?: AgentProject["workflowWaits"];
   projectId: string;
@@ -171,6 +172,7 @@ export function toAgentProjectResponse(
 ): AgentProjectResponse {
   return {
     projectId: project.projectId,
+    dispatchRules: project.dispatchRules,
     workflowResumable: project.workflowResumable,
     workflowInstance: project.workflowInstance,
     workflowWaits: project.workflowWaits,

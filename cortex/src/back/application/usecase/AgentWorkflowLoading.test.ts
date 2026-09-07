@@ -5,6 +5,7 @@ import type { ProjectContentOutput, ProjectUseCase } from "./ProjectUseCase.ts";
 import type { AgentService } from "../service/iaService/AgentService.ts";
 import type { AgentWorkflowConfiguration } from "../service/projectService/ProjectService.ts";
 import { createAgentWorkflowHash } from "../service/workflowExecution/WorkflowConfiguration.ts";
+import type { AgentExecutionOptions } from "../service/iaService/AgentProvider.ts";
 
 function fixture() {
   const file = (name: string, content: string, prefix = "") => ({
@@ -26,8 +27,10 @@ function fixture() {
   let cached: AgentWorkflowConfiguration | null = null;
   let analyses = 0;
   let fail = false;
+  const options: AgentExecutionOptions[] = [];
   const useCase = new AgentUseCase({
-    execute: async () => {
+    execute: async (_engine: string, _prompt: string, input: AgentExecutionOptions) => {
+      options.push(input);
       analyses++;
       await new Promise(setImmediate);
       if (fail) throw new Error("Engine unavailable");
@@ -40,7 +43,7 @@ function fixture() {
     getAgentWorkflowConfiguration: async () => cached,
     saveAgentWorkflowConfiguration: async (_id: string, value: AgentWorkflowConfiguration) => { cached = value; }
   } as unknown as ProjectUseCase);
-  return { useCase, instructions, files, count: () => analyses,
+  return { useCase, instructions, files, options, count: () => analyses,
     setCache: (value: AgentWorkflowConfiguration) => { cached = value; },
     getCache: () => cached!, setFailure: (value: boolean) => { fail = value; } };
 }
@@ -51,6 +54,17 @@ test("concurrent loads share one workflow analysis and a stable project instance
   assert.equal(f.count(), 1);
   assert.ok(projects.every((project) => project === projects[0]));
   assert.ok(projects[0].agents.every((agent) => agent.nextAgentIds.length === 0));
+});
+
+test("graph analysis honors an explicitly configured project model regardless of file ordering", async () => {
+  const f = fixture();
+  f.files[0].content = f.files[0].content.replace("name: calendar", "name: calendar\nmodel: sonnet");
+  f.files[1].content = f.files[1].content.replace("name: news", "name: news\nmodel: opus");
+  f.files.reverse();
+  await f.useCase.loadProject("project");
+  assert.equal(f.options[0].model, "sonnet");
+  assert.equal(f.options[0].readOnly, true);
+  assert.equal(f.options[0].persistSession, false);
 });
 
 test("the same graph survives file ordering and Windows/Unix line endings", async () => {

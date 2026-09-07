@@ -13,6 +13,8 @@ type Variables = Record<string, string | number>;
 const STORAGE_KEY = "cortex.language.v1";
 
 const fr = {
+  "schedule.everyHour": "toutes les heures",
+  "workspace.automationsTab": "Automatisations",
   "agent.async": "Asynchrone",
   "agent.asyncWaiting": "Asynchrone · En attente",
   "agent.asyncHelp": "Cet agent a demandé une attente : il peut reprendre à réception d’une réponse ou à une échéance.",
@@ -403,7 +405,7 @@ const fr = {
   "parameters.progress": "{completed} sur {total} paramètres obligatoires renseignés",
   "parameters.ready": "Le workflow est prêt à être lancé.",
   "parameters.missing": "Complétez les paramètres obligatoires avant de lancer le workflow.",
-  "parameters.locked": "Les paramètres sont verrouillés pendant l’exécution. Réinitialisez le workflow pour les modifier.",
+  "parameters.locked": "Ces paramètres sont conservés avec les résultats de cette exécution. Réinitialisez le workflow pour les modifier.",
   "parameters.selectPlaceholder": "Sélectionnez une valeur",
   "parameters.missingForAgent": "Paramètres obligatoires manquants : {names}.",
   "schedule.button": "Planifier",
@@ -438,6 +440,8 @@ const fr = {
   "agent.noResponse": "Aucune réponse proposée.",
   "agent.selectedBranch": "Branche sélectionnée",
   "agent.workflowEnd": "Fin du workflow",
+  "agent.dispatchActive": "Chaque résultat retenu démarre un dossier indépendant. Le suivi apparaît sous l’agent suivant ; les doublons sont ignorés.",
+  "agent.dispatchPaused": "Déclenchement en pause : aucun nouveau dossier. La réactivation s’appliquera aux prochains résultats.",
   "agent.conversationAria": "Conversation avec {name}",
   "agent.conversation": "Conversation",
   "agent.you": "Vous",
@@ -618,6 +622,8 @@ type TranslationKey = keyof typeof fr;
 
 const en: Record<TranslationKey, string> = {
   ...fr,
+  "schedule.everyHour": "every hour",
+  "workspace.automationsTab": "Automations",
   "agent.async": "Asynchronous",
   "agent.asyncWaiting": "Asynchronous · Waiting",
   "agent.asyncHelp": "This agent has requested a wait: it can resume when a reply arrives or a deadline is reached.",
@@ -851,6 +857,8 @@ const en: Record<TranslationKey, string> = {
   "audit.noExecutions": "No agent was executed.",
   "audit.workflowStart": "Workflow start",
   "audit.workflowEnd": "Workflow end",
+  "agent.dispatchActive": "Each qualifying result starts an independent dossier. Track it below the next agent; duplicates are ignored.",
+  "agent.dispatchPaused": "Dispatch paused: no new dossiers. Reactivation applies to future results.",
   "audit.noUpstreamContext": "This agent starts the path without context from another agent.",
   "audit.routingDecision": "Routing",
   "audit.branchNotTaken": "{name} · branch not taken",
@@ -889,7 +897,7 @@ const en: Record<TranslationKey, string> = {
   "parameters.progress": "{completed} of {total} required parameters completed",
   "parameters.ready": "The workflow is ready to run.",
   "parameters.missing": "Complete the required parameters before running the workflow.",
-  "parameters.locked": "Parameters are locked while the workflow is active. Reset the workflow to edit them.",
+  "parameters.locked": "These parameters are kept with this execution’s results. Reset the workflow to edit them.",
   "parameters.selectPlaceholder": "Select a value",
   "parameters.missingForAgent": "Missing required parameters: {names}.",
   "schedule.button": "Schedule", "schedule.scheduled": "Scheduled", "schedule.configure": "Schedule workflow execution", "schedule.edit": "Edit workflow schedule", "schedule.eyebrow": "Scheduler", "schedule.title": "Schedule workflow", "schedule.description": "The server will automatically run the entire workflow using this cron expression, even when the interface is closed.", "schedule.enabled": "Run the workflow automatically", "schedule.enabledHelp": "Enable this option to run the workflow at the times defined below.", "schedule.expression": "Cron expression", "schedule.expressionHelp": "Five-field format: minute, hour, day of month, month, day of week.", "schedule.explanation": "Interpretation", "schedule.explanationUnavailable": "Enter a valid cron expression to see its interpretation.", "schedule.examples": "Examples", "schedule.weekdays": "weekdays at 9:00 AM", "schedule.everySixHours": "every 6 hours", "schedule.timezone": "Server timezone: {timezone}", "schedule.nextRun": "Next run: {date}", "schedule.nextRunAfterSave": "The next run will be recalculated after saving.", "schedule.running": "Scheduled · running", "schedule.lastRunSucceeded": "Last run succeeded: {date}", "schedule.lastRunFailed": "Last run failed: {date}", "schedule.lastRunSkipped": "Last run skipped: {date}",

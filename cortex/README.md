@@ -2,6 +2,8 @@
 
 Cortex is a local application for creating, visualizing, and running Codex, Claude, or GitHub Copilot agent workflows. The React frontend is served by an Express API that reads agent configurations directly from saved projects.
 
+Scheduled monitoring agents can dispatch independent, durable dossiers within the same project. Cortex identifies asynchronous branches from the project instructions when loading its graph; no separate automation configuration is needed. Dossiers and replies appear below their entry agent, with persistent deduplication and conditional follow-up. See the [workflow guide and real-estate example](docs/workflow-automations.md).
+
 ## Prerequisites
 
 - Node.js 20.19 or later, or Node.js 22.12 and later;

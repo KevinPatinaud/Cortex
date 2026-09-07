@@ -338,8 +338,8 @@ export function responseRoutesToAgent(
   response: AgentResponsePayload,
   targetAgentId: string
 ): boolean {
-  return response.nextAgentIds === null ||
-    response.nextAgentIds.includes(targetAgentId);
+  return (response.status === "success" || response.status === "partial") &&
+    (response.nextAgentIds === null || response.nextAgentIds.includes(targetAgentId));
 }
 
 export function getPlannedThreadCount(

@@ -181,6 +181,9 @@ export function WorkflowScheduleDialog({
             <button type="button" onClick={() => setCron("0 9 * * 1-5")}>
               <code>0 9 * * 1-5</code> · {t("schedule.weekdays")}
             </button>
+            <button type="button" onClick={() => setCron("0 * * * *")}>
+              <code>0 * * * *</code> · {t("schedule.everyHour")}
+            </button>
             <button type="button" onClick={() => setCron("0 */6 * * *")}>
               <code>0 */6 * * *</code> · {t("schedule.everySixHours")}
             </button>

@@ -103,7 +103,11 @@ export interface WorkflowAuditRepository {
 }
 
 export class WorkflowAuditService {
-  constructor(private readonly repository: WorkflowAuditRepository) {}
+  constructor(private readonly repository: WorkflowAuditRepository, private readonly checkpointScope?: string) {}
+
+  forInstance(instanceId: string): WorkflowAuditService {
+    return new WorkflowAuditService(this.repository, `instance:${instanceId}`);
+  }
 
   listCheckpointProjectIds(): string[] { return this.repository.listCheckpointProjectIds(); }
   receiveWorkflowEvent(instanceId: string, event: WorkflowEvent): boolean { return this.repository.receiveWorkflowEvent(instanceId, event); }
@@ -111,15 +115,15 @@ export class WorkflowAuditService {
   setRunActiveStatus(runId: string, status: "running" | "waiting"): void { this.repository.setRunActiveStatus(runId, status); }
 
   saveCheckpoint(projectId: string, fingerprint: string, state: unknown): void {
-    this.repository.saveCheckpoint(projectId, fingerprint, state);
+    this.repository.saveCheckpoint(this.checkpointScope ?? projectId, fingerprint, state);
   }
 
   getCheckpoint(projectId: string): WorkflowCheckpointRecord | null {
-    return this.repository.getCheckpoint(projectId);
+    return this.repository.getCheckpoint(this.checkpointScope ?? projectId);
   }
 
   deleteCheckpoint(projectId: string): void {
-    this.repository.deleteCheckpoint(projectId);
+    this.repository.deleteCheckpoint(this.checkpointScope ?? projectId);
   }
 
   claimScheduledOccurrence(projectId: string, scheduledAt: string): boolean {

@@ -8,6 +8,8 @@ import { createAuthenticationRouter, requireAuthentication, type PasswordAuthent
 import { createAgentController } from "./AgentController.ts";
 import { createProjectController } from "./ProjectController.ts";
 import { createGmailController } from "./GmailController.ts";
+import { createWorkflowAutomationController } from "./WorkflowAutomationController.ts";
+import type { WorkflowAutomationService } from "../../../application/service/workflowAutomation/WorkflowAutomationService.ts";
 import type { GmailService } from "../../../application/service/gmail/GmailService.ts";
 
 /** Production and integration tests share the same HTTP application. */
@@ -18,6 +20,7 @@ export function createCortexApplication(options: {
   authentication: PasswordAuthentication | null;
   clientDirectory: string;
   gmail?: GmailService;
+  automations?: WorkflowAutomationService;
 }) {
   const app = express();
   app.disable("x-powered-by");
@@ -41,7 +44,8 @@ export function createCortexApplication(options: {
   app.get("/api/health", (_request, response) => { response.json({ status: "ok" }); });
   if (options.authentication) app.use("/api", requireAuthentication(options.authentication));
   if (options.gmail) app.use("/api/gmail", createGmailController(options.gmail));
-  app.use("/api/projects", createProjectController(options.projectUseCase));
+  if (options.automations) app.use("/api/automations", createWorkflowAutomationController(options.automations));
+  app.use("/api/projects", createProjectController(options.projectUseCase, options.automations));
   app.use("/api/agents", createAgentController(options.agentUseCase, options.workflowScheduler));
   app.use("/api", (_request, response) => {
     response.status(404).json({ error: "API route not found." });

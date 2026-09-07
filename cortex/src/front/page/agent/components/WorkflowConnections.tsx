@@ -6,6 +6,7 @@ export const WORKFLOW_CONNECTION_STATUSES = ["pending", "selected", "running", "
 export type WorkflowConnectionStatus = typeof WORKFLOW_CONNECTION_STATUSES[number];
 
 export interface WorkflowConnection {
+  asynchronous?: boolean;
   sourceAgentId: string;
   targetAgentId: string;
   status?: WorkflowConnectionStatus;
@@ -78,7 +79,7 @@ export function WorkflowConnections({ edges }: { edges: WorkflowConnection[] }) 
 
   return <svg ref={canvasRef} className="agent-project__connections" aria-hidden="true"
     viewBox={`0 0 ${geometry.width} ${geometry.height}`} preserveAspectRatio="none">
-    <defs>{WORKFLOW_CONNECTION_STATUSES.map((status) =>
+    <defs>{[...WORKFLOW_CONNECTION_STATUSES, "asynchronous"].map((status) =>
       <marker key={status} id={`${markerId}-${status}`} className={`agent-project__connection--${status}`}
         viewBox="0 0 12 12" refX="10" refY="6" markerUnits="userSpaceOnUse"
         markerWidth="12" markerHeight="12" orient="auto">
@@ -89,12 +90,13 @@ export function WorkflowConnections({ edges }: { edges: WorkflowConnection[] }) 
       const status = edge.status ?? "pending";
       const hasMultipleInstances = Number.isFinite(edge.instanceCount) && (edge.instanceCount ?? 0) > 1;
       return <path key={getWorkflowEdgeKey(edge.sourceAgentId, edge.targetAgentId)}
-        className={`agent-project__connection agent-project__connection--${status}`}
+        className={`agent-project__connection agent-project__connection--${status}${edge.asynchronous ? " agent-project__connection--asynchronous" : ""}`}
         data-workflow-source={edge.sourceAgentId} data-workflow-target={edge.targetAgentId}
         data-workflow-status={status}
+        data-workflow-asynchronous={edge.asynchronous || undefined}
         data-workflow-instances={hasMultipleInstances ? edge.instanceCount : undefined}
         d={geometry.paths[index]?.path ?? ""}
-        markerEnd={`url(#${markerId}-${status})`} />;
+        markerEnd={`url(#${markerId}-${edge.asynchronous ? "asynchronous" : status})`} />;
     })}
     {edges.map((edge, index) => {
       const route = geometry.paths[index];
@@ -106,7 +108,7 @@ export function WorkflowConnections({ edges }: { edges: WorkflowConnection[] }) 
           other.targetAgentId === edge.targetAgentId && other.status !== "inactive" &&
           (geometry.paths[otherIndex]?.end.x ?? -Infinity) > route.end.x);
       return <g key={`port-${getWorkflowEdgeKey(edge.sourceAgentId, edge.targetAgentId)}`}
-        className={`agent-project__connection--${edge.status ?? "pending"}`}>
+        className={`agent-project__connection--${edge.asynchronous ? "asynchronous" : edge.status ?? "pending"}`}>
         <circle className="agent-project__connection-port" cx={route.start.x} cy={route.start.y} r="3" />
         {multiple && <g className="agent-project__connection-count"
           transform={`translate(${route.end.x + 14}, ${route.end.y - 16})`}>

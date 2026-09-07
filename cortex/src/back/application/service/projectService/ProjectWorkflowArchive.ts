@@ -3,6 +3,7 @@ import { toClaudeAgentDefinitions } from "../../mapper/agent/ClaudeAgentMapper.t
 import { toCopilotAgentDefinitions } from "../../mapper/agent/CopilotAgentMapper.ts";
 import { createAgentWorkflowHash } from "../workflowExecution/WorkflowConfiguration.ts";
 import type { AgentWorkflowConfiguration, ProjectDirectoryContent, UploadedProjectFile } from "./ProjectService.ts";
+import { getWorkflowBranchAgentIds } from "../../../../shared/WorkflowAutomation.ts";
 
 /** Archive-only metadata: never writes instructions, sessions, or schedule values. */
 export const projectWorkflowArchivePath = ".cortex/workflow.json";
@@ -93,7 +94,19 @@ function validateArchivedWorkflow(workflow: AgentWorkflowConfiguration): AgentWo
       required: parameter.required, inputType: parameter.inputType, placeholder: parameter.placeholder.trim(),
       options: parameter.options.map((option) => option.trim()) };
   });
-  return { hash: workflow.hash, agents, parameters };
+  if (workflow.dossierBranches !== undefined && !Array.isArray(workflow.dossierBranches)) throw new TypeError("Invalid archived asynchronous branches.");
+  const dossierBranches = workflow.dossierBranches?.map(branch => {
+    if (!branch || !agentIds.has(branch.sourceAgentId) || !agentIds.has(branch.targetAgentId)) throw new TypeError("Unknown agent in an archived asynchronous branch.");
+    return { sourceAgentId: branch.sourceAgentId, targetAgentId: branch.targetAgentId };
+  });
+  if (dossierBranches) {
+    const keys = new Set(dossierBranches.map(branch => JSON.stringify(branch)));
+    if (keys.size !== dossierBranches.length || dossierBranches.some(branch => {
+      const descendants = getWorkflowBranchAgentIds(agents, branch.targetAgentId);
+      return dossierBranches.some(other => descendants.has(other.sourceAgentId));
+    })) throw new TypeError("Invalid recursive or duplicate archived asynchronous branches.");
+  }
+  return { hash: workflow.hash, agents, parameters, ...(dossierBranches ? { dossierBranches } : {}) };
 }
 
 export function remapArchivedWorkflow(
@@ -109,5 +122,6 @@ export function remapArchivedWorkflow(
     return target;
   };
   return { ...workflow, hash: createAgentWorkflowHash(definition.instructions, definition.agents),
+    ...(workflow.dossierBranches ? { dossierBranches: workflow.dossierBranches.map(branch => ({ sourceAgentId: remap(branch.sourceAgentId), targetAgentId: remap(branch.targetAgentId) })) } : {}),
     agents: workflow.agents.map((agent) => ({ ...agent, id: remap(agent.id), nextAgentIds: agent.nextAgentIds.map(remap) })) };
 }
