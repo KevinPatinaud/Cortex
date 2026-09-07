@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { roundedWorkflowPath } from "./workflowGeometry.ts";
 
 export interface WorkflowFeedbackLoopEdge {
   sourceAgentId: string;
@@ -137,15 +138,15 @@ export function WorkflowFeedbackLoop({
   ]);
 
   const sourceCircleRadius = 3.25;
-  const arrowWidth = 11;
-  const arrowHeight = 6.5;
+  const arrowWidth = 8;
+  const arrowHeight = 4;
   const path = loopGeometry
-    ? `M ${loopGeometry.sourceX} ${loopGeometry.sourceY}
-       L ${loopGeometry.railX + loopGeometry.cornerRadius} ${loopGeometry.sourceY}
-       Q ${loopGeometry.railX} ${loopGeometry.sourceY}, ${loopGeometry.railX} ${loopGeometry.sourceY - loopGeometry.cornerRadius}
-       L ${loopGeometry.railX} ${loopGeometry.targetY + loopGeometry.cornerRadius}
-       Q ${loopGeometry.railX} ${loopGeometry.targetY}, ${loopGeometry.railX + loopGeometry.cornerRadius} ${loopGeometry.targetY}
-       L ${loopGeometry.targetX} ${loopGeometry.targetY}`
+    ? roundedWorkflowPath([
+      { x: loopGeometry.sourceX, y: loopGeometry.sourceY },
+      { x: loopGeometry.railX, y: loopGeometry.sourceY },
+      { x: loopGeometry.railX, y: loopGeometry.targetY },
+      { x: loopGeometry.targetX, y: loopGeometry.targetY }
+    ], loopGeometry.cornerRadius)
     : "";
 
   return (
@@ -174,7 +175,7 @@ export function WorkflowFeedbackLoop({
           />
           <path
             className="agent-project__feedback-grid-loop-arrow"
-            d={`M ${loopGeometry.targetX - arrowWidth} ${loopGeometry.targetY - arrowHeight} L ${loopGeometry.targetX} ${loopGeometry.targetY} L ${loopGeometry.targetX - arrowWidth} ${loopGeometry.targetY + arrowHeight}`}
+            d={`M ${loopGeometry.targetX - arrowWidth} ${loopGeometry.targetY - arrowHeight} L ${loopGeometry.targetX} ${loopGeometry.targetY} L ${loopGeometry.targetX - arrowWidth} ${loopGeometry.targetY + arrowHeight} Z`}
           />
         </svg>
       )}

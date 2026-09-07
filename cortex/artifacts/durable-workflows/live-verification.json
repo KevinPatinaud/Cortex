@@ -1,0 +1,11 @@
+{
+  "projectId": "7da79ebc-d18c-4f1a-825c-9529965a1dde",
+  "instanceId": "31e8ea7e-09cb-46cc-9243-f2a6745456f0",
+  "runId": "f7f15f6c-91fb-4654-af57-8e39888b633f",
+  "result": "confirmed",
+  "confirmation": "DEMO-2026",
+  "executions": 5,
+  "duplicateIgnored": true,
+  "completedAt": "2026-09-07T09:13:24.711Z",
+  "realEmailSent": false
+}

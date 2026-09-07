@@ -1,9 +1,11 @@
+import { isWorkflowInstanceState, isWorkflowWaitState, type WorkflowInstanceState, type WorkflowWaitState } from "../../../../shared/WorkflowWait.ts";
 export interface WorkflowCheckpointState {
+  instance?: WorkflowInstanceState;
   parameterValues: Record<string, string>;
   agents: Array<{
     id: string;
     execution: {
-      status: "idle" | "running" | "failed" | "cancelled";
+      status: "idle" | "running" | "failed" | "cancelled" | "waiting";
       error?: string;
       startedAt?: string;
       lastActivityAt?: string;
@@ -13,7 +15,8 @@ export interface WorkflowCheckpointState {
     threads: Array<{
       id: string;
       sessionId: string;
-      conversation: Array<{ role: "user" | "agent"; content: string }>;
+      wait?: WorkflowWaitState;
+      conversation: Array<{ role: "user" | "agent" | "event"; content: string }>;
       upstreamItems: Array<{ agentId: string; agentName: string; content: string }>;
     }>;
   }>;
@@ -25,7 +28,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** A malformed checkpoint must never partially restore a workflow. */
 export function readWorkflowCheckpoint(value: unknown): WorkflowCheckpointState | null {
-  if (!isRecord(value) || !isRecord(value.parameterValues) ||
+  if (!isRecord(value) || (value.instance !== undefined && !isWorkflowInstanceState(value.instance)) || !isRecord(value.parameterValues) ||
       !Object.values(value.parameterValues).every((parameter) => typeof parameter === "string") ||
       !Array.isArray(value.agents)) return null;
 
@@ -33,7 +36,7 @@ export function readWorkflowCheckpoint(value: unknown): WorkflowCheckpointState 
   for (const agent of value.agents) {
     if (!isRecord(agent) || typeof agent.id !== "string" || agentIds.has(agent.id) ||
         !isRecord(agent.execution) ||
-        !["idle", "running", "failed", "cancelled"].includes(String(agent.execution.status)) ||
+        !["idle", "running", "failed", "cancelled", "waiting"].includes(String(agent.execution.status)) ||
         !["error", "startedAt", "lastActivityAt", "progress"].every((key) =>
           agent.execution && isRecord(agent.execution) &&
           (agent.execution[key] === undefined || typeof agent.execution[key] === "string")) ||
@@ -44,8 +47,9 @@ export function readWorkflowCheckpoint(value: unknown): WorkflowCheckpointState 
     for (const thread of agent.threads) {
       if (!isRecord(thread) || typeof thread.id !== "string" || threadIds.has(thread.id) ||
           typeof thread.sessionId !== "string" || !thread.sessionId ||
+          (thread.wait !== undefined && !isWorkflowWaitState(thread.wait)) ||
           !Array.isArray(thread.conversation) || !thread.conversation.every((message) =>
-            isRecord(message) && (message.role === "user" || message.role === "agent") && typeof message.content === "string") ||
+            isRecord(message) && (message.role === "user" || message.role === "agent" || message.role === "event") && typeof message.content === "string") ||
           !Array.isArray(thread.upstreamItems) || !thread.upstreamItems.every((item) =>
             isRecord(item) && typeof item.agentId === "string" && typeof item.agentName === "string" && typeof item.content === "string")) return null;
       threadIds.add(thread.id);

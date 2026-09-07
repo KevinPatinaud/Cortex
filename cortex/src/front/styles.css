@@ -529,8 +529,38 @@ main,
 }
 
 .agent-project__workflow--graph {
-  padding-right: 1.5rem;
-  row-gap: 3.6rem;
+  padding-right: 2rem;
+  row-gap: 4.5rem;
+}
+
+.workflow-connection-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1.25rem;
+  max-width: 92rem;
+  margin: 0 auto 1.5rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--color-line);
+  color: #50647f;
+  font-size: 0.75rem;
+  list-style: none;
+}
+
+.workflow-connection-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.workflow-connection-legend svg {
+  flex: none;
+  fill: none;
+  stroke: var(--workflow-edge-color);
+  stroke-width: 2;
+  stroke-dasharray: var(--workflow-edge-dash);
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .workflow-roots-summary {
@@ -576,7 +606,7 @@ main,
 
 .workflow-routing-summary--none,
 .workflow-routing-summary--end {
-  color: #687486;
+  color: #566477;
   background: #f2f4f7;
 }
 
@@ -613,9 +643,9 @@ main,
 }
 
 .agent-project__connection--pending {
-  --workflow-edge-color: #617998;
-  --workflow-edge-width: 1.6;
-  --workflow-edge-dash: 7 5;
+  --workflow-edge-color: #6b809e;
+  --workflow-edge-width: 1.8;
+  --workflow-edge-dash: 6 5;
 }
 
 .agent-project__connection--selected {
@@ -627,7 +657,7 @@ main,
 .agent-project__connection--running {
   --workflow-edge-color: #2563b8;
   --workflow-edge-width: 2.7;
-  --workflow-edge-dash: 10 4 2 4;
+  --workflow-edge-dash: 8 5;
 }
 
 .agent-project__connection--inactive {
@@ -641,7 +671,26 @@ main,
 }
 
 .agent-project__connections marker path {
-  stroke-width: 1.6;
+  fill: var(--workflow-edge-color);
+  stroke: none;
+}
+
+.agent-project__connection-port {
+  fill: #f4f8ff;
+  stroke: var(--workflow-edge-color);
+  stroke-width: 1.8;
+}
+
+.agent-project__connection-count rect {
+  fill: #fff;
+  stroke: var(--workflow-edge-color);
+  stroke-width: 1;
+}
+
+.agent-project__connection-count text {
+  fill: var(--workflow-edge-color);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .agent-project__connections > .agent-project__connection--running {
@@ -649,7 +698,7 @@ main,
 }
 
 @keyframes workflow-edge-flow {
-  to { stroke-dashoffset: -20; }
+  to { stroke-dashoffset: -26; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -666,6 +715,10 @@ main,
   .agent-project__workflow-cards--graph .agent-project__workflow-step {
     grid-column: 1;
   }
+
+  .agent-project__workflow .agent-project__workflow-cards--graph {
+    row-gap: 4.5rem;
+  }
 }
 
 .agent-project__workflow--has-feedback .agent-project__workflow-level {
@@ -676,8 +729,7 @@ main,
   position: absolute;
   z-index: 2;
   inset: 0;
-  color: #7890ad;
-  opacity: 0.78;
+  color: #8463ad;
   pointer-events: none;
 }
 
@@ -699,12 +751,18 @@ main,
 }
 
 .agent-project__feedback-grid-loop-path {
-  stroke-width: 1.55;
-  stroke-dasharray: 6 8;
+  stroke-width: 1.8;
+  stroke-dasharray: 5 5;
+}
+
+.agent-project__connection--feedback {
+  --workflow-edge-color: #8463ad;
+  --workflow-edge-dash: 5 5;
 }
 
 .agent-project__feedback-grid-loop-arrow {
-  stroke-width: 1.9;
+  fill: currentcolor;
+  stroke: none;
 }
 
 .agent-project__feedback-grid-loop-source {
@@ -992,14 +1050,13 @@ main,
   border: 1px solid var(--color-line);
   border-radius: 16px;
   background: #fff;
-  box-shadow: 0 18px 45px rgb(35 73 128 / 9%);
-  transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+  box-shadow: 0 3px 12px rgb(35 73 128 / 5%);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .agent-card:hover {
   border-color: rgb(54 116 219 / 30%);
-  box-shadow: 0 22px 52px rgb(35 73 128 / 13%);
-  transform: translateY(-2px);
+  box-shadow: 0 5px 18px rgb(35 73 128 / 8%);
 }
 
 .agent-card--disabled {
@@ -1045,6 +1102,44 @@ main,
 
 .agent-card__identity {
   min-width: 0;
+}
+
+.agent-card.agent-card--async {
+  border-left: 4px solid #8b5cc7;
+}
+
+.agent-card--async .agent-card__header > svg {
+  border-color: #d8c6f0;
+  background: #f4edfc;
+  color: #7241a5;
+  filter: none;
+}
+
+.agent-card--async .agent-card__identity {
+  filter: none;
+}
+
+.agent-card__identity .agent-card__async-badge {
+  display: inline-block;
+  max-width: 100%;
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid #d8c6f0;
+  border-radius: 6px;
+  background: #f4edfc;
+  color: #653493;
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  line-height: 1.5;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+.agent-card--waiting .agent-card__async-badge {
+  border-style: dashed;
+  background: #ece0fb;
 }
 
 .agent-card__header span {
@@ -1941,13 +2036,13 @@ main,
 
 .agent-instance-card {
   display: flex;
-  min-width: min(23rem, calc(100vw - 6rem));
+  min-width: min(23rem, 100%);
   padding: 0.9rem;
   border: 1px solid rgb(49 105 193 / 17%);
   border-radius: 12px;
   background: rgb(255 255 255 / 94%);
   box-shadow: 0 10px 25px rgb(43 80 133 / 8%);
-  flex: 1 0 min(23rem, calc(100vw - 6rem));
+  flex: 1 0 min(23rem, 100%);
   flex-direction: column;
   scroll-snap-align: start;
 }
@@ -2165,6 +2260,33 @@ main,
 
 .project-list__item--dragging {
   opacity: 0.45;
+}
+
+.project-list__delete-button {
+  display: inline-flex;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #f0a8b2;
+  cursor: pointer;
+}
+
+.project-list__delete-button:hover:not(:disabled),
+.project-list__delete-button:focus-visible {
+  border-color: rgb(240 168 178 / 35%);
+  background: rgb(220 91 109 / 16%);
+  color: #ffd1d8;
+}
+
+.project-list__delete-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .project-list__item--drop-before::before,
@@ -5509,8 +5631,23 @@ dialog input {
   background: #f7faff;
 }
 
+.confirmation-dialog .confirmation-dialog__body > .confirmation-dialog__warning {
+  display: flex;
+  gap: 0.65rem;
+  padding: 0.85rem;
+  border: 1px solid #edc78c;
+  border-radius: 10px;
+  background: #fff7e8;
+  color: #815016;
+}
+
+.confirmation-dialog__warning > svg {
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+}
+
 .confirmation-dialog__project span {
-  color: #7890b2;
+  color: #526681;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.56rem;
   font-weight: 700;
@@ -5680,7 +5817,7 @@ dialog input {
   border: 1px solid rgb(46 105 196 / 13%);
   border-radius: 9px;
   background: #f7faff;
-  color: #7890b2;
+  color: #536a89;
   font-size: 0.67rem;
 }
 
@@ -5725,8 +5862,9 @@ dialog input {
 
 .schedule-dialog__toggle small,
 .schedule-dialog__field small {
-  color: #7188aa;
-  font-size: 0.65rem;
+  color: #536a89;
+  font-size: 0.75rem;
+  line-height: 1.5;
 }
 
 .schedule-dialog .schedule-dialog__field input {
@@ -5802,7 +5940,7 @@ dialog input {
 .schedule-dialog .schedule-dialog__timezone,
 .schedule-dialog .schedule-dialog__next-run,
 .schedule-dialog .schedule-dialog__last-run {
-  color: #7188aa;
+  color: #536a89;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   font-size: 0.65rem;
 }
@@ -6614,8 +6752,8 @@ dialog input {
   }
 
   .agent-instance-card {
-    min-width: min(20rem, calc(100vw - 5rem));
-    flex-basis: min(20rem, calc(100vw - 5rem));
+    min-width: 100%;
+    flex-basis: 100%;
   }
 }
 
@@ -6753,8 +6891,7 @@ button:disabled {
 }
 
 .project-folders__create:hover:not(:disabled),
-.project-folder__header button:hover:not(:disabled),
-.project-list__move-button:hover:not(:disabled) {
+.project-folder__header button:hover:not(:disabled) {
   background: rgb(99 161 250 / 14%);
   color: #fff;
 }
@@ -6769,15 +6906,13 @@ button:disabled {
   background: #10253e;
 }
 
-.project-folders__form label,
-.project-list__folder-picker label {
+.project-folders__form label {
   color: #c3d8f4;
   font-size: 0.72rem;
   overflow-wrap: anywhere;
 }
 
-.project-folders__form input,
-.project-list__folder-picker select {
+.project-folders__form input {
   width: 100%;
   min-width: 0;
   min-height: 2.25rem;
@@ -6872,8 +7007,7 @@ button:disabled {
 }
 
 .project-folder__actions { flex-shrink: 0; }
-.project-folder__actions button,
-.project-list__move-button {
+.project-folder__actions button {
   display: grid;
   width: 1.75rem;
   min-width: 1.75rem;
@@ -6902,22 +7036,13 @@ button:disabled {
 
 .project-folders .project-list__item { flex-wrap: wrap; }
 .project-folders .project-list__select-button { padding: 0.6rem 0.25rem; gap: 0.4rem; }
-.project-list__folder-picker {
-  display: grid;
-  flex: 0 0 100%;
-  min-width: 0;
-  padding: 0.3rem 0.5rem 0.5rem;
-  gap: 0.4rem;
-}
 
 @media (max-width: 700px) {
   .project-folders__create,
   .project-folder__toggle,
   .project-folder__actions button,
-  .project-list__move-button,
   .project-folders__form button { min-height: 2.5rem; }
-  .project-folder__actions button,
-  .project-list__move-button { width: 2.25rem; min-width: 2.25rem; }
+  .project-folder__actions button { width: 2.25rem; min-width: 2.25rem; }
 }
 
 .project-sidebar__collapse {
@@ -9213,3 +9338,32 @@ button:disabled {
     width: 100%;
   }
 }
+
+/* Durable workflow waits */
+.workflow-waits { margin: 0 0 1.5rem; padding: 1.2rem; border: 1px solid #cbbd85; border-radius: 14px; background: #fcfaf2; color: #3b3b32; }
+.workflow-waits h3 { display: flex; gap: .6rem; align-items: center; margin: 0; font-size: 1rem; }
+.workflow-waits > p { font-size: .9rem; }
+.workflow-waits__item { padding-top: 1rem; margin-top: 1rem; border-top: 1px solid #e1dbc3; overflow-wrap: anywhere; }
+.workflow-waits__item p { margin: .4rem 0; }
+.workflow-waits dl { display: flex; flex-wrap: wrap; gap: 1rem 2rem; font-size: .85rem; }
+.workflow-waits dt { color: #656457; }
+.workflow-waits dd { margin: .3rem 0; }
+.workflow-waits summary { cursor: pointer; font-weight: 600; }
+.workflow-waits form { display: grid; gap: .6rem; margin-top: 1rem; }
+.workflow-waits textarea { width: 100%; min-height: 90px; resize: vertical; padding: .65rem; border: 1px solid #cbbd85; border-radius: 8px; font: inherit; }
+.workflow-waits button { justify-self: start; padding: .6rem 1rem; border: 1px solid #b6a66d; border-radius: 8px; background: white; color: inherit; cursor: pointer; }
+.workflow-waits button:disabled { opacity: .55; cursor: default; }
+/* Gmail connection and durable thread subscriptions. */
+.gmail-panel { margin: 0 0 1.25rem; padding: 1rem 1.25rem; border: 1px solid #d9d6cd; border-radius: 14px; background: #fffdf8; }
+.gmail-panel > summary { cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
+.gmail-panel > summary svg { vertical-align: middle; margin-right: .5rem; }
+.gmail-panel__body, .gmail-panel form { display: grid; gap: .75rem; margin-top: 1rem; }
+.gmail-panel p { margin: 0; }
+.gmail-panel input, .gmail-panel select, .gmail-panel textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: .65rem; border: 1px solid #c9c5bc; border-radius: 8px; font: inherit; background: white; color: #292a28; }
+.gmail-panel textarea { min-height: 7rem; resize: vertical; }
+.gmail-panel button { justify-self: start; max-width: 100%; white-space: normal; padding: .6rem .9rem; border: 1px solid #b8cbea; border-radius: 8px; background: #f1f6ff; color: #244d87; font: inherit; font-weight: 600; cursor: pointer; }
+.gmail-panel button:hover:not(:disabled) { background: #e5eeff; }
+.gmail-panel button:disabled { opacity: .55; cursor: default; }
+.gmail-panel :focus-visible { outline: 2px solid #326dc3; outline-offset: 3px; }
+.gmail-panel__hint { font-size: .85rem; overflow-wrap: anywhere; }
+.gmail-panel__watch { display: grid; gap: .5rem; padding: .8rem; border: 1px solid #d9d6cd; border-radius: 8px; overflow-wrap: anywhere; }

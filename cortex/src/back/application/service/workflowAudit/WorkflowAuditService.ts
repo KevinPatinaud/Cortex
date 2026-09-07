@@ -8,6 +8,7 @@ import type {
   WorkflowAuditTrigger
 } from "../../../../shared/WorkflowAudit.ts";
 import type { AgentEngine } from "../iaService/AgentProvider.ts";
+import type { WorkflowEvent } from "../../../../shared/WorkflowWait.ts";
 
 export interface WorkflowAuditSnapshot {
   engine: AgentEngine;
@@ -52,7 +53,7 @@ export interface CompleteWorkflowAuditExecutionInput {
 
 export interface ScheduledOccurrence {
   scheduledAt: string;
-  status: "running" | "succeeded" | "failed" | "skipped" | "cancelled" | "interrupted";
+  status: "running" | "waiting" | "succeeded" | "failed" | "skipped" | "cancelled" | "interrupted";
   error: string | null;
 }
 
@@ -62,6 +63,10 @@ export interface WorkflowCheckpointRecord {
 }
 
 export interface WorkflowAuditRepository {
+  listCheckpointProjectIds(): string[];
+  receiveWorkflowEvent(instanceId: string, event: WorkflowEvent): boolean;
+  listWorkflowEvents(instanceId: string): WorkflowEvent[];
+  setRunActiveStatus(runId: string, status: "running" | "waiting"): void;
   saveCheckpoint(projectId: string, fingerprint: string, state: unknown): void;
   getCheckpoint(projectId: string): WorkflowCheckpointRecord | null;
   deleteCheckpoint(projectId: string): void;
@@ -99,6 +104,11 @@ export interface WorkflowAuditRepository {
 
 export class WorkflowAuditService {
   constructor(private readonly repository: WorkflowAuditRepository) {}
+
+  listCheckpointProjectIds(): string[] { return this.repository.listCheckpointProjectIds(); }
+  receiveWorkflowEvent(instanceId: string, event: WorkflowEvent): boolean { return this.repository.receiveWorkflowEvent(instanceId, event); }
+  listWorkflowEvents(instanceId: string): WorkflowEvent[] { return this.repository.listWorkflowEvents(instanceId); }
+  setRunActiveStatus(runId: string, status: "running" | "waiting"): void { this.repository.setRunActiveStatus(runId, status); }
 
   saveCheckpoint(projectId: string, fingerprint: string, state: unknown): void {
     this.repository.saveCheckpoint(projectId, fingerprint, state);

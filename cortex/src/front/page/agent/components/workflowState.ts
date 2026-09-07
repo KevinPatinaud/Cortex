@@ -193,7 +193,7 @@ export function getAgentProgressState(
   visitingAgentIds = new Set<string>()
 ): "completed" | "pending" | "skipped" {
   if (agent.executionStatus === "running" || agent.executionStatus === "failed" ||
-    agent.executionStatus === "cancelled") {
+    agent.executionStatus === "cancelled" || agent.executionStatus === "waiting") {
     return "pending";
   }
 

@@ -77,10 +77,10 @@ async function openProjects(page: Page, projects: Project[]) {
 }
 
 async function classify(page: Page, project: Project, folderId: string | null) {
-  await page.getByRole("button", { name: `Ranger ${project.name}`, exact: true }).click();
-  const select = page.getByRole("combobox", { name: `Répertoire de ${project.name}`, exact: true });
+  const destination = folderSection(page, folderId).locator(".project-folder__header");
+  await destination.scrollIntoViewIfNeeded();
   const saved = page.waitForResponse((response) => response.url().endsWith(`/api/projects/${project.id}/folder`) && response.request().method() === "PUT");
-  await select.selectOption(folderId ?? "");
+  await projectRow(page, project).dragTo(destination);
   expect((await saved).ok()).toBe(true);
   await expect(folderSection(page, folderId).getByRole("button", { name: project.name, exact: true })).toBeVisible();
 }
@@ -132,6 +132,25 @@ test("renaming and deleting a populated folder retains its projects and their co
   expect((await organization(request)).folders.find((candidate) => candidate.id === folder.id)?.name).toBe(renamed);
 
   await page.getByRole("button", { name: `Supprimer le répertoire ${renamed}`, exact: true }).click();
+  const confirmation = page.getByRole("dialog", { name: "Supprimer ce répertoire ?", exact: true });
+  await expect(confirmation).toBeVisible();
+  await expect(confirmation).toContainText(renamed);
+  await expect(confirmation).toContainText("Les projets de ce répertoire seront conservés");
+  await expect(confirmation.getByRole("button", { name: "Annuler", exact: true })).toBeFocused();
+  await confirmation.getByRole("button", { name: "Annuler", exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
+  expect((await organization(request)).projectFolders[first.id]).toBe(folder.id);
+  await expect(folderSection(page, folder.id)).toBeVisible();
+
+  await page.getByRole("button", { name: `Supprimer le répertoire ${renamed}`, exact: true }).click();
+  await expect(confirmation).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(confirmation).toHaveCount(0);
+  await expect(page.getByRole("button", { name: `Supprimer le répertoire ${renamed}`, exact: true })).toBeFocused();
+
+  await page.getByRole("button", { name: `Supprimer le répertoire ${renamed}`, exact: true }).click();
+  await confirmation.getByRole("button", { name: "Supprimer", exact: true }).click();
+  await expect(confirmation).toHaveCount(0);
   await expect(folderSection(page, folder.id)).toHaveCount(0);
   for (const project of [first, second]) {
     await expect(page.locator(".project-sidebar").getByRole("button", { name: project.name, exact: true })).toBeVisible();
@@ -171,7 +190,7 @@ test("dragging projects between folders and back to the root persists each move"
   await expect(folderSection(page, null).getByRole("button", { name: other.name, exact: true })).toBeVisible();
 });
 
-test("folder creation and classification work with the keyboard and allow cancellation", async ({ page, request, folderIds }) => {
+test("folder creation works with the keyboard and allows cancellation", async ({ page, request, folderIds }) => {
   const project = await createProject(request, "keyboard");
   await openProjects(page, [project]);
   const sidebar = page.locator(".project-sidebar");
@@ -195,23 +214,6 @@ test("folder creation and classification work with the keyboard and allow cancel
   const folder = (await (await created).json() as Organization).folders.find((candidate) => candidate.name === name)!;
   expect(folder).toBeDefined();
   folderIds.push(folder.id);
-
-  for (const folderId of [folder.id, null]) {
-    if (folderId === null) {
-      const rootToggle = folderSection(page, null).getByRole("button", { name: /^Sans répertoire/ });
-      await rootToggle.click();
-      await expect(rootToggle).toHaveAttribute("aria-expanded", "false");
-    }
-    const arrange = page.getByRole("button", { name: `Ranger ${project.name}`, exact: true });
-    await arrange.focus();
-    await arrange.press("Enter");
-    const select = page.getByRole("combobox", { name: `Répertoire de ${project.name}`, exact: true });
-    await select.focus();
-    await expect(select.getByRole("option", { name: "Sans répertoire", exact: true })).toHaveCount(1);
-    await select.press(folderId ? "End" : "Home");
-    await expect.poll(async () => (await organization(request)).projectFolders[project.id] ?? null).toBe(folderId);
-    await expect(folderSection(page, folderId).getByRole("button", { name: project.name, exact: true })).toBeVisible();
-  }
 });
 
 test("search finds a project inside a collapsed folder", async ({ page, request, folderIds }) => {
@@ -296,16 +298,14 @@ test("failed folder loading can be retried and a failed move preserves the previ
 
   const moveEndpoint = `**/api/projects/${project.id}/folder`;
   await page.route(moveEndpoint, (route) => route.fulfill({ status: 503, json: { error: "Le classement est temporairement indisponible." } }));
-  await sidebar.getByRole("button", { name: `Ranger ${project.name}`, exact: true }).click();
-  const select = sidebar.getByRole("combobox", { name: `Répertoire de ${project.name}`, exact: true });
-  await select.selectOption("");
+  const destination = folderSection(page, null).locator(".project-folder__header");
+  await destination.scrollIntoViewIfNeeded();
+  await projectRow(page, project).dragTo(destination);
   await expect(sidebar.getByRole("alert")).toContainText("Le classement est temporairement indisponible.");
-  await expect(select).toHaveValue(folder.id);
-  await expect(select).toBeFocused();
   await expect(folderSection(page, folder.id).getByRole("button", { name: project.name, exact: true })).toBeVisible();
   expect((await organization(request)).projectFolders[project.id]).toBe(folder.id);
   await page.unroute(moveEndpoint);
-  await select.selectOption("");
+  await classify(page, project, null);
   await expect(folderSection(page, null).getByRole("button", { name: project.name, exact: true })).toBeVisible();
   await expect(sidebar.getByRole("alert")).toHaveCount(0);
   expect((await organization(request)).projectFolders[project.id]).toBeUndefined();
@@ -325,7 +325,7 @@ test("folder controls fit the viewport and remain accessible with long names", a
     await mkdir(directory, { recursive: true });
     await page.screenshot({ path: path.join(directory, `${testInfo.project.name}.png`), fullPage: true });
   }
-  for (const label of [`Renommer le répertoire ${folder.name}`, `Supprimer le répertoire ${folder.name}`, `Ranger ${project.name}`, "Nouveau répertoire"]) {
+  for (const label of [`Renommer le répertoire ${folder.name}`, `Supprimer le répertoire ${folder.name}`, "Nouveau répertoire"]) {
     const control = sidebar.getByRole("button", { name: label, exact: true });
     await control.scrollIntoViewIfNeeded();
     await expect(control).toBeInViewport();
@@ -335,8 +335,7 @@ test("folder controls fit the viewport and remain accessible with long names", a
     expect(bounds.x).toBeGreaterThanOrEqual(0);
     expect(bounds.x + bounds.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   }
-  await page.getByRole("button", { name: `Ranger ${project.name}`, exact: true }).click();
-  await expect(page.getByRole("combobox", { name: `Répertoire de ${project.name}`, exact: true })).toBeVisible();
+  await expect(sidebar.locator(".project-list__move-button")).toHaveCount(0);
   await sidebar.getByRole("button", { name: "Nouveau répertoire", exact: true }).click();
   await expect(sidebar.getByRole("textbox", { name: "Nom du répertoire", exact: true })).toBeFocused();
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

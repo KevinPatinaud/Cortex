@@ -136,6 +136,8 @@ export interface AgentStatusResponse {
 }
 
 export interface AgentProjectResponse {
+  workflowInstance?: AgentProject["workflowInstance"];
+  workflowWaits?: AgentProject["workflowWaits"];
   projectId: string;
   workflowResumable: boolean;
   workflowParameterValues: Record<string, string>;
@@ -170,6 +172,8 @@ export function toAgentProjectResponse(
   return {
     projectId: project.projectId,
     workflowResumable: project.workflowResumable,
+    workflowInstance: project.workflowInstance,
+    workflowWaits: project.workflowWaits,
     workflowParameterValues: project.workflowParameterValues,
     directoryPath: project.directoryPath,
     engine: project.engine,

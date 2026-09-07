@@ -1,6 +1,5 @@
 import { useState, type DragEvent, type KeyboardEvent } from "react";
-import { Check, Folder, FolderInput, GripVertical, LoaderCircle } from "lucide-react";
-import type { ProjectFolder } from "../../../../shared/ProjectOrganization.ts";
+import { Box, Check, GripVertical, LoaderCircle, Trash2 } from "lucide-react";
 import type { Project } from "../../../services/projectApi.ts";
 import { useTranslation } from "../../../i18n.tsx";
 
@@ -15,11 +14,8 @@ export interface ProjectListProps {
   isInteractionLocked: boolean;
   isReorderLocked: boolean;
   onSelect: (project: Project) => void;
+  onDelete: (project: Project, button: HTMLButtonElement) => void;
   onReorder: (projects: Project[]) => void;
-  folders?: ProjectFolder[];
-  folderId?: string | null;
-  isFolderLocked?: boolean;
-  onMove?: (project: Project, folderId: string | null) => Promise<boolean>;
 }
 
 export const projectDragType = "application/x-cortex-project";
@@ -40,15 +36,11 @@ export function ProjectList({
   isInteractionLocked,
   isReorderLocked,
   onSelect,
-  onReorder,
-  folders = [],
-  folderId = null,
-  isFolderLocked = false,
-  onMove
+  onDelete,
+  onReorder
 }: ProjectListProps) {
   const { t } = useTranslation();
   const [draggedProjectId, setDraggedProjectId] = useState<string | null>(null);
-  const [movingProjectId, setMovingProjectId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<{
     projectId: string;
     position: DropPosition;
@@ -226,7 +218,7 @@ export function ProjectList({
                   strokeWidth={1.8}
                 />
               ) : (
-                <Folder aria-hidden="true" size={18} strokeWidth={1.8} />
+                <Box aria-hidden="true" size={18} strokeWidth={1.8} />
               )}
               <span className="project-list__details">
                 <span className="project-list__name-row">
@@ -252,57 +244,16 @@ export function ProjectList({
                 </span>
               </span>
             </button>
-            {onMove && folders.length > 0 && (
-              <button
-                type="button"
-                className="project-list__move-button"
-                aria-label={t("folders.move", { name: projectName })}
-                title={t("folders.move", { name: projectName })}
-                aria-expanded={movingProjectId === project.id}
-                aria-controls={`project-folder-picker-${project.id}`}
-                disabled={isInteractionLocked || isFolderLocked}
-                onClick={() => setMovingProjectId((current) => current === project.id ? null : project.id)}
-              >
-                <FolderInput aria-hidden="true" size={15} />
-              </button>
-            )}
-            {onMove && movingProjectId === project.id && (
-              <div className="project-list__folder-picker" id={`project-folder-picker-${project.id}`}>
-                <label htmlFor={`project-folder-select-${project.id}`}>
-                  {t("folders.destination", { name: projectName })}
-                </label>
-                <select
-                  id={`project-folder-select-${project.id}`}
-                  autoFocus
-                  value={folderId ?? ""}
-                  disabled={isInteractionLocked || isFolderLocked}
-                  onKeyDown={(event) => {
-                    if (event.key !== "Escape") return;
-                    event.preventDefault();
-                    const button = event.currentTarget.closest("li")?.querySelector<HTMLButtonElement>(".project-list__move-button");
-                    setMovingProjectId(null);
-                    button?.focus();
-                  }}
-                  onChange={async (event) => {
-                    const select = event.currentTarget;
-                    const destination = event.target.value || null;
-                    if (await onMove(project, destination)) {
-                      setMovingProjectId(null);
-                      requestAnimationFrame(() => {
-                        const row = Array.from(document.querySelectorAll<HTMLElement>("[data-project-id]"))
-                          .find((candidate) => candidate.dataset.projectId === project.id);
-                        row?.querySelector<HTMLButtonElement>(".project-list__move-button")?.focus();
-                      });
-                    } else {
-                      requestAnimationFrame(() => { if (select.isConnected) select.focus(); });
-                    }
-                  }}
-                >
-                  <option value="">{t("folders.unfiled")}</option>
-                  {folders.map((folder) => <option key={folder.id} value={folder.id}>{folder.name}</option>)}
-                </select>
-              </div>
-            )}
+            <button
+              className="project-list__delete-button"
+              type="button"
+              aria-label={t("project.deleteAria", { name: projectName })}
+              title={t("project.deleteAria", { name: projectName })}
+              disabled={loadingProjectId !== null || isInteractionLocked}
+              onClick={(event) => onDelete(project, event.currentTarget)}
+            >
+              <Trash2 aria-hidden="true" size={16} />
+            </button>
           </li>
         );
       })}

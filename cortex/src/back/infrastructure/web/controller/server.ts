@@ -15,6 +15,8 @@ import { ProjectService } from "../../../application/service/projectService/Proj
 import { AgentUseCase } from "../../../application/usecase/AgentUseCase.ts";
 import { ProjectUseCase } from "../../../application/usecase/ProjectUseCase.ts";
 import { WorkflowScheduler } from "../../../application/service/workflowScheduler/WorkflowScheduler.ts";
+import { WorkflowWaitScheduler } from "../../../application/service/workflowScheduler/WorkflowWaitScheduler.ts";
+import { GmailService } from "../../../application/service/gmail/GmailService.ts";
 import { WorkflowAuditService } from "../../../application/service/workflowAudit/WorkflowAuditService.ts";
 import { SqliteWorkflowAuditRepository } from "../../audit/SqliteWorkflowAuditRepository.ts";
 import {
@@ -92,11 +94,19 @@ const workflowScheduler = new WorkflowScheduler(
   workflowAuditService
 );
 
+const gmail = new GmailService(
+  path.join(workspaceDirectory, "data", "gmail", "connection.sqlite"),
+  process.env.CORTEX_GMAIL_REDIRECT_URI?.trim() || `http://127.0.0.1:${port}/api/gmail/callback`,
+  agentUseCase
+);
 const app = createCortexApplication({
-  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory
+  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail
 });
 
+const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase);
 const httpServer = app.listen(port, host, () => {
+  workflowWaitScheduler.start();
+  gmail.start();
   const browserHost = host === "0.0.0.0" || host === "::"
     ? "localhost"
     : host;
@@ -116,6 +126,8 @@ async function shutdown(): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   workflowScheduler.stop();
+  workflowWaitScheduler.stop();
+  void gmail.stop();
   agentUseCase.cancelAllExecutions();
   agentService.cancelAllExecutions();
   const deadline = setTimeout(() => process.exit(1), 15_000);
@@ -133,6 +145,7 @@ async function shutdown(): Promise<void> {
   }
   httpServer.closeAllConnections();
   await closed;
+  await gmail.close();
   workflowAuditRepository.close();
   clearTimeout(deadline);
 }

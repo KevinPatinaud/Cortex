@@ -38,6 +38,8 @@ export function WorkflowScheduleDialog({
 
   useEffect(() => {
     const dialog = dialogRef.current;
+    const previousFocus = document.activeElement instanceof HTMLElement
+      ? document.activeElement : null;
 
     if (!dialog?.open) {
       dialog?.showModal();
@@ -50,6 +52,7 @@ export function WorkflowScheduleDialog({
     return () => {
       window.cancelAnimationFrame(focusFrame);
       if (dialog?.open) dialog.close();
+      if (previousFocus?.isConnected) previousFocus.focus({ preventScroll: true });
     };
   }, []);
 
@@ -201,7 +204,7 @@ export function WorkflowScheduleDialog({
           {schedule.lastRunAt && schedule.lastRunStatus && (
             <p className={`schedule-dialog__last-run schedule-dialog__last-run--${schedule.lastRunStatus}`}>
               {t(
-                schedule.lastRunStatus === "succeeded"
+                schedule.lastRunStatus === "waiting" ? "schedule.lastRunWaiting" : schedule.lastRunStatus === "succeeded"
                   ? "schedule.lastRunSucceeded"
                   : schedule.lastRunStatus === "failed"
                     ? "schedule.lastRunFailed"

@@ -6,6 +6,7 @@ import type { Project } from "../../../services/projectApi.ts";
 import { ApiRequestError } from "../../../services/apiClient.ts";
 import { createProjectFolder, deleteProjectFolder, getProjectFolders, moveProjectToFolder, renameProjectFolder } from "../../../services/projectFolderApi.ts";
 import { ProjectList, projectDragType, type ProjectListProps } from "./ProjectList.tsx";
+import { ConfirmationDialog } from "./ConfirmationDialog.tsx";
 
 interface ProjectFolderListProps extends ProjectListProps {
   search: string;
@@ -26,11 +27,13 @@ export function ProjectFolderList({ search, onClearSearch, ...listProps }: Proje
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [editor, setEditor] = useState<{ id: string | null; name: string } | null>(null);
+  const [folderToDelete, setFolderToDelete] = useState<ProjectFolder | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dropFolderId, setDropFolderId] = useState<string | null>(null);
   const pendingRef = useRef(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const newFolderRef = useRef<HTMLButtonElement>(null);
+  const deleteFolderButtonRef = useRef<HTMLButtonElement | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const query = search.trim().toLocaleLowerCase();
   const isLocked = listProps.isInteractionLocked || listProps.isLoading || isLoading || isSaving || loadFailed;
@@ -145,6 +148,16 @@ export function ProjectFolderList({ search, onClearSearch, ...listProps }: Proje
     return result !== null;
   }
 
+  async function confirmFolderDeletion(): Promise<void> {
+    if (!folderToDelete) return;
+    const { id } = folderToDelete;
+    if (await mutate(() => deleteProjectFolder(id), t("folders.deleted"))) {
+      if (editor?.id === id) setEditor(null);
+      setFolderToDelete(null);
+      focusFolder(null);
+    }
+  }
+
   function acceptDrop(event: DragEvent, folderId: string): void {
     if (isLocked || listProps.isReorderLocked || !event.dataTransfer.types.includes(projectDragType)) return;
     event.preventDefault();
@@ -162,16 +175,12 @@ export function ProjectFolderList({ search, onClearSearch, ...listProps }: Proje
     if (project) void moveProject(project, folderId || null);
   }
 
-  function renderProjects(projects: Project[], folderId: string | null) {
+  function renderProjects(projects: Project[]) {
     return <ProjectList
       {...listProps}
       projects={projects}
       isInteractionLocked={listProps.isInteractionLocked || isSaving}
       isReorderLocked={listProps.isReorderLocked || isLoading || loadFailed}
-      folders={organization.folders}
-      folderId={folderId}
-      isFolderLocked={isLocked}
-      onMove={moveProject}
       onReorder={(reordered) => {
         const ids = new Set(projects.map((project) => project.id));
         let index = 0;
@@ -218,18 +227,17 @@ export function ProjectFolderList({ search, onClearSearch, ...listProps }: Proje
             <Pencil aria-hidden="true" size={13} />
           </button>
           <button type="button" aria-label={t("folders.delete", { name })} title={t("folders.deleteHelp")}
-            disabled={isLocked} onClick={async () => {
-              if (await mutate(() => deleteProjectFolder(id), t("folders.deleted"))) {
-                if (editor?.id === id) setEditor(null);
-                focusFolder(null);
-              }
+            disabled={isLocked} onClick={(event) => {
+              deleteFolderButtonRef.current = event.currentTarget;
+              setError("");
+              setFolderToDelete(folder);
             }}>
             <Trash2 aria-hidden="true" size={13} />
           </button>
         </div>}
       </div>
       <div id={`project-folder-content-${id || "root"}`} hidden={!isOpen}>
-        {projects.length > 0 ? renderProjects(projects, folder?.id ?? null)
+        {projects.length > 0 ? renderProjects(projects)
           : <p className="project-folder__empty">{t("folders.empty")}</p>}
       </div>
     </section>;
@@ -259,7 +267,7 @@ export function ProjectFolderList({ search, onClearSearch, ...listProps }: Proje
         <button type="button" disabled={isSaving} onClick={cancelEditor}>{t("common.cancel")}</button>
       </div>
     </form>}
-    {error && <div className="project-folders__error" role="alert">
+    {error && !folderToDelete && <div className="project-folders__error" role="alert">
       <p>{error}</p>
       {loadFailed && <button type="button" disabled={isLoading} onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t("project.retry")}</button>}
     </div>}
@@ -268,7 +276,25 @@ export function ProjectFolderList({ search, onClearSearch, ...listProps }: Proje
       : query && folders.length === 0 && unfiled.length === 0 ? <p className="project-list__state" role="status">{t("sidebar.noSearchResult")}</p>
       : <>
         {folders.map(({ folder, projects }) => renderFolder(folder, projects))}
-        {organization.folders.length > 0 ? ((!query || unfiled.length > 0) && renderFolder(null, unfiled)) : renderProjects(unfiled, null)}
+        {organization.folders.length > 0 ? ((!query || unfiled.length > 0) && renderFolder(null, unfiled)) : renderProjects(unfiled)}
       </>}
+    {folderToDelete && <ConfirmationDialog
+      variant="delete"
+      title={t("folders.deleteTitle")}
+      description={t("folders.deleteDescription")}
+      projectName={folderToDelete.name}
+      subjectLabel={t("folders.affectedFolder")}
+      confirmLabel={t("common.delete")}
+      pendingLabel={t("project.deleting")}
+      isPending={isSaving}
+      error={error || undefined}
+      onCancel={() => {
+        if (pendingRef.current) return;
+        setError("");
+        setFolderToDelete(null);
+        requestAnimationFrame(() => deleteFolderButtonRef.current?.focus());
+      }}
+      onConfirm={() => void confirmFolderDeletion()}
+    />}
   </div>;
 }

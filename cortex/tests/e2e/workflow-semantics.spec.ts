@@ -136,6 +136,9 @@ test("selected threaded items update planned counts while completed instances an
     await expect(edge("source", "worker")).toHaveAttribute("data-workflow-instances", "2");
     await expect(edge("source", "aggregate")).not.toHaveAttribute("data-workflow-instances", /.+/);
     await expect(card("worker").locator(".agent-instance-card")).toHaveCount(2);
+    expect(await card("worker").locator(".agent-instance-card").evaluateAll((cards) => cards.every((instance) =>
+      instance.getBoundingClientRect().width <= instance.parentElement!.clientWidth + 1 &&
+      instance.scrollWidth <= instance.clientWidth + 1))).toBe(true);
     await expect(card("worker").getByText("Analyse de l’événement A", { exact: true })).toBeVisible();
     await expect(card("worker").getByText("Analyse de l’événement B", { exact: true })).toBeVisible();
     await expect(card("aggregate").getByText("Synthèse des événements A et B", { exact: true })).toBeVisible();

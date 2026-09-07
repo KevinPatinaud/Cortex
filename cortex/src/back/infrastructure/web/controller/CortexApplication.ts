@@ -7,6 +7,8 @@ import { httpErrorMiddleware } from "../middleware/HttpErrorMiddleware.ts";
 import { createAuthenticationRouter, requireAuthentication, type PasswordAuthentication } from "../middleware/PasswordAuthentication.ts";
 import { createAgentController } from "./AgentController.ts";
 import { createProjectController } from "./ProjectController.ts";
+import { createGmailController } from "./GmailController.ts";
+import type { GmailService } from "../../../application/service/gmail/GmailService.ts";
 
 /** Production and integration tests share the same HTTP application. */
 export function createCortexApplication(options: {
@@ -15,6 +17,7 @@ export function createCortexApplication(options: {
   workflowScheduler: WorkflowScheduler;
   authentication: PasswordAuthentication | null;
   clientDirectory: string;
+  gmail?: GmailService;
 }) {
   const app = express();
   app.disable("x-powered-by");
@@ -37,6 +40,7 @@ export function createCortexApplication(options: {
   app.use("/api/auth", createAuthenticationRouter(options.authentication));
   app.get("/api/health", (_request, response) => { response.json({ status: "ok" }); });
   if (options.authentication) app.use("/api", requireAuthentication(options.authentication));
+  if (options.gmail) app.use("/api/gmail", createGmailController(options.gmail));
   app.use("/api/projects", createProjectController(options.projectUseCase));
   app.use("/api/agents", createAgentController(options.agentUseCase, options.workflowScheduler));
   app.use("/api", (_request, response) => {

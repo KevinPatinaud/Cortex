@@ -154,6 +154,130 @@ execute that occurrence twice. Missed minutes while the server was offline are
 not replayed automatically. An unfinished occurrence is marked interrupted on
 restart; the last recorded scheduling result remains available.
 
+## Durable asynchronous workflows
+
+An agent can suspend a request until an external event, a timer, or a final deadline.
+Cortex checkpoints the request in SQLite and releases the provider session and
+execution slot. Independent branches continue; dependent steps wait for the
+suspended agent's final response. A server-side worker resumes sleeping requests,
+including after a server restart, without keeping the browser open.
+
+Describe the wait in the agent's instructions: the expected result, correlation
+key, checking interval, final deadline, permitted replies and reminder limit.
+Cortex includes the structured response contract in the prompt. The agent returns
+`status: "waiting"`, `nextAgentIds: []`, and a `wait` object:
+
+| Field | Meaning |
+| --- | --- |
+| `reason` | Short explanation shown in the workflow |
+| `eventKey` | Correlation key, such as `hotel:booking-123`, or null for a timer |
+| `wakeAfterSeconds` | Positive delay before the next check, or null for event-only waiting |
+| `deadlineAt` | Absolute ISO 8601 deadline with timezone, in the future and within one year |
+| `state` | Saved business context (string, up to 32000 characters): completed actions, message IDs, reminder count, outstanding work |
+
+At least an event key or a timer is required. The final deadline is mandatory and
+cannot be extended by a resumed wait. The wake identifies its cause (`event`,
+`timer`, or `deadline`) and includes the saved business context. After the final
+deadline, the agent must conclude or route to a terminal result; another wait is
+rejected. The workflow execution budget applies across all automatic wakes.
+Checking for replies and sending reminders must have distinct policies in the task.
+
+The workflow displays its waits and deadlines. **Provide a reply** submits a local
+event for testing or human input. **Stop** cancels the request and its automatic
+wakes. **Reset** starts a separate request with a new instance ID. This first
+version retains **one active workflow instance per project**, with multiple
+independent waiting threads inside it; separate projects can wait concurrently.
+Cron occurrences skip a project while it is waiting.
+
+For a connector, obtain `workflowInstance.id` from `GET /api/agents/projects/:id`
+and submit `POST /api/agents/projects/:id/workflow/events` with JSON:
+
+```json
+{
+  "instanceId": "the-current-instance-id",
+  "id": "provider-message-id",
+  "key": "hotel:booking-123",
+  "payload": "Your booking is confirmed. Reference HOTEL-123."
+}
+```
+
+The endpoint uses the application's existing authentication. It durably queues
+events even before the matching wait is registered. Repeating the same event ID
+and content is acknowledged without reprocessing; conflicting reuse is rejected.
+Events are scoped to an instance so old messages cannot resume a new reservation.
+Each event is delivered to one matching waiting thread. Use separate correlation
+keys for independent conversations. An event received before the deadline can
+still be processed after a server outage; one received after it cannot turn an
+expired wait into a confirmation.
+
+Run `node --import tsx scripts/create-async-demo.mts` to create the real Cortex
+project **Reservation hotel - asynchrone**. It uses two Codex agents and simulated
+hotel messages. Start the first agent, observe its timer wake, then provide a
+confirmation or an unavailability reply. No real email is sent. The script is
+idempotent and prints the project URL; its agents explicitly select GPT-5.5.
+
+Gmail can be connected separately using the Gmail panel described below. Other
+connectors can check messages without calling the model and deliver relevant
+events to this endpoint. Cortex cannot guarantee exactly-once external side effects.
+Interrupted/failed active steps require explicit **Resume workflow**; only cleanly
+suspended requests resume automatically. The saved provider session must remain
+accessible. Run one Cortex server per database. Project edits invalidate the
+current checkpoint and cancel the old automatic waits.
+
+### Connect your Gmail mailbox
+
+If Gmail is already connected through the Codex Gmail plugin, workflows can use
+that existing connection directly. The agent calls Gmail, saves the query/thread
+and processed message IDs in `wait.state`, then returns a timer-based durable wait.
+On wake it checks the same conversation again using the existing plugin. This
+mode needs no separate Google client; each check runs an agent, so select a suitable
+interval and fixed final deadline. Existing authorized send scripts can also be
+used where installed, within the workflow's explicit sending instructions.
+
+Run `node --import tsx scripts/create-gmail-demo.mts` for a real, read-only plugin
+test: two Gmail checks separated by a durable 15-second wait. It sends no mail.
+The `--refresh` option updates this demo through the running local Cortex API.
+
+The **Gmail** panel in a project's Agents tab connects Cortex directly to Google;
+the Gmail connection in the Codex conversation is not inherited by this server.
+
+1. In Google Cloud, enable Gmail API, configure OAuth consent and add your email
+   as a test user if the application is in testing. Create a **Desktop app** OAuth
+   client and download its JSON credentials.
+2. Open Cortex at `http://127.0.0.1:3000`, expand **Gmail**, import that JSON, then
+   choose **Connect Gmail** and grant read and send access in Google's browser flow.
+   A Web application client also works when its authorized redirect URI exactly
+   matches `http://127.0.0.1:3000/api/gmail/callback`.
+3. Start a workflow that returns a durable wait with an event key. Search for the
+   relevant Gmail conversation, select that wait, and choose **Watch for new replies**.
+   Existing messages form the baseline and are not injected into the workflow.
+4. New incoming messages in this thread are checked every 30 seconds without a
+   model call. A matching reply becomes a durable workflow event. The subscription
+   survives server restart and stops when the instance ends, is reset or cancelled.
+   Failed/interrupted instances pause the subscription until explicit recovery.
+
+The panel also lets the user compose and explicitly send a real plain-text email,
+then associate its thread with an active wait. It does not authorize model-driven
+outbound replies or reminders: those require a separately defined sending policy.
+An uncertain send remains blocked from automatic retry; check Gmail's Sent folder
+before composing another message. The current composer starts new conversations.
+Incoming attachments are not read; text is limited to 4,000 characters and HTML is
+converted to text. Missing details must be verified before concluding a request.
+
+OAuth credentials, refresh tokens, subscriptions and send receipts are local in
+`data/gmail/connection.sqlite`, outside Git and project exports. This file contains
+secrets and message content; restrict OS access and protect backups. POSIX file
+permissions are restricted; on Windows, access follows the containing folder's ACL.
+Tokens are renewed automatically, but revoked or expired Google authorization
+requires reconnecting. **Disconnect Gmail** removes local tokens and watches and
+attempts to revoke the Google grant. One mailbox is shared by the local Cortex
+server's projects; use Cortex password authentication when exposing the server.
+
+For HTTPS hosting, set `CORTEX_GMAIL_REDIRECT_URI` to the exact public callback URL
+and register that URL in a Google Web client. The Gmail panel must be opened from
+that same origin. OAuth uses state, a browser-bound HttpOnly cookie and PKCE.
+Google setup reference: https://developers.google.com/identity/protocols/oauth2/native-app
+
 ## Execution progress and recovery
 
 Running agents show elapsed time, time since the last engine event and a bounded

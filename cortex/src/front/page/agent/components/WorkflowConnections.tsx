@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
+import { roundedWorkflowPath, routeWorkflowConnection, type Point, type WorkflowRect } from "./workflowGeometry.ts";
 import { getWorkflowEdgeKey } from "../../../../shared/AgentWorkflowGraph.ts";
 
 export const WORKFLOW_CONNECTION_STATUSES = ["pending", "selected", "running", "inactive"] as const;
@@ -17,7 +18,7 @@ export interface WorkflowConnection {
 export function WorkflowConnections({ edges }: { edges: WorkflowConnection[] }) {
   const canvasRef = useRef<SVGSVGElement>(null);
   const markerId = useId();
-  const [geometry, setGeometry] = useState({ width: 1, height: 1, paths: [] as string[] });
+  const [geometry, setGeometry] = useState({ width: 1, height: 1, paths: [] as { path: string; start: Point; end: Point }[] });
   const edgeSignature = JSON.stringify(edges.map(({ sourceAgentId, targetAgentId }) => ({
     sourceAgentId, targetAgentId
   })));
@@ -29,61 +30,61 @@ export function WorkflowConnections({ edges }: { edges: WorkflowConnection[] }) 
     const steps = [...workflow.querySelectorAll<HTMLElement>("[data-workflow-agent-id]")];
     const update = (): void => {
       const bounds = workflow.getBoundingClientRect();
-      const cards = new Map(steps.map((step) => [step.dataset.workflowAgentId!,
-        step.querySelector<HTMLElement>(".agent-card")!.getBoundingClientRect()]));
+      const cards = new Map(steps.map((step) => {
+        const card = step.querySelector<HTMLElement>(".agent-card")!.getBoundingClientRect();
+        const footer = step.lastElementChild!.getBoundingClientRect();
+        return [step.dataset.workflowAgentId!, {
+          left: card.left - bounds.left, right: card.right - bounds.left,
+          top: card.top - bounds.top, bottom: Math.max(card.bottom, footer.bottom) - bounds.top
+        } satisfies WorkflowRect] as const;
+      }));
+      const obstacles = [...cards.values()];
+      const port = (id: string, otherId: string, outgoing: boolean) => {
+        const rect = cards.get(id)!;
+        const peers = connections.filter((edge) => (outgoing ? edge.sourceAgentId : edge.targetAgentId) === id)
+          .map((edge) => outgoing ? edge.targetAgentId : edge.sourceAgentId)
+          .filter((peer) => cards.has(peer))
+          .sort((a, b) => {
+            const first = cards.get(a)!, second = cards.get(b)!;
+            return (first.left + first.right) - (second.left + second.right) || a.localeCompare(b);
+          });
+        const spacing = Math.min(28, (rect.right - rect.left) / (peers.length + 1));
+        return (rect.left + rect.right) / 2 + (peers.indexOf(otherId) - (peers.length - 1) / 2) * spacing;
+      };
       const paths = connections.map(({ sourceAgentId, targetAgentId }, index) => {
-        const source = cards.get(sourceAgentId);
-        const target = cards.get(targetAgentId);
-        if (!source || !target) return "";
-        const sourceX = (source.left + source.right) / 2 - bounds.left;
-        const sourceY = source.bottom - bounds.top + 3;
-        const targetX = (target.left + target.right) / 2 - bounds.left;
-        const targetY = target.top - bounds.top - 7;
-        const middleY = (sourceY + targetY) / 2;
-        const crossesCard = [...cards.entries()].some(([id, rect]) => {
-          if (id === sourceAgentId || id === targetAgentId) return false;
-          const left = rect.left - bounds.left - 5;
-          const right = rect.right - bounds.left + 5;
-          const top = rect.top - bounds.top - 5;
-          const bottom = rect.bottom - bounds.top + 5;
-          return (sourceX > left && sourceX < right && sourceY < bottom && middleY > top) ||
-            (targetX > left && targetX < right && middleY < bottom && targetY > top) ||
-            (middleY > top && middleY < bottom &&
-              Math.min(sourceX, targetX) < right && Math.max(sourceX, targetX) > left);
-        });
-        if (crossesCard) {
-          const railX = bounds.width - 4 - (index % 5) * 3;
-          const sourceRight = source.right - bounds.left + 3;
-          const targetRight = target.right - bounds.left + 7;
-          const exitY = source.bottom - bounds.top - 18;
-          const entryY = target.top - bounds.top + 24;
-          return `M ${sourceRight} ${exitY} H ${railX} V ${entryY} H ${targetRight}`;
-        }
-        return `M ${sourceX} ${sourceY} V ${middleY} H ${targetX} V ${targetY}`;
+        const source = cards.get(sourceAgentId), target = cards.get(targetAgentId);
+        if (!source || !target) return { path: "", start: { x: 0, y: 0 }, end: { x: 0, y: 0 } };
+        const start = { x: port(sourceAgentId, targetAgentId, true), y: source.bottom + 5 };
+        const end = { x: port(targetAgentId, sourceAgentId, false), y: target.top - 7 };
+        const lead = { x: start.x, y: start.y + 10 };
+        const approach = { x: end.x, y: end.y - 10 };
+        const route = routeWorkflowConnection(lead, approach, obstacles, bounds.width - 4, 12 + (index % 3) * 6);
+        return { path: route.length ? roundedWorkflowPath([start, ...route, end]) : "", start, end };
       });
       setGeometry({ width: Math.max(1, bounds.width), height: Math.max(1, bounds.height), paths });
     };
     update();
-    const observer = new ResizeObserver(update);
+    let frame = 0;
+    const scheduleUpdate = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
+    const observer = new ResizeObserver(scheduleUpdate);
     observer.observe(workflow);
-    for (const step of steps) observer.observe(step);
-    return () => observer.disconnect();
+    for (const step of steps) {
+      observer.observe(step);
+      observer.observe(step.querySelector<HTMLElement>(".agent-card")!);
+    }
+    window.addEventListener("resize", scheduleUpdate);
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); window.removeEventListener("resize", scheduleUpdate); };
   }, [edgeSignature]);
 
   return <svg ref={canvasRef} className="agent-project__connections" aria-hidden="true"
     viewBox={`0 0 ${geometry.width} ${geometry.height}`} preserveAspectRatio="none">
-    <defs>{WORKFLOW_CONNECTION_STATUSES.map((status) => <g key={status}>
-      <marker id={`${markerId}-${status}`} className={`agent-project__connection--${status}`}
-        viewBox="0 0 10 10" refX="8" refY="5" markerUnits="userSpaceOnUse"
-        markerWidth="9" markerHeight="9" orient="auto-start-reverse">
-        <path d="M 1 1 L 8 5 L 1 9" />
+    <defs>{WORKFLOW_CONNECTION_STATUSES.map((status) =>
+      <marker key={status} id={`${markerId}-${status}`} className={`agent-project__connection--${status}`}
+        viewBox="0 0 12 12" refX="10" refY="6" markerUnits="userSpaceOnUse"
+        markerWidth="12" markerHeight="12" orient="auto">
+        <path d="M 2 2 L 10 6 L 2 10 Z" />
       </marker>
-      <marker id={`${markerId}-${status}-multiple`} className={`agent-project__connection--${status}`}
-        viewBox="0 0 16 16" refX="14" refY="8" markerUnits="userSpaceOnUse"
-        markerWidth="19" markerHeight="19" orient="auto-start-reverse">
-        <path d="M 1 8 H 5 M 5 8 L 9 3 H 14 M 12 1 L 14 3 L 12 5 M 5 8 H 14 M 12 6 L 14 8 L 12 10 M 5 8 L 9 13 H 14 M 12 11 L 14 13 L 12 15" />
-      </marker>
-    </g>)}</defs>
+    )}</defs>
     {edges.map((edge, index) => {
       const status = edge.status ?? "pending";
       const hasMultipleInstances = Number.isFinite(edge.instanceCount) && (edge.instanceCount ?? 0) > 1;
@@ -92,8 +93,27 @@ export function WorkflowConnections({ edges }: { edges: WorkflowConnection[] }) 
         data-workflow-source={edge.sourceAgentId} data-workflow-target={edge.targetAgentId}
         data-workflow-status={status}
         data-workflow-instances={hasMultipleInstances ? edge.instanceCount : undefined}
-        d={geometry.paths[index] ?? ""}
-        markerEnd={`url(#${markerId}-${status}${hasMultipleInstances ? "-multiple" : ""})`} />;
+        d={geometry.paths[index]?.path ?? ""}
+        markerEnd={`url(#${markerId}-${status})`} />;
+    })}
+    {edges.map((edge, index) => {
+      const route = geometry.paths[index];
+      if (!route?.path) return null;
+      // A join has one destination count; put its badge beside the rightmost
+      // incoming port instead of repeating overlapping badges on every edge.
+      const multiple = Number.isFinite(edge.instanceCount) && (edge.instanceCount ?? 0) > 1 &&
+        edge.status !== "inactive" && !edges.some((other, otherIndex) =>
+          other.targetAgentId === edge.targetAgentId && other.status !== "inactive" &&
+          (geometry.paths[otherIndex]?.end.x ?? -Infinity) > route.end.x);
+      return <g key={`port-${getWorkflowEdgeKey(edge.sourceAgentId, edge.targetAgentId)}`}
+        className={`agent-project__connection--${edge.status ?? "pending"}`}>
+        <circle className="agent-project__connection-port" cx={route.start.x} cy={route.start.y} r="3" />
+        {multiple && <g className="agent-project__connection-count"
+          transform={`translate(${route.end.x + 14}, ${route.end.y - 16})`}>
+          <rect x="-2" y="-10" width={Math.max(28, String(edge.instanceCount).length * 8 + 18)} height="20" rx="10" />
+          <text x="6" y="0" dominantBaseline="central">×{edge.instanceCount}</text>
+        </g>}
+      </g>;
     })}
   </svg>;
 }

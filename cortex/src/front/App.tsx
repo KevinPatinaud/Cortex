@@ -135,6 +135,14 @@ export function App() {
         isEditing={isEditing}
         projectActivity={projectActivity}
         onBeforeProjectChange={confirmProjectChange}
+        onProjectDeleted={(projectId) => {
+          clearProjectActivity(projectId);
+          setDeletedProject({ id: projectId });
+          if (selection?.project.id === projectId) {
+            setIsEditing(false);
+            setSelection(null);
+          }
+        }}
         creationRequest={creationRequest}
         onProjectLoaded={(
           project,

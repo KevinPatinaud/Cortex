@@ -1,4 +1,5 @@
 import { requestBlob, requestJson } from "./apiClient.ts";
+import type { WorkflowInstanceState, WorkflowWaitingThread } from "../../shared/WorkflowWait.ts";
 import type { ProjectReviewProposal } from "../../shared/ProjectReviewProposal.ts";
 import type {
   McpConnectionEngine,
@@ -61,7 +62,7 @@ export interface AgentDefinition {
   nextAgentIds: string[];
   inputMode: "separate" | "aggregate";
   hasSession: boolean;
-  executionStatus: "idle" | "running" | "failed" | "cancelled";
+  executionStatus: "idle" | "running" | "failed" | "cancelled" | "waiting";
   executionError?: string;
   executionStartedAt?: string;
   executionLastActivityAt?: string;
@@ -74,7 +75,7 @@ export interface AgentDefinition {
 }
 
 export interface AgentConversationMessage {
-  role: "user" | "agent";
+  role: "user" | "agent" | "event";
   content: string;
 }
 
@@ -89,6 +90,8 @@ export interface ProjectInstructions {
 }
 
 export interface AgentProject {
+  workflowInstance?: WorkflowInstanceState;
+  workflowWaits?: WorkflowWaitingThread[];
   projectId: string;
   workflowResumable: boolean;
   workflowParameterValues: WorkflowParameterValues;
@@ -124,7 +127,7 @@ export interface WorkflowSchedule {
   nextRunAt: string | null;
   running: boolean;
   lastRunAt: string | null;
-  lastRunStatus: "succeeded" | "failed" | "skipped" | "cancelled" | "interrupted" | null;
+  lastRunStatus: "waiting" | "succeeded" | "failed" | "skipped" | "cancelled" | "interrupted" | null;
   lastRunError: string | null;
   parameterValues: WorkflowParameterValues;
 }

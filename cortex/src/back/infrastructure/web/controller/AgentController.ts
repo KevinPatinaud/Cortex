@@ -118,6 +118,15 @@ export function createAgentController(
     }, agentErrorMappings.runAgent)
   );
 
+  router.post("/projects/:projectId/workflow/run", asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+    const body = request.body as { parameterValues?: unknown } | undefined;
+    response.json(await agentUseCase.runWorkflow(request.params.projectId, body?.parameterValues, "manual"));
+  }, agentErrorMappings.runAgent));
+
+  router.post("/projects/:projectId/workflow/events", asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+    response.status(202).json(await agentUseCase.receiveWorkflowEvent(request.params.projectId, request.body));
+  }, agentErrorMappings.runAgent));
+
   router.post(
     "/projects/:projectId/workflow/resume",
     asyncRoute<unknown, { projectId: string }>(async (request, response) => {
@@ -128,6 +137,7 @@ export function createAgentController(
   router.post(
     "/projects/:projectId/workflow/cancel",
     asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+      await agentUseCase.loadProject(request.params.projectId, false);
       const cancelled = agentUseCase.cancelProjectExecution(request.params.projectId);
       response.json({ cancelled });
     }, agentErrorMappings.resetWorkflow)
@@ -136,6 +146,7 @@ export function createAgentController(
   router.post(
     "/projects/:projectId/workflow/reset",
     asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+      await agentUseCase.loadProject(request.params.projectId, false);
       agentUseCase.resetWorkflow(request.params.projectId);
       response.json({ message: "The workflow was reset." });
     }, agentErrorMappings.resetWorkflow)

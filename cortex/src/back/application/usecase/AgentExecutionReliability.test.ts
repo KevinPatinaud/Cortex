@@ -48,6 +48,7 @@ function fixture(
     }
   };
   const project = {
+    getProjects: async () => [{ id: "project", directoryPath: process.cwd() }],
     getProjectContent: async () => content,
     getAgentWorkflowConfiguration: async () => configuration,
     saveAgentWorkflowConfiguration: async (_id: string, value: AgentWorkflowConfiguration) => { configuration = value; }
@@ -407,4 +408,242 @@ test("checkpoint write failures release execution controllers and project locks"
     assert.equal(useCase.hasActiveExecutions(), false);
     assert.equal(useCase.isProjectRunning("project"), false);
   } finally { f.repository.close(); }
+});
+
+function waitingResponse(deadline: string, seconds: number | null = null, state = "Request sent once") {
+  return { sessionId: "hotel-session", answer: JSON.stringify({ status: "waiting", items: [{ content: "Waiting for hotel" }],
+    nextAgentIds: [], isMultiSelectionAllowed: null, isMultiSelectionThreaded: null, notes: null,
+    wait: { reason: "Hotel reply", eventKey: "hotel:booking-1", wakeAfterSeconds: seconds, deadlineAt: deadline, state } }) };
+}
+
+test("durable wait persists, releases independent branches, deduplicates events and resumes the same audit run", async () => {
+  const calls: string[] = [];
+  const deadline = new Date(Date.now() + 3600_000).toISOString();
+  const f = fixture({ hotel: ["summary"], independent: [], summary: [] }, async (name, prompt) => {
+    calls.push(name);
+    if (name === "hotel" && !prompt.includes("Cortex durable workflow wake")) return waitingResponse(deadline);
+    if (name === "hotel") {
+      assert.match(prompt, /Request sent once/);
+      assert.match(prompt, /CONFIRMED H123/);
+    }
+    return response([name === "hotel" ? "Booking H123 confirmed" : name], name === "hotel" ? ["summary"] : []);
+  });
+  const first = f.createUseCase();
+  const start = await first.runWorkflow("project");
+  assert.deepEqual(calls.sort(), ["hotel", "independent"]);
+  const waiting = await first.loadProject("project");
+  assert.equal(waiting.workflowInstance?.status, "waiting");
+  assert.equal(first.isProjectRunning("project"), false);
+  assert.equal(f.repository.getRun("project", start.auditRunId!)?.status, "waiting");
+  const instanceId = waiting.workflowInstance!.id;
+  const resumed = f.createUseCase(); // New runtime, no in-memory state.
+  await resumed.loadProject("project");
+  const event = { instanceId, id: "message-1", key: "hotel:booking-1", payload: "CONFIRMED H123" };
+  assert.deepEqual(await resumed.receiveWorkflowEvent("project", event), { accepted: true });
+  assert.deepEqual(await resumed.receiveWorkflowEvent("project", event), { accepted: false });
+  await assert.rejects(resumed.receiveWorkflowEvent("project", { ...event, payload: "different" }), /different content/);
+  await Promise.all([resumed.wakeWaitingWorkflows(), resumed.wakeWaitingWorkflows()]);
+  const complete = await resumed.loadProject("project");
+  assert.equal(complete.workflowInstance?.id, instanceId);
+  assert.equal(complete.workflowInstance?.status, "completed");
+  assert.equal(complete.workflowWaits?.length, 0);
+  assert.equal(calls.filter((name) => name === "hotel").length, 2);
+  assert.equal(calls.filter((name) => name === "independent").length, 1);
+  assert.equal(calls.filter((name) => name === "summary").length, 1);
+  assert.equal(f.repository.listRuns("project", 20, 0).total, 1);
+  assert.equal(f.repository.getRun("project", start.auditRunId!)?.status, "succeeded");
+  assert.deepEqual(await resumed.receiveWorkflowEvent("project", event), { accepted: false });
+  f.repository.close();
+});
+
+test("timer wakes use durable state, preserve the deadline and do not repeat the first step", async () => {
+  const deadline = new Date(Date.now() + 3600_000).toISOString();
+  let calls = 0;
+  const f = fixture({ hotel: [] }, async (_name, prompt) => {
+    calls++;
+    if (calls === 1) return waitingResponse(deadline, 60);
+    assert.match(prompt, /"type":"timer"/);
+    return waitingResponse(deadline, 120, "One reminder sent");
+  });
+  const useCase = f.createUseCase();
+  await useCase.runWorkflow("project");
+  await useCase.wakeWaitingWorkflows(new Date(Date.now() + 30_000));
+  assert.equal(calls, 1);
+  await useCase.wakeWaitingWorkflows(new Date(Date.now() + 61_000));
+  assert.equal(calls, 2);
+  const project = await useCase.loadProject("project");
+  assert.equal(project.workflowInstance?.status, "waiting");
+  assert.equal(project.workflowWaits?.[0].state, "One reminder sent");
+  assert.equal(project.workflowWaits?.[0].deadlineAt, deadline);
+  f.repository.close();
+});
+
+test("deadline wakes conclude without claiming that silence means unavailability", async () => {
+  const deadline = new Date(Date.now() + 60_000).toISOString();
+  let calls = 0;
+  const f = fixture({ hotel: [] }, async (_name, prompt) => {
+    if (++calls === 1) return waitingResponse(deadline);
+    assert.match(prompt, /"type":"deadline"/);
+    return response(["No reply before deadline; availability unknown."], []);
+  });
+  const useCase = f.createUseCase();
+  await useCase.runWorkflow("project");
+  await useCase.wakeWaitingWorkflows(new Date(Date.now() + 61_000));
+  assert.equal((await useCase.loadProject("project")).workflowInstance?.status, "completed");
+  assert.equal(calls, 2);
+  f.repository.close();
+});
+
+test("cancelled waits never wake; reset creates a different instance and rejects stale events", async () => {
+  let calls = 0;
+  const deadline = new Date(Date.now() + 3600_000).toISOString();
+  const f = fixture({ hotel: [] }, async () => { calls++; return waitingResponse(deadline, 1); });
+  const useCase = f.createUseCase();
+  await useCase.runWorkflow("project");
+  const instanceId = (await useCase.loadProject("project")).workflowInstance!.id;
+  assert.equal(useCase.cancelProjectExecution("project"), true);
+  await useCase.wakeWaitingWorkflows(new Date(Date.now() + 5000));
+  assert.equal(calls, 1);
+  await assert.rejects(useCase.receiveWorkflowEvent("project", { instanceId, id: "old", key: "hotel:booking-1", payload: "late" }), /no longer accepting/);
+  useCase.resetWorkflow("project");
+  await useCase.runWorkflow("project");
+  assert.notEqual((await useCase.loadProject("project")).workflowInstance!.id, instanceId);
+  await assert.rejects(useCase.receiveWorkflowEvent("project", { instanceId, id: "old", key: "hotel:booking-1", payload: "late" }), /current workflow instance/);
+  f.repository.close();
+});
+
+test("fresh starts and manual reruns cannot replace a sleeping request", async () => {
+  const f = fixture({ hotel: [] }, async () => waitingResponse(new Date(Date.now() + 3600_000).toISOString()));
+  const useCase = f.createUseCase();
+  await useCase.runWorkflow("project");
+  await assert.rejects(useCase.runWorkflow("project"), /waiting/);
+  await assert.rejects(useCase.runAgent("project", { agentId: agentId("hotel") }), /waiting/);
+  assert.equal((await useCase.loadProject("project")).workflowInstance?.status, "waiting");
+  f.repository.close();
+});
+
+test("manual agent execution can suspend durably and resume in the server", async () => {
+  let calls = 0;
+  const f = fixture({ hotel: ["summary"], summary: [] }, async (name) => {
+    if (name === "hotel" && ++calls === 1) return waitingResponse(new Date(Date.now() + 3600_000).toISOString(), 1);
+    return response([name], name === "hotel" ? ["summary"] : []);
+  });
+  const useCase = f.createUseCase();
+  await useCase.loadProject("project");
+  const first = await useCase.runAgent("project", { agentId: agentId("hotel") });
+  await useCase.wakeWaitingWorkflows(new Date(Date.now() + 2000));
+  assert.equal((await useCase.loadProject("project")).workflowInstance?.status, "completed");
+  assert.equal(f.repository.listRuns("project", 20, 0).total, 1);
+  assert.equal(f.repository.getRun("project", first.auditRunId!)?.status, "succeeded");
+  f.repository.close();
+});
+
+
+test("a sleeping checkpoint and its inbox survive closing and reopening SQLite", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-wait-restart-"));
+  const databaseFile = path.join(directory, "audit.sqlite");
+  let repository = new SqliteWorkflowAuditRepository(databaseFile);
+  t.after(async () => { repository.close(); await rm(directory, { recursive: true, force: true }); });
+  let calls = 0;
+  const f = fixture({ hotel: [] }, async () => ++calls === 1 ? waitingResponse(new Date(Date.now() + 3600_000).toISOString()) : response(["Confirmed"], []), {}, repository);
+  const first = f.createUseCase();
+  await first.runWorkflow("project");
+  const before = await first.loadProject("project");
+  await first.receiveWorkflowEvent("project", { instanceId: before.workflowInstance!.id, id: "mail-on-disk", key: "hotel:booking-1", payload: "confirmed" });
+  repository.close();
+  repository = new SqliteWorkflowAuditRepository(databaseFile);
+  const second = f.createUseCase(repository);
+  assert.equal(second.hasWorkflowWaits("project"), true, "schedules see persisted waits before loading projects");
+  await second.wakeWaitingWorkflows();
+  const after = await second.loadProject("project");
+  assert.equal(after.workflowInstance?.id, before.workflowInstance?.id);
+  assert.equal(after.workflowInstance?.status, "completed");
+  assert.equal(calls, 2);
+});
+
+test("a failed wake retains its event for explicit retry and does not automatically repeat effects", async (t) => {
+  t.mock.method(console, "error", () => undefined);
+  let calls = 0;
+  const f = fixture({ hotel: [] }, async (_name, prompt) => {
+    calls++;
+    if (calls === 1) return waitingResponse(new Date(Date.now() + 3600_000).toISOString());
+    assert.match(prompt, /mail-to-retry/);
+    if (calls === 2) throw new Error("Temporary engine error");
+    return response(["Confirmed after recovery"], []);
+  });
+  const useCase = f.createUseCase();
+  await useCase.runWorkflow("project");
+  const project = await useCase.loadProject("project");
+  await useCase.receiveWorkflowEvent("project", { instanceId: project.workflowInstance!.id, id: "mail-to-retry", key: "hotel:booking-1", payload: "confirmed" });
+  await useCase.wakeWaitingWorkflows();
+  const failed = await useCase.loadProject("project");
+  assert.equal(failed.workflowInstance?.status, "failed");
+  assert.equal(failed.workflowResumable, true);
+  await useCase.wakeWaitingWorkflows();
+  assert.equal(calls, 2);
+  await useCase.resumeWorkflow("project");
+  assert.equal(calls, 3);
+  assert.equal((await useCase.loadProject("project")).workflowInstance?.status, "completed");
+  f.repository.close();
+});
+
+test("the execution budget spans every durable wake", async (t) => {
+  t.mock.method(console, "error", () => undefined);
+  let calls = 0;
+  const deadline = new Date(Date.now() + 3600_000).toISOString();
+  const f = fixture({ hotel: [] }, async () => { calls++; return waitingResponse(deadline, 1); }, { maxWorkflowExecutions: 2 });
+  const useCase = f.createUseCase();
+  await useCase.runWorkflow("project");
+  await useCase.wakeWaitingWorkflows(new Date(Date.now() + 2000));
+  await useCase.wakeWaitingWorkflows(new Date(Date.now() + 4000));
+  assert.equal(calls, 2);
+  assert.equal((await useCase.loadProject("project")).workflowInstance?.status, "failed");
+  f.repository.close();
+});
+
+
+test("a scheduled request reports suspension and completes its original cron occurrence after waking", async () => {
+  const scheduledAt = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
+  let calls = 0;
+  const f = fixture({ hotel: [] }, async () => ++calls === 1 ? waitingResponse(new Date(Date.now() + 3600_000).toISOString(), 1) : response(["confirmed"], []));
+  const useCase = f.createUseCase();
+  f.repository.claimScheduledOccurrence("project", scheduledAt);
+  const result = await useCase.runWorkflow("project", {}, "scheduled", { scheduledAt });
+  assert.equal(result.status, "waiting");
+  f.repository.completeScheduledOccurrence("project", scheduledAt, result.status);
+  assert.equal(f.repository.getLatestScheduledOccurrence("project")?.status, "waiting");
+  await useCase.wakeWaitingWorkflows(new Date(Date.now() + 2000));
+  assert.equal(f.repository.getLatestScheduledOccurrence("project")?.status, "succeeded");
+  f.repository.close();
+});
+
+
+test("separate waiting threads consume only their own replies and join after both are complete", async () => {
+  const deadline = new Date(Date.now() + 3600_000).toISOString();
+  const counts = new Map<string, number>();
+  let summaries = 0;
+  const f = fixture({ source: ["hotel"], hotel: ["summary"], summary: [] }, async (name, prompt) => {
+    if (name === "source") return response(["ROOM_A", "ROOM_B"], ["hotel"], true);
+    if (name === "summary") { summaries++; assert.match(prompt, /DONE_A/); assert.match(prompt, /DONE_B/); return response(["Both done"], []); }
+    const room = prompt.includes("ROOM_A") ? "A" : "B";
+    counts.set(room, (counts.get(room) ?? 0) + 1);
+    if (prompt.includes("Cortex durable workflow wake")) return response([`DONE_${room}`], ["summary"]);
+    const result = waitingResponse(deadline);
+    const value = JSON.parse(result.answer); value.wait.eventKey = `room:${room}`; value.wait.state = `ROOM_${room}`;
+    return { ...result, answer: JSON.stringify(value) };
+  }, {}, undefined, [], { summary: "aggregate" });
+  const useCase = f.createUseCase();
+  await useCase.runWorkflow("project");
+  const project = await useCase.loadProject("project");
+  assert.equal(project.workflowWaits?.length, 2);
+  await useCase.receiveWorkflowEvent("project", { instanceId: project.workflowInstance!.id, id: "A", key: "room:A", payload: "confirmed A" });
+  await useCase.wakeWaitingWorkflows();
+  assert.equal(summaries, 0);
+  assert.equal((await useCase.loadProject("project")).workflowWaits?.length, 1);
+  await useCase.receiveWorkflowEvent("project", { instanceId: project.workflowInstance!.id, id: "B", key: "room:B", payload: "confirmed B" });
+  await useCase.wakeWaitingWorkflows();
+  assert.equal(summaries, 1);
+  assert.deepEqual([...counts.values()], [2, 2]);
+  assert.equal((await useCase.loadProject("project")).workflowInstance?.status, "completed");
+  f.repository.close();
 });

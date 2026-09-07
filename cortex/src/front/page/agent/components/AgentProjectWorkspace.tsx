@@ -36,10 +36,11 @@ import { ConfirmationDialog } from "../../project_manager/components/Confirmatio
 import { MarkdownContent } from "./MarkdownContent.tsx";
 import { AgentCard } from "./AgentCard.tsx";
 import { HandoffToggle } from "./HandoffToggle.tsx";
+import { WorkflowWaitPanel } from "./WorkflowWaitPanel.tsx";
 import { WorkflowParametersPanel } from "./WorkflowParametersPanel.tsx";
 import { WorkflowFeedbackLoop, type WorkflowFeedbackLoopPlacement } from "./WorkflowFeedbackLoop.tsx";
 import { WorkflowConnections } from "./WorkflowConnections.tsx";
-import { WorkflowRoutingSummary } from "./WorkflowSemantics.tsx";
+import { WorkflowConnectionLegend, WorkflowRoutingSummary } from "./WorkflowSemantics.tsx";
 import { getWorkflowConnectionStatus, getWorkflowInstancePresentation, getWorkflowRoutingPresentation } from "./workflowPresentation.ts";
 import {
   findLastAgentResponses,
@@ -381,7 +382,7 @@ export function AgentProjectWorkspace({
 
   useEffect(() => {
     if (!content || (!locallyRunning.size && !content.agents.some(
-      (agent) => agent.executionStatus === "running"
+      (agent) => agent.executionStatus === "running" || agent.executionStatus === "waiting"
     ))) {
       return;
     }
@@ -417,7 +418,7 @@ export function AgentProjectWorkspace({
       isActive = false;
       window.clearInterval(refreshTimer);
     };
-  }, [content?.projectId, Boolean(locallyRunning.size || content?.agents.some((agent) => agent.executionStatus === "running")), onContentRefresh]);
+  }, [content?.projectId, Boolean(locallyRunning.size || content?.agents.some((agent) => agent.executionStatus === "running" || agent.executionStatus === "waiting")), onContentRefresh]);
 
   useEffect(() => {
     if (!content) {
@@ -556,7 +557,7 @@ export function AgentProjectWorkspace({
       if (
         sourceLevelIndex === undefined ||
         targetLevelIndex === undefined ||
-        sourceLevelIndex <= targetLevelIndex
+        sourceLevelIndex < targetLevelIndex
       ) {
         return [];
       }
@@ -1031,7 +1032,7 @@ export function AgentProjectWorkspace({
                 {t("workspace.startRoots", { count: unstartedRootAgents.length })}
               </button>
             )}
-            {isAnyRunning && <button type="button" className="agent-project__stop-button"
+            {(isAnyRunning || content.workflowInstance?.status === "waiting") && <button type="button" className="agent-project__stop-button"
               disabled={isStopping} aria-busy={isStopping}
               title={t("execution.stopHelp")} onClick={() => void handleStop()}>
               {isStopping ? <LoaderCircle aria-hidden="true" className="spin" size={15} /> : <Square aria-hidden="true" size={15} />}
@@ -1167,6 +1168,7 @@ export function AgentProjectWorkspace({
             </p>
           ) : (
             <>
+              <WorkflowWaitPanel key={projectId} project={content} onRefresh={onContentRefresh} />
               {workflowParameters.length > 0 && (
                 <WorkflowParametersPanel
                   key={projectId}
@@ -1184,6 +1186,8 @@ export function AgentProjectWorkspace({
               {rootAgentCount > 1 && <p className="workflow-roots-summary">
                 {t("workflow.roots", { count: rootAgentCount })}
               </p>}
+              {(workflowForwardEdges.length > 0 || workflowFeedbackLoopPlacements.length > 0) && <WorkflowConnectionLegend
+                hasFeedback={workflowFeedbackLoopPlacements.length > 0} />}
               <div
                 className={`agent-project__workflow agent-project__workflow--graph${
                   workflowFeedbackLoopPlacements.length > 0
@@ -1305,7 +1309,7 @@ export function AgentProjectWorkspace({
                                 workflowFeedbackEdgeKeys
                               ).length > 0}
                               shouldAutoRun={
-                                !isResuming && !isStopping && startedInBrowserByProject[projectId] === true &&
+                                !content.workflowInstance?.automatic && !isResuming && !isStopping && startedInBrowserByProject[projectId] === true &&
                                 agent.executionStatus !== "failed" && agent.executionStatus !== "cancelled" &&
                                 (upstreamAgents.length > 0 || releasedAgentIds.has(agent.id)) &&
                                 !launchedAgentIds.has(agent.id) &&
@@ -1324,7 +1328,8 @@ export function AgentProjectWorkspace({
                               isInvalidated={
                                 agentResultStates[agent.id]?.isInvalidated ?? false
                               }
-                              executionLockMessage={isStopping
+                              executionLockMessage={content.workflowInstance?.automatic && content.workflowInstance.status === "running"
+                                ? t("execution.resuming") : isStopping
                                 ? t("execution.stopping")
                                 : isResuming ? t("execution.resuming")
                                 : isResetting ? t("project.resetting") : null}

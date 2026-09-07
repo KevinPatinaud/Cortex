@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import type { WorkflowEvent } from "../../../shared/WorkflowWait.ts";
 import type {
   WorkflowAuditAgentExecution,
   WorkflowAuditExecutionInput,
@@ -365,6 +366,29 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
     `).run(projectId, fingerprint, JSON.stringify(state));
   }
 
+  listCheckpointProjectIds(): string[] {
+    return (this.database.prepare("SELECT project_id FROM workflow_checkpoints").all() as Array<{ project_id: string }>).map((row) => row.project_id);
+  }
+
+  receiveWorkflowEvent(instanceId: string, event: WorkflowEvent): boolean {
+    const existing = this.database.prepare("SELECT event_key, payload FROM workflow_inbox WHERE instance_id = ? AND id = ?").get(instanceId, event.id) as { event_key: string; payload: string } | undefined;
+    if (existing) {
+      if (existing.event_key !== event.key || existing.payload !== event.payload) throw new Error("This event ID was already used with different content.");
+      return false;
+    }
+    return this.database.prepare("INSERT OR IGNORE INTO workflow_inbox(instance_id, id, event_key, payload, received_at) VALUES (?, ?, ?, ?, ?)")
+      .run(instanceId, event.id, event.key, event.payload, event.receivedAt).changes > 0;
+  }
+
+  listWorkflowEvents(instanceId: string): WorkflowEvent[] {
+    return this.database.prepare("SELECT id, event_key AS key, payload, received_at AS receivedAt FROM workflow_inbox WHERE instance_id = ? ORDER BY rowid").all(instanceId) as WorkflowEvent[];
+  }
+
+  setRunActiveStatus(runId: string, status: "running" | "waiting"): void {
+    this.database.prepare("UPDATE workflow_runs SET status = ?, finished_at = NULL, duration_ms = NULL, error = NULL WHERE id = ?").run(status, runId);
+    this.addEvent(runId, null, `run.${status}`);
+  }
+
   getCheckpoint(projectId: string): WorkflowCheckpointRecord | null {
     const row = this.database.prepare(`SELECT fingerprint, state_json FROM workflow_checkpoints WHERE project_id = ?`)
       .get(projectId) as { fingerprint: string; state_json: string } | undefined;
@@ -467,6 +491,14 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
         project_id TEXT PRIMARY KEY,
         fingerprint TEXT NOT NULL,
         state_json TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS workflow_inbox (
+        instance_id TEXT NOT NULL,
+        id TEXT NOT NULL,
+        event_key TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        received_at TEXT NOT NULL,
+        PRIMARY KEY (instance_id, id)
       );
       CREATE TABLE IF NOT EXISTS scheduled_occurrences (
         project_id TEXT NOT NULL,

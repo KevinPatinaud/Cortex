@@ -11,6 +11,7 @@ import {
 } from "./CronExpression.ts";
 
 export type WorkflowScheduleLastRunStatus =
+  | "waiting"
   | "succeeded"
   | "failed"
   | "cancelled"
@@ -173,7 +174,7 @@ export class WorkflowScheduler {
       this.handledMinuteKeys.set(projectId, minuteKey);
       const runtime = this.getRuntimeState(projectId);
 
-      if (runtime.running || this.agentUseCase.isProjectRunning(projectId)) {
+      if (runtime.running || this.agentUseCase.isProjectRunning(projectId) || this.agentUseCase.hasWorkflowWaits?.(projectId)) {
         const reason = "The previous workflow execution is still running.";
         runtime.lastRunAt = new Date(date);
         runtime.lastRunStatus = "skipped";
@@ -217,9 +218,10 @@ export class WorkflowScheduler {
         return;
       }
 
-      await this.agentUseCase.runWorkflow(projectId, parameterValues);
-      this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "succeeded");
-      if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) runtime.lastRunStatus = "succeeded";
+      const result = await this.agentUseCase.runWorkflow(projectId, parameterValues, "scheduled", { scheduledAt });
+      const status = result?.status === "waiting" ? "waiting" : "succeeded";
+      this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, status);
+      if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) runtime.lastRunStatus = status;
     } catch (error) {
       const status = isExecutionCancelled(error) ? "cancelled" : "failed";
       const message = error instanceof Error ? error.message : "The scheduled workflow execution failed.";
@@ -290,6 +292,13 @@ export class WorkflowScheduler {
       this.runtimeStates.set(projectId, state);
     }
 
+    if (!state.running && state.lastRunStatus === "waiting") {
+      const latest = this.workflowAuditService?.getLatestScheduledOccurrence(projectId);
+      if (latest && latest.status !== "running") {
+        state.lastRunStatus = latest.status;
+        state.lastRunError = latest.error;
+      }
+    }
     return state;
   }
 

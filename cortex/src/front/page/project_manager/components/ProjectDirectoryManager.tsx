@@ -9,6 +9,7 @@ import {
 } from "../../../services/agentApi.ts";
 import {
   createProject,
+  deleteProjectDirectory,
   getSavedProjects,
   importProjectArchive,
   importProjectDirectory,
@@ -21,6 +22,8 @@ import { ProjectCreationDialog } from "./ProjectCreationDialog.tsx";
 import { getNavigationIndex, initializeNavigation, updateBrowserUrl } from "../../shared/browserNavigation.ts";
 import { type ProjectActivityStatus } from "./ProjectList.tsx";
 import { ProjectFolderList } from "./ProjectFolderList.tsx";
+import { ConfirmationDialog } from "./ConfirmationDialog.tsx";
+import { removeProjectDraft } from "../../agent/components/projectDraft.ts";
 
 interface ProjectDirectoryManagerProps {
   activeProject: Project | null;
@@ -34,6 +37,7 @@ interface ProjectDirectoryManagerProps {
     requiresInitialSave?: boolean
   ) => void;
   onProjectCleared: () => void;
+  onProjectDeleted: (projectId: string) => void;
   onBeforeProjectChange: () => boolean;
   creationRequest: number;
 }
@@ -72,6 +76,7 @@ export function ProjectDirectoryManager({
   projectActivity,
   onProjectLoaded,
   onProjectCleared,
+  onProjectDeleted,
   onBeforeProjectChange,
   creationRequest
 }: ProjectDirectoryManagerProps) {
@@ -94,6 +99,11 @@ export function ProjectDirectoryManager({
   const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [projectSearch, setProjectSearch] = useState("");
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const deletePendingRef = useRef(false);
+  const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
   const directoryInputRef = useRef<HTMLInputElement>(null);
   const archiveInputRef = useRef<HTMLInputElement>(null);
   const archiveDragDepthRef = useRef(0);
@@ -499,8 +509,30 @@ export function ProjectDirectoryManager({
     (project) => project.id === selectedProjectId
   );
   const isSidebarExpanded = isProjectMenuOpen;
-  const isProjectActionPending = isSelecting || isCreating || isReordering || loadingProjectId !== null;
+  const isProjectActionPending = isSelecting || isCreating || isReordering || isDeleting || loadingProjectId !== null;
   const isImportDisabled = isProjectActionPending || isEditing || isLoadingProjects;
+
+  async function handleProjectDeletion(): Promise<void> {
+    if (!projectToDelete || deletePendingRef.current || isProjectActionPending || isEditing) return;
+    deletePendingRef.current = true;
+    setIsDeleting(true);
+    setDeleteError("");
+    try {
+      await deleteProjectDirectory(projectToDelete.directoryPath);
+      removeProjectDraft(projectToDelete.id);
+      if (failedProject?.id === projectToDelete.id) setFailedProject(null);
+      onProjectDeleted(projectToDelete.id);
+      setProjectToDelete(null);
+      requestAnimationFrame(() => {
+        document.querySelector<HTMLButtonElement>(".project-sidebar__add-button")?.focus();
+      });
+    } catch (cause) {
+      setDeleteError(getErrorMessage(cause, t("common.unexpectedError")));
+    } finally {
+      deletePendingRef.current = false;
+      setIsDeleting(false);
+    }
+  }
 
   return (
     <>
@@ -579,6 +611,11 @@ export function ProjectDirectoryManager({
             isInteractionLocked={isEditing || isProjectActionPending}
             isReorderLocked={Boolean(projectSearch.trim())}
             onSelect={(project) => void handleProjectSelection(project)}
+            onDelete={(project, button) => {
+              deleteButtonRef.current = button;
+              setDeleteError("");
+              setProjectToDelete(project);
+            }}
             onReorder={(nextProjects) => void handleProjectReorder(nextProjects)}
           />}
         </div>
@@ -688,6 +725,26 @@ export function ProjectDirectoryManager({
             <strong>{t("project.loadingName", { name: loadingProjectName })}</strong>
           </div>
         </div>
+      )}
+
+      {projectToDelete && (
+        <ConfirmationDialog
+          variant="delete"
+          title={t("project.deleteTitle")}
+          description={t("project.deleteDescription")}
+          projectName={getProjectName(projectToDelete)}
+          confirmLabel={t("common.delete")}
+          pendingLabel={t("project.deleting")}
+          isPending={isDeleting}
+          error={deleteError || undefined}
+          onCancel={() => {
+            if (deletePendingRef.current) return;
+            setProjectToDelete(null);
+            setDeleteError("");
+            requestAnimationFrame(() => deleteButtonRef.current?.focus());
+          }}
+          onConfirm={() => void handleProjectDeletion()}
+        />
       )}
 
       {isCreationDialogOpen && (

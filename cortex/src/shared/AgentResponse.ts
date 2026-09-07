@@ -1,4 +1,5 @@
-export type AgentResponseStatus = "success" | "partial" | "blocked" | "error";
+import { isWorkflowWaitRequest, type WorkflowWaitRequest } from "./WorkflowWait.ts";
+export type AgentResponseStatus = "success" | "partial" | "blocked" | "error" | "waiting";
 
 export interface AgentResponsePayload {
   status: AgentResponseStatus;
@@ -8,6 +9,7 @@ export interface AgentResponsePayload {
   /** null identifies a response created before conditional routing was added. */
   nextAgentIds: string[] | null;
   notes: string | null;
+  wait?: WorkflowWaitRequest | null;
 }
 
 export function parseAgentResponse(
@@ -19,6 +21,9 @@ export function parseAgentResponse(
     if (
       !isRecord(parsedContent) ||
       !isAgentResponseStatus(parsedContent.status) ||
+      (parsedContent.wait !== undefined && parsedContent.wait !== null && !isWorkflowWaitRequest(parsedContent.wait)) ||
+      (parsedContent.status === "waiting" && (!isWorkflowWaitRequest(parsedContent.wait) || !Array.isArray(parsedContent.nextAgentIds) || parsedContent.nextAgentIds.length > 0)) ||
+      (parsedContent.status !== "waiting" && parsedContent.wait != null) ||
       !Array.isArray(parsedContent.items) ||
       !parsedContent.items.every(
         (item) => isRecord(item) && typeof item.content === "string"
@@ -58,7 +63,8 @@ export function parseAgentResponse(
       nextAgentIds: parsedContent.nextAgentIds === undefined
         ? null
         : parsedContent.nextAgentIds as string[],
-      notes: parsedContent.notes
+      notes: parsedContent.notes,
+      ...(parsedContent.wait !== undefined ? { wait: parsedContent.wait as WorkflowWaitRequest | null } : {})
     };
   } catch {
     return null;
@@ -71,6 +77,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isAgentResponseStatus(value: unknown): value is AgentResponseStatus {
   return value === "success" ||
+    value === "waiting" ||
     value === "partial" ||
     value === "blocked" ||
     value === "error";

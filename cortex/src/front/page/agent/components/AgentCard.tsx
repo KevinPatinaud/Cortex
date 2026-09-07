@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Bot, ChevronDown, GitBranch, LoaderCircle, Play, RotateCcw, Send } from "lucide-react";
+import { Bot, ChevronDown, Clock3, GitBranch, LoaderCircle, Play, RotateCcw, Send } from "lucide-react";
 import { runAgent, type AgentConversationMessage, type AgentConversationThread, type AgentDefinition, type UpstreamAgentResult, type WorkflowParameterValues } from "../../../services/agentApi.ts";
 import { parseAgentResponse, type AgentResponsePayload } from "../../../../shared/AgentResponse.ts";
 import { useTranslation } from "../../../i18n.tsx";
@@ -29,6 +29,14 @@ function ConversationMessageContent({
 }) {
   const { t } = useTranslation();
   const selectionHelpId = useId();
+  if (message.role === "event") {
+    try {
+      const wake = JSON.parse(message.content) as { type: string; at: string; payload?: string };
+      return <div><p>{t(wake.type === "event" ? "wait.received" : wake.type === "deadline" ? "wait.expired" : "wait.timer")}</p>
+        <time dateTime={wake.at}>{new Date(wake.at).toLocaleString()}</time>
+        {wake.payload && <pre>{wake.payload}</pre>}</div>;
+    } catch { return <pre>{message.content}</pre>; }
+  }
   if (message.role === "user") {
     return <pre>{message.content}</pre>;
   }
@@ -133,7 +141,7 @@ function ConversationMessageContent({
           <MarkdownContent content={response.notes} />
         </div>
       )}
-      {response.nextAgentIds !== null && (
+      {response.status !== "waiting" && response.nextAgentIds !== null && (
         <div className="agent-card__conversation-routing">
           <span>{t("agent.selectedBranch")}</span>
           {response.nextAgentIds.length > 0 ? (
@@ -247,7 +255,7 @@ function AgentThreadConversation({
             className={`agent-card__conversation-message agent-card__conversation-message--${message.role}`}
             key={messageIndex}
           >
-            <span>{message.role === "user" ? t("agent.you") : "Agent"}</span>
+            <span>{message.role === "user" ? t("agent.you") : message.role === "event" ? "Cortex" : "Agent"}</span>
             <ConversationMessageContent
               message={message}
               disabled={disabled}
@@ -401,6 +409,12 @@ export function AgentCard({
   const [localStartedAt, setLocalStartedAt] = useState<string>();
   const [isExpanded, setIsExpanded] = useState(!compactCompleted);
   const isRunning = runningThreadId !== null || agent.executionStatus === "running";
+  const isWaiting = agent.executionStatus === "waiting";
+  const isAsynchronous = isWaiting || threads.some((thread) =>
+    thread.conversation.some((message) => message.role === "event" ||
+      (message.role === "agent" && parseAgentResponse(message.content)?.status === "waiting"))
+  );
+  const AgentIcon = isAsynchronous ? Clock3 : Bot;
   const needsRetry = !isRunning && (agent.executionStatus === "failed" || agent.executionStatus === "cancelled");
   const isCompleted = agent.executionStatus === "idle" && hasSession && !isRunning;
   const hideBody = compactCompleted && isCompleted && !isExpanded && !showContinueButton && !error && !executionLockMessage;
@@ -414,7 +428,7 @@ export function AgentCard({
     !prerequisiteMessage &&
     !parameterPrerequisiteMessage;
   const isUnavailable = !canRun;
-  const isDisabled = isUnavailable || isFrozen || Boolean(executionLockMessage);
+  const isDisabled = agent.executionStatus === "waiting" || isUnavailable || isFrozen || Boolean(executionLockMessage);
   const isBlockedByPrerequisite = Boolean(
     prerequisiteMessage || parameterPrerequisiteMessage
   );
@@ -549,16 +563,23 @@ export function AgentCard({
       }${isParallelRunPrepared ? " agent-card--parallel-ready" : ""
       }${isDisabled ? " agent-card--disabled" : ""
       }${isBlockedByPrerequisite ? " agent-card--prerequisite" : ""
-      }${handoffEnabled ? " agent-card--handoff" : ""}`}
+      }${handoffEnabled ? " agent-card--handoff" : ""
+      }${isAsynchronous ? " agent-card--async" : ""
+      }${isWaiting ? " agent-card--waiting" : ""}`}
       aria-label={isParallelRunPrepared
         ? t("agent.parallelAria", { name: agent.name, count: plannedThreadCount })
         : agent.name
       }
     >
       <header className="agent-card__header">
-        <Bot aria-hidden="true" size={22} strokeWidth={1.7} />
+        <AgentIcon aria-hidden="true" size={22} strokeWidth={1.7} />
         <div className="agent-card__identity">
           <h2>{agent.name}</h2>
+          {isAsynchronous && (
+            <span className="agent-card__async-badge" title={t("agent.asyncHelp")}>
+              {t(isWaiting ? "agent.asyncWaiting" : "agent.async")}
+            </span>
+          )}
         </div>
         <div className="agent-card__header-actions">
           <HandoffToggle
@@ -600,6 +621,7 @@ export function AgentCard({
         lastActivityAt={agent.executionLastActivityAt || localStartedAt || agent.executionStartedAt}
         progress={agent.executionProgress}
       />}
+      {agent.executionStatus === "waiting" && <p className="agent-card__run-prerequisite" role="status">{t("execution.status.waiting")}</p>}
       {!hideBody && <>
       <details className="agent-card__prompt">
         <summary>

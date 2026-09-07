@@ -2,6 +2,7 @@ export type WorkflowAuditTrigger = "manual" | "scheduled";
 export type WorkflowAuditRunScope = "workflow" | "agent";
 
 export type WorkflowAuditRunStatus =
+  | "waiting"
   | "running"
   | "succeeded"
   | "failed"

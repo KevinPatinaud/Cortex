@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from "react";
-import { RotateCcw, Trash2, X } from "lucide-react";
+import { RotateCcw, Trash2, TriangleAlert, X } from "lucide-react";
 import { useTranslation } from "../../../i18n.tsx";
 import { trapDialogFocus } from "../../shared/dialogFocus.ts";
 
@@ -8,6 +8,7 @@ interface ConfirmationDialogProps {
   title: string;
   description: string;
   projectName: string;
+  subjectLabel?: string;
   confirmLabel: string;
   pendingLabel: string;
   isPending: boolean;
@@ -21,6 +22,7 @@ export function ConfirmationDialog({
   title,
   description,
   projectName,
+  subjectLabel,
   confirmLabel,
   pendingLabel,
   isPending,
@@ -100,9 +102,12 @@ export function ConfirmationDialog({
         </header>
 
         <div className="confirmation-dialog__body">
-          <p id={descriptionId}>{description}</p>
+          <p id={descriptionId} className={variant === "delete" ? "confirmation-dialog__warning" : undefined}>
+            {variant === "delete" && <TriangleAlert aria-hidden="true" size={20} />}
+            <span>{description}</span>
+          </p>
           <div className="confirmation-dialog__project">
-            <span>{t("dialog.affectedProject")}</span>
+            <span>{subjectLabel ?? t("dialog.affectedProject")}</span>
             <strong>{projectName}</strong>
           </div>
           {error && (
