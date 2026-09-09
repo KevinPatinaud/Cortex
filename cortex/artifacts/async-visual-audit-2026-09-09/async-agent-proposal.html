@@ -1,0 +1,78 @@
+<div id="cortex-async-proposal" aria-label="Proposition de présentation des dossiers asynchrones">
+  <style>
+    #cortex-async-proposal { color-scheme: light dark; --cx-bg: light-dark(#fff,#122036); --cx-text: light-dark(#152e50,#e4edfa); --cx-muted: light-dark(#52647c,#aebed4); --cx-line: light-dark(#dce4ef,#35445b); --cx-soft: light-dark(#f6f8fc,#19283e); --cx-violet: light-dark(#693caf,#c4a5fb); --cx-red: light-dark(#a32643,#ffb0bf); --cx-red-bg: light-dark(#fff0f3,#412334); --cx-amber: light-dark(#81550a,#ebc67a); --cx-amber-bg: light-dark(#fff6df,#382f1e); font-family: Inter,Segoe UI,sans-serif; color: var(--cx-text); }
+    #cortex-async-proposal * { box-sizing: border-box; }
+    #cortex-async-proposal .cx-source { color: var(--cx-muted); padding: 0 0 12px 16px; font-size: 13px; }
+    #cortex-async-proposal .cx-module { background: var(--cx-bg); border: 1px solid var(--cx-line); border-top: 3px solid var(--cx-violet); border-radius: 12px; overflow: hidden; }
+    #cortex-async-proposal .cx-head { padding: 20px; }
+    #cortex-async-proposal .cx-title { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+    #cortex-async-proposal h2 { font-size: 21px; margin: 0; line-height: 1.3; font-weight: 600; }
+    #cortex-async-proposal .cx-mode { color: var(--cx-violet); font-size: 12px; }
+    #cortex-async-proposal .cx-description { color: var(--cx-muted); font-size: 14px; line-height: 1.5; margin: 10px 0 0; }
+    #cortex-async-proposal .cx-config { font-size: 13px; color: var(--cx-muted); margin-top: 12px; }
+    #cortex-async-proposal summary { cursor: pointer; padding: 5px 0; }
+    #cortex-async-proposal .cx-summary { background: var(--cx-soft); padding: 12px 20px; display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; border-block: 1px solid var(--cx-line); }
+    #cortex-async-proposal .cx-attention { color: var(--cx-red); }
+    #cortex-async-proposal .cx-wait { color: var(--cx-amber); }
+    #cortex-async-proposal .cx-row { padding: var(--cx-row-pad,16px) 20px; border-bottom: 1px solid var(--cx-line); }
+    #cortex-async-proposal .cx-row:last-child { border-bottom: 0; }
+    #cortex-async-proposal .cx-row-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+    #cortex-async-proposal h3 { font-size: 15px; font-weight: 600; margin: 0; line-height: 1.5; }
+    #cortex-async-proposal .cx-meta { margin-top: 3px; font-size: 12px; color: var(--cx-muted); overflow-wrap: anywhere; }
+    #cortex-async-proposal .cx-badge { flex-shrink: 0; font-size: 12px; border-radius: 5px; padding: 4px 8px; background: var(--cx-amber-bg); color: var(--cx-amber); }
+    #cortex-async-proposal .cx-badge.cx-failed { background: var(--cx-red-bg); color: var(--cx-red); }
+    #cortex-async-proposal .cx-row-bottom { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+    #cortex-async-proposal .cx-reason { margin: 0; color: var(--cx-muted); font-size: 13px; line-height: 1.5; }
+    #cortex-async-proposal button { font: inherit; font-size: 13px; color: var(--cx-text); background: var(--cx-bg); border: 1px solid var(--cx-line); border-radius: 6px; padding: 8px 10px; min-height: 36px; cursor: pointer; flex-shrink: 0; }
+    #cortex-async-proposal button:hover { background: var(--cx-soft); }
+    #cortex-async-proposal button:focus-visible, #cortex-async-proposal summary:focus-visible { outline: 2px solid var(--cx-violet); outline-offset: 3px; }
+    #cortex-async-proposal .cx-detail { margin-top: 12px; padding: 12px; background: var(--cx-soft); border-radius: 6px; color: var(--cx-muted); font-size: 13px; line-height: 1.6; }
+    #cortex-async-proposal .cx-detail[hidden] { display: none; }
+    #cortex-async-proposal code { overflow-wrap: anywhere; }
+    @media(max-width:480px) { #cortex-async-proposal .cx-head { padding: 16px; } #cortex-async-proposal .cx-row { padding-inline:16px; } #cortex-async-proposal .cx-row-top,#cortex-async-proposal .cx-row-bottom { flex-wrap:wrap; } #cortex-async-proposal button { min-height:44px; } }
+  </style>
+  <div class="cx-source">Sélection des biens → Un dossier par résultat retenu</div>
+  <section class="cx-module">
+    <header class="cx-head">
+      <div class="cx-title"><h2>Négociation par mail</h2><span class="cx-mode">⑂ Asynchrone</span></div>
+      <p class="cx-description">Contacte les agences et négocie dans chaque dossier indépendant.</p>
+      <details class="cx-config"><summary>Instructions et configuration</summary><p>Modèle : gpt-5.5 · Raisonnement : medium</p><p>Contacte l’agence dans les limites autorisées, attend ses réponses et négocie dans un dossier isolé.</p></details>
+    </header>
+    <div class="cx-summary"><strong>3 dossiers</strong><span class="cx-attention">! 1 en échec</span><span class="cx-wait">◷ 2 en attente</span></div>
+    <article class="cx-row">
+      <div class="cx-row-top"><div><h3>Sainte-Clotilde · Studio loué</h3><div class="cx-meta">SeLoger · 26NJ8MQRUNN1</div></div><span class="cx-badge cx-failed">! Échec</span></div>
+      <div class="cx-row-bottom"><p class="cx-reason">L’agent n’a pas pu démarrer.</p><button type="button" aria-expanded="false" aria-controls="cx-detail-1">Examiner l’erreur →</button></div>
+      <div class="cx-detail" id="cx-detail-1" hidden>Créé le 7 septembre 2026 à 22:08<br>Diagnostic technique : <code>spawn codex ENOENT</code></div>
+    </article>
+    <article class="cx-row">
+      <div class="cx-row-top"><div><h3>Saint-André · T2 avec varangue et jardin</h3><div class="cx-meta">PRMI · FDA7374</div></div><span class="cx-badge">◷ En attente</span></div>
+      <div class="cx-row-bottom"><p class="cx-reason">Consulter le dossier pour connaître le motif.</p><button type="button" aria-expanded="false" aria-controls="cx-detail-2">Ouvrir le dossier →</button></div>
+      <div class="cx-detail" id="cx-detail-2" hidden>Créé le 7 septembre 2026 à 22:08<br>Le motif d’attente et la prochaine échéance ne figurent pas sur la capture fournie.</div>
+    </article>
+    <article class="cx-row">
+      <div class="cx-row-top"><div><h3>Saint-André · T2 résidence Coriandre</h3><div class="cx-meta">PRMI · MIS7607FDA</div></div><span class="cx-badge">◷ En attente</span></div>
+      <div class="cx-row-bottom"><p class="cx-reason">Consulter le dossier pour connaître le motif.</p><button type="button" aria-expanded="false" aria-controls="cx-detail-3">Ouvrir le dossier →</button></div>
+      <div class="cx-detail" id="cx-detail-3" hidden>Créé le 7 septembre 2026 à 22:08<br>Le motif d’attente et la prochaine échéance ne figurent pas sur la capture fournie.</div>
+    </article>
+  </section>
+</div>
+<script>
+  (() => {
+    const root = document.getElementById('cortex-async-proposal');
+    root.querySelectorAll('button[aria-controls]').forEach(button => {
+      button.addEventListener('click', () => {
+        const detail = document.getElementById(button.getAttribute('aria-controls'));
+        const expanded = button.getAttribute('aria-expanded') !== 'true';
+        button.setAttribute('aria-expanded', String(expanded));
+        detail.hidden = !expanded;
+      });
+    });
+    const state = { density: 'comfortable' };
+    const render = () => root.style.setProperty('--cx-row-pad', state.density === 'compact' ? '10px' : '16px');
+    render();
+    if (globalThis.Tweak) {
+      const tweak = new Tweak({ container: root, onChange: render });
+      tweak.addSelect(state, 'density', { label: 'Densité des dossiers', options: [{ label: 'Confortable', value: 'comfortable' },{ label: 'Compacte', value: 'compact' }] });
+    }
+  })();
+</script>

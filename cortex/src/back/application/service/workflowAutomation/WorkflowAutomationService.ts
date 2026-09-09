@@ -10,7 +10,7 @@ import { SqliteWorkflowAutomationRepository, type StoredWorkflowJob } from "../.
 import { ValidationError } from "../../error/ValidationError.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
 import { AgentBlockedError } from "../../error/AgentBlockedError.ts";
-import type { WorkflowJob } from "../../../../shared/WorkflowAutomation.ts";
+import type { WorkflowJob, WorkflowJobFilter } from "../../../../shared/WorkflowAutomation.ts";
 
 export class WorkflowAutomationService {
   private readonly runners = new Map<string, AgentUseCase>();
@@ -61,9 +61,15 @@ export class WorkflowAutomationService {
     })) throw new ValidationError("Aucun résultat retenu à transmettre pour cet agent.");
     await this.dispatch(project, agent, undefined, true);
   }
-  list(projectId: string, offset: number, ruleId?: string) {
-    const page = this.store.list(projectId, offset, ruleId);
-    return { ...page, jobs: page.jobs.map(job => this.withBlockedStatus(job)) };
+  list(projectId: string, offset: number, ruleId?: string, filter?: WorkflowJobFilter) {
+    const page = this.store.list(projectId, offset, ruleId, filter);
+    return { ...page, jobs: page.jobs.map(job => {
+      if (job.status !== "waiting") return this.withBlockedStatus(job);
+      const state = readWorkflowCheckpoint(this.audit.forInstance(job.id).getCheckpoint(job.targetProjectId)?.state);
+      const waits = state?.agents.flatMap(agent => agent.threads.flatMap(thread =>
+        thread.wait && !thread.wait.wake ? [{ reason: thread.wait.reason, wakeAt: thread.wait.wakeAt, deadlineAt: thread.wait.deadlineAt }] : [])) ?? [];
+      return { ...job, waits };
+    }) };
   }
   target(projectId: string): Promise<AgentProject> { return this.agents.loadProject(projectId, false); }
 

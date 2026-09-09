@@ -4,6 +4,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import type { AgentProject } from "../../application/usecase/AgentUseCase.ts";
 import type { WorkflowDispatchItem, WorkflowDispatchRule, WorkflowJob, WorkflowJobStatus } from "../../../shared/WorkflowAutomation.ts";
+import { WORKFLOW_JOB_FILTERS, type WorkflowJobFilter, type WorkflowJobPage } from "../../../shared/WorkflowAutomation.ts";
 
 export interface StoredWorkflowJob extends WorkflowJob {
   snapshot: AgentProject;
@@ -40,11 +41,18 @@ export class SqliteWorkflowAutomationRepository {
     const row = this.db.prepare("SELECT value FROM automation_jobs WHERE id=?").get(id) as { value: string } | undefined;
     return row ? JSON.parse(row.value) : null;
   }
-  list(projectId: string, offset = 0, ruleId?: string): { jobs: WorkflowJob[]; total: number } {
+  list(projectId: string, offset = 0, ruleId?: string, filter?: WorkflowJobFilter): WorkflowJobPage {
     const where = "(source_project_id=? OR target_project_id=?) AND (? IS NULL OR rule_id=?)";
-    const rows = this.db.prepare(`SELECT value FROM automation_jobs WHERE ${where} ORDER BY rowid DESC LIMIT 50 OFFSET ?`).all(projectId, projectId, ruleId ?? null, ruleId ?? null, offset) as { value: string }[];
-    const { total } = this.db.prepare(`SELECT COUNT(*) AS total FROM automation_jobs WHERE ${where}`).get(projectId, projectId, ruleId ?? null, ruleId ?? null) as { total: number };
-    return { jobs: rows.map(row => { const { snapshot, parameterValues, ...job } = JSON.parse(row.value) as StoredWorkflowJob; return job; }), total };
+    const parameters = [projectId, projectId, ruleId ?? null, ruleId ?? null];
+    const statuses = filter ? [...WORKFLOW_JOB_FILTERS[filter]] : [];
+    const filteredWhere = `${where}${statuses.length ? ` AND status IN (${statuses.map(() => "?").join(",")})` : ""}`;
+    const rows = this.db.prepare(`SELECT value FROM automation_jobs WHERE ${filteredWhere} ORDER BY rowid DESC LIMIT 50 OFFSET ?`).all(...parameters, ...statuses, offset) as { value: string }[];
+    const grouped = this.db.prepare(`SELECT status, COUNT(*) AS count FROM automation_jobs WHERE ${where} GROUP BY status`).all(...parameters) as { status: WorkflowJobStatus; count: number }[];
+    const counts = Object.fromEntries(Object.entries(WORKFLOW_JOB_FILTERS).map(([key, values]) =>
+      [key, grouped.filter(row => (values as readonly WorkflowJobStatus[]).includes(row.status)).reduce((sum, row) => sum + row.count, 0)])) as WorkflowJobPage["counts"];
+    const total = filter ? counts[filter] : Object.values(counts).reduce((sum, count) => sum + count, 0);
+    const dispatchedKeys = ruleId ? (this.db.prepare(`SELECT dedup_key FROM automation_jobs WHERE ${where}`).all(...parameters) as { dedup_key: string }[]).map(row => row.dedup_key) : [];
+    return { jobs: rows.map(row => { const { snapshot, parameterValues, ...job } = JSON.parse(row.value) as StoredWorkflowJob; return job; }), total, counts, dispatchedKeys };
   }
   pending(): StoredWorkflowJob[] {
     return (this.db.prepare("SELECT value FROM automation_jobs WHERE status IN ('queued','running','waiting') ORDER BY rowid").all() as { value: string }[]).map(row => JSON.parse(row.value));

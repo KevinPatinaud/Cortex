@@ -9504,3 +9504,105 @@ button:disabled {
 .workflow-dossiers > h3 { margin: 0; font-size: 1rem; }
 .workflow-dossiers > p { margin: 0; color: #536783; font-size: .86rem; line-height: 1.5; }
 .workflow-dossiers .automation-panel__detail { padding: 1rem; }
+
+/* An asynchronous branch owns its dossier list; configuration stays secondary. */
+.agent-project__agent-group,
+.agent-project__async-group { width: 100%; max-width: 50rem; min-width: 0; }
+.agent-project__async-group {
+  border: 1px solid #d7ddea;
+  border-top: 3px solid #8054bb;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 3px 12px rgb(35 73 128 / 5%);
+}
+.agent-project__async-group > .agent-card { max-width: none; border: 0; border-radius: 12px; box-shadow: none; }
+.agent-project__async-group:has(> .workflow-dossiers) > .agent-card { border-radius: 12px 12px 0 0; }
+.agent-card--dossier-template .agent-card__identity { display: flex; align-items: center; flex-wrap: wrap; gap: .45rem .75rem; }
+.agent-card--dossier-template .agent-card__identity .agent-card__async-badge { margin: .2rem 0 0; padding: .15rem .45rem; font-size: .72rem; }
+.agent-card--dossier-template .agent-card__header { align-items: center; }
+.agent-card__dossier-description { margin: .8rem 0 .5rem; color: #52647c; font-size: .88rem; line-height: 1.6; overflow-wrap: anywhere; }
+.agent-card__dossier-configuration { font-size: .82rem; color: #445b79; }
+.agent-card__dossier-configuration > summary { width: fit-content; max-width: 100%; padding: .35rem 0; cursor: pointer; }
+.agent-card__dossier-configuration[open] > summary { margin-bottom: .6rem; }
+.agent-card__dossier-model { display: flex; flex-wrap: wrap; gap: .4rem 1.25rem; color: #52647c; }
+.agent-project__workflow--graph:has(.agent-project__async-group) { row-gap: 3rem; }
+.agent-project__dispatch-link { width: auto; max-width: 50rem; margin: .25rem 0 0; padding: .35rem .5rem; border: 0; background: transparent; font-size: .76rem; text-align: center; }
+
+.workflow-dossiers { container: dossier-list / inline-size; display: block; margin: 0; padding: 0; background: #fff; border: 1px solid #d7ddea; border-radius: 12px; color: #24466f; }
+.agent-project__async-group > .workflow-dossiers { border: 0; border-top: 1px solid #e1e6ef; border-radius: 0 0 12px 12px; max-width: none; }
+.workflow-dossiers__header { padding: 1rem 1.25rem .8rem; background: #f7f9fc; border-radius: inherit; }
+.workflow-dossiers__header h3 { display: flex; align-items: center; gap: .5rem; margin: 0; color: #203d61; font-size: .95rem; }
+.workflow-dossiers__header > p { display: flex; align-items: flex-start; gap: .4rem; margin: .5rem 0 0; color: #52647c; font-size: .76rem; line-height: 1.5; }
+.workflow-dossiers__header > p > svg { flex: none; margin-top: .15rem; }
+.workflow-dossiers__filters { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .8rem; }
+.workflow-dossiers .workflow-dossiers__filters button { padding: .35rem .6rem; min-height: 34px; font-size: .75rem; border: 1px solid transparent; background: transparent; color: #455b76; }
+.workflow-dossiers .workflow-dossiers__filters button:hover { border-color: #b5c7e0; background: #edf3fc; }
+.workflow-dossiers .workflow-dossiers__filters button[aria-pressed="true"] { border-color: #b2c8e7; background: #e6eefb; color: #203f6b; font-weight: 650; }
+.workflow-dossiers .workflow-dossiers__filters .workflow-dossiers__filter--attention { color: #9c3044; }
+.workflow-dossiers .workflow-dossiers__filters .workflow-dossiers__filter--waiting { color: #79520e; }
+.workflow-dossiers .workflow-dossiers__filters .workflow-dossiers__filter--completed { color: #176648; }
+.workflow-dossiers .automation-panel__jobs { gap: 0; margin: 0; }
+.workflow-dossiers .automation-panel__jobs li { min-width: 0; border-top: 1px solid #e1e6ef; }
+.workflow-dossiers .automation-panel__jobs li:last-child > button { border-radius: 0 0 12px 12px; }
+.workflow-dossiers .automation-panel__jobs li > button { display: flex; flex-direction: column; align-items: stretch; gap: .5rem; width: 100%; padding: 1rem 1.25rem; border: 0; border-radius: 0; background: #fff; }
+.workflow-dossiers .automation-panel__jobs li > button:hover { background: #f6f9ff; }
+.workflow-dossiers .automation-panel__jobs li > button[aria-pressed="true"] { background: #eef3fc; box-shadow: inset 3px 0 #4d79b6; }
+.workflow-dossiers__row-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+.workflow-dossiers__identity { min-width: 0; }
+.workflow-dossiers__identity strong { color: #24466f; font-size: .88rem; font-weight: 650; line-height: 1.5; }
+.workflow-dossiers__subtitle { display: block; margin-top: .2rem; color: #52647c; font-size: .75rem; overflow-wrap: anywhere; }
+.workflow-dossiers__reason { color: #52647c; font-size: .8rem; line-height: 1.5; }
+.workflow-dossiers__row-footer { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem 1rem; margin-top: .15rem; }
+.workflow-dossiers__timing { display: flex; align-items: center; flex-wrap: wrap; gap: .25rem; color: #586a81; font-size: .73rem; }
+.workflow-dossiers__open { display: inline-flex; align-items: center; gap: .35rem; color: #295791; font-size: .77rem; font-weight: 600; }
+.workflow-dossiers .automation-panel__status { display: inline-flex; align-items: center; gap: .3rem; padding: .25rem .5rem; line-height: 1.4; font-size: .72rem; }
+.workflow-dossiers .automation-panel__status svg { flex: none; }
+.workflow-dossiers .automation-panel__status--waiting { background: #fff5df; color: #79520e; }
+.workflow-dossiers .automation-panel__status--queued,
+.workflow-dossiers .automation-panel__status--cancelled { background: #edf0f4; color: #526176; }
+.workflow-dossiers .automation-panel__status--running { background: #e7efff; color: #255ab2; }
+.workflow-dossiers .automation-panel__status--running svg { animation: dossier-running 1.6s linear infinite; }
+.workflow-dossiers .workflow-dossiers__empty { padding: 1rem 1.25rem; margin: 0; color: #52647c; font-size: .84rem; }
+.workflow-dossiers > .automation-panel__error,
+.workflow-dossiers > [role="status"] { margin: .8rem 1.25rem; }
+.workflow-dossiers > button { margin: .75rem 1.25rem; max-width: calc(100% - 2.5rem); }
+.workflow-dossiers .automation-panel__pagination { margin: 0; padding: .8rem 1.25rem; border-top: 1px solid #e1e6ef; justify-content: space-between; font-size: .8rem; }
+.workflow-dossiers button:focus-visible,
+.agent-card__dossier-configuration > summary:focus-visible { outline: 2px solid #386bb6; outline-offset: -3px; }
+
+.workflow-dossier-drawer { position: fixed; inset: 0 0 0 auto; margin: 0; width: min(44rem, 100%); height: 100dvh; max-width: 100%; max-height: 100dvh; padding: 0; border: 0; border-radius: 0; border-left: 1px solid #d6dfec; background: #fff; color: #24466f; box-shadow: -12px 0 50px rgb(13 35 68 / 15%); overflow: auto; overscroll-behavior: contain; }
+.workflow-dossier-drawer::backdrop { background: rgb(12 30 55 / 35%); }
+.workflow-dossiers .workflow-dossier-drawer .automation-panel__detail { margin: 0; padding: 0; border: 0; }
+.workflow-dossier-drawer__header { position: sticky; top: 0; z-index: 1; display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.25rem 1.5rem; background: #fff; border-bottom: 1px solid #dce4ef; }
+.workflow-dossier-drawer__header > div { min-width: 0; }
+.workflow-dossier-drawer__header > div > span { color: #6c459b; font-size: .75rem; }
+.workflow-dossier-drawer__header h3 { margin: .4rem 0 0; font-size: 1.15rem; color: #183455; line-height: 1.4; overflow-wrap: anywhere; }
+.workflow-dossiers .workflow-dossier-drawer .automation-panel__close { position: static; flex: none; min-width: 40px; padding: .5rem; }
+.workflow-dossier-drawer__body { padding: 1.25rem 1.5rem 2rem; font-size: .88rem; }
+.workflow-dossier-drawer__body > details { margin-block: 1rem; }
+.workflow-dossier-drawer__body pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.workflow-dossier-drawer p, .workflow-dossier-drawer label { color: inherit; }
+.workflow-dossier-drawer__status { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; margin-bottom: 1rem; }
+.workflow-dossier-drawer__status > span:last-child { color: #52647c; font-size: .78rem; }
+.workflow-dossier-drawer .automation-panel__error > p { margin: 0 0 .5rem; }
+.workflow-dossier-drawer .automation-panel__detail-actions { justify-content: flex-end; }
+.workflow-dossier-drawer .automation-panel__wait { border: 1px solid #d9e2ee; background: #f7f9fc; }
+.workflow-dossier-drawer .automation-panel__wait textarea { font-size: 1rem; }
+.workflow-dossier-drawer .automation-panel__wait button[type="submit"] { background: #285cad; border-color: #285cad; color: #fff; }
+.workflow-dossier-drawer .automation-panel__wait button[type="submit"]:hover:not(:disabled) { background: #214c90; }
+@keyframes dossier-running { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .workflow-dossiers .automation-panel__status--running svg { animation: none; } }
+@container dossier-list (max-width: 420px) {
+  .workflow-dossiers__row-heading { flex-wrap: wrap; gap: .5rem; }
+  .workflow-dossiers__identity { flex: 1 0 100%; }
+  .workflow-dossiers__row-footer { align-items: flex-start; flex-direction: column; }
+}
+@media (max-width: 700px) {
+  .workflow-dossiers__header { padding: .85rem; }
+  .workflow-dossiers .automation-panel__jobs li > button { padding: .9rem; }
+  .workflow-dossiers .workflow-dossiers__filters button { min-height: 40px; }
+  .workflow-dossier-drawer { width: 100%; border: 0; }
+  .workflow-dossier-drawer__header { padding: 1rem; }
+  .workflow-dossier-drawer__body { padding: 1rem; }
+  .workflow-dossiers .workflow-dossier-drawer .automation-panel__close { min-width: 44px; min-height: 44px; }
+}

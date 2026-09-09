@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { WorkflowAutomationService } from "../../../application/service/workflowAutomation/WorkflowAutomationService.ts";
 import { toAgentProjectResponse } from "../mapper/AgentResponseMapper.ts";
 import { ValidationError } from "../../../application/error/ValidationError.ts";
+import { WORKFLOW_JOB_FILTERS, type WorkflowJobFilter } from "../../../../shared/WorkflowAutomation.ts";
 
 export function createWorkflowAutomationController(service: WorkflowAutomationService): Router {
   const router = Router();
@@ -16,7 +17,9 @@ export function createWorkflowAutomationController(service: WorkflowAutomationSe
     if (!Number.isSafeInteger(offset) || offset < 0) throw new ValidationError("Pagination invalide.");
     const ruleId = request.query.ruleId;
     if (ruleId !== undefined && typeof ruleId !== "string") throw new ValidationError("Filtre de dossiers invalide.");
-    response.json(service.list(request.params.projectId, offset, ruleId));
+    const filter = request.query.filter;
+    if (filter !== undefined && (typeof filter !== "string" || !Object.hasOwn(WORKFLOW_JOB_FILTERS, filter))) throw new ValidationError("Filtre de dossiers invalide.");
+    response.json(service.list(request.params.projectId, offset, ruleId, filter as WorkflowJobFilter | undefined));
   });
   router.get("/:projectId/jobs/:id", async (request, response) => {
     const { job, project } = await service.detail(request.params.projectId, request.params.id);

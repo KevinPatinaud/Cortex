@@ -104,6 +104,36 @@ async function settle(f: ReturnType<Awaited<ReturnType<typeof fixture>>["open"]>
   assert.fail(`Dossiers did not reach the expected state: ${JSON.stringify(f.store.list("source").jobs.map(job => [job.key, job.status, job.error]))}`);
 }
 
+test("dossier filters count every page, retain dispatched keys and keep ordering stable when statuses change", async () => {
+  const state = await fixture();
+  state.setKeys(Array.from({ length: 61 }, (_, index) => `property-${index}`));
+  const f = state.open();
+  try {
+    const rule = await f.service.saveRule("source", { sourceAgentId: agentId("scan"), targetProjectId: "target", enabled: true });
+    await f.agents.runWorkflow("source");
+    const firstPage = f.service.list("source", 0, rule.id);
+    assert.equal(firstPage.jobs.length, 50);
+    assert.equal(firstPage.total, 61);
+    assert.equal(firstPage.dispatchedKeys.length, 61);
+    const secondPage = f.service.list("source", 50, rule.id);
+    assert.equal(secondPage.jobs.length, 11);
+    const oldJob = secondPage.jobs.at(-1)!;
+    f.store.update(oldJob.id, "failed", "Provider unavailable");
+    f.store.update(firstPage.jobs[0].id, "blocked", "Please clarify");
+    f.store.update(firstPage.jobs[1].id, "cancelled");
+    const attention = f.service.list("source", 0, rule.id, "attention");
+    assert.equal(attention.total, 2);
+    assert.equal(attention.counts.active, 58);
+    assert.equal(attention.counts.stopped, 1);
+    assert.equal(attention.dispatchedKeys.length, 61);
+    assert.deepEqual(attention.jobs.map(job => job.id), [firstPage.jobs[0].id, oldJob.id]);
+    assert.deepEqual(f.service.list("source", 0, rule.id).jobs.map(job => job.id), firstPage.jobs.map(job => job.id));
+    assert.equal(f.service.list("unrelated", 0, rule.id).total, 0);
+    assert.equal(f.service.list("source", 0, "other-rule").total, 0);
+    assert.equal(f.service.list("source", 0, rule.id, "waiting").jobs.length, 0);
+  } finally { await f.close(); await state.cleanup(); }
+});
+
 test("reactivating a paused rule never dispatches paused results on restart, but new scans still dispatch", async () => {
   const state = await fixture();
   let f = state.open();

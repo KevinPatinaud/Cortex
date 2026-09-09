@@ -1316,6 +1316,7 @@ export function AgentProjectWorkspace({
                             id={`workflow-agent-${encodeURIComponent(agent.id)}`}
                             key={`${content.projectId}:${agent.id}`}
                           >
+                            <div className={dossierAgent ? "agent-project__async-group" : "agent-project__agent-group"}>
                             <AgentCard
                               dispatchEnabled={content.dispatchRules?.some(rule => rule.sourceAgentId === agent.id)
                                 ? content.dispatchRules.some(rule => rule.sourceAgentId === agent.id && rule.enabled) : undefined}
@@ -1411,10 +1412,11 @@ export function AgentProjectWorkspace({
                               }}
                               onHandoffEnabledChange={handleAgentHandoffChange}
                             />
-                            {dispatches.length ? <p className="agent-project__dispatch-link">
-                              {language === "fr" ? "Un dossier par résultat retenu" : "One dossier per qualifying result"} → {dispatches.map(rule => agentsById.get(rule.targetAgentId!)?.name ?? rule.targetAgentId).join(", ")}
-                            </p> : <WorkflowRoutingSummary presentation={getWorkflowRoutingPresentation(agent, agentResultStates)} />}
                             {internalRules.filter(rule => rule.targetAgentId === agent.id).map(rule => <WorkflowDossiers key={rule.id} project={content} rule={rule} />)}
+                            </div>
+                            {dispatches.length ? <p className="agent-project__dispatch-link">
+                              {language === "fr" ? "Dossiers indépendants" : "Independent dossiers"} → {dispatches.map(rule => agentsById.get(rule.targetAgentId!)?.name ?? rule.targetAgentId).join(", ")}
+                            </p> : <WorkflowRoutingSummary presentation={getWorkflowRoutingPresentation(agent, agentResultStates)} />}
                           </li>
                         );
                       })}

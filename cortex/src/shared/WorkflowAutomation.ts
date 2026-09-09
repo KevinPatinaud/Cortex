@@ -34,6 +34,23 @@ export function validateWorkflowDossierBranches(value: unknown, agents: readonly
 
 export type WorkflowJobStatus = "queued" | "running" | "waiting" | "blocked" | "completed" | "failed" | "interrupted" | "cancelled";
 
+export const WORKFLOW_JOB_FILTERS = {
+  attention: ["failed", "blocked", "interrupted"],
+  active: ["queued", "running"],
+  waiting: ["waiting"],
+  completed: ["completed"],
+  stopped: ["cancelled"]
+} as const satisfies Record<string, readonly WorkflowJobStatus[]>;
+export type WorkflowJobFilter = keyof typeof WORKFLOW_JOB_FILTERS;
+export interface WorkflowJobPage {
+  jobs: WorkflowJob[];
+  /** Number matching the current filter, before pagination. */
+  total: number;
+  counts: Record<WorkflowJobFilter, number>;
+  /** All dispatched keys for this rule, independent of the displayed page/filter. */
+  dispatchedKeys: string[];
+}
+
 export interface WorkflowJob {
   id: string;
   ruleId: string;
@@ -48,6 +65,8 @@ export interface WorkflowJob {
   createdAt: string;
   updatedAt: string;
   error: string | null;
+  /** Read-only summary of unresolved waits, populated from the execution checkpoint. */
+  waits?: Array<{ reason: string; wakeAt: string | null; deadlineAt: string }>;
   /** Explicit user clarifications, retained for this dossier and its future agents/wakes. */
   clarifications?: Array<{ content: string; createdAt: string }>;
 }

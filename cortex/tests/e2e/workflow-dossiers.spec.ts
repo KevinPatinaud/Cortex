@@ -44,8 +44,18 @@ test("loading identifies the internal branch and the graph tracks independent ag
   expect((await run.json()).executedAgentIds).toEqual(project.agents.slice(0, 2).map((agent: { id: string }) => agent.id));
   await expect.poll(async () => (await jobs(request, project.projectId)).filter(job => job.status === "waiting").length).toBe(2);
   await expect(dossiers.getByRole("button", { name: /Bien A/ })).toBeVisible();
+  await expect(dossiers).toContainText("Réponse de l’agence immobilière");
+  await expect(dossiers.getByRole("button", { name: "2 En attente", exact: true })).toBeVisible();
+  await expect(dossiers.getByRole("button", { name: /Bien A/ })).toContainText("Échéance");
+  await expect(dossiers.getByRole("button", { name: "Continuer avec les résultats disponibles", exact: true })).toHaveCount(0);
   await dossiers.getByRole("button", { name: /Bien A/ }).click();
   const detail = dossiers.getByRole("region", { name: "Détail du dossier" });
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await expect(detail.getByRole("button", { name: "Fermer le dossier" })).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(dossiers.getByRole("button", { name: /Bien A/ })).toBeFocused();
+  await dossiers.getByRole("button", { name: /Bien A/ }).click();
   await expect(detail.getByText("Premier mail envoyé. Attente de la réponse.", { exact: true })).toBeVisible();
   await detail.getByRole("textbox", { name: "Réponse reçue pour ce dossier" }).fill("CONFIRMED : accord écrit.");
   await detail.getByRole("button", { name: "Transmettre la réponse" }).click();
@@ -67,6 +77,37 @@ test("loading identifies the internal branch and the graph tracks independent ag
   expect((await new AxeBuilder({ page }).include(".workflow-dossiers").withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze()).violations).toEqual([]);
 });
 
+test("filters span the complete dossier set and failed dossiers expose a readable diagnostic in the drawer", async ({ page, request }, testInfo) => {
+  const project = await create(request, "E2E_FAIL");
+  const base = `/api/automations/${project.projectId}/jobs`;
+  await request.post(`/api/agents/projects/${project.projectId}/workflow/run`, { data: {} });
+  await expect.poll(async () => (await jobs(request, project.projectId)).filter(job => job.status === "failed").length).toBe(2);
+  const [first] = await jobs(request, project.projectId);
+  await request.post(`${base}/${first.id}/cancel`);
+  expect((await request.get(`${base}?filter=invalid`)).status()).toBe(400);
+  await page.goto(`/?project=${project.projectId}&view=workflow`);
+  const dossiers = page.locator(".workflow-dossiers");
+  await dossiers.getByRole("button", { name: "1 À traiter", exact: true }).click();
+  await expect(dossiers.locator(".automation-panel__jobs > li")).toHaveCount(1);
+  await expect(dossiers.locator(".automation-panel__jobs")).toContainText("L’exécution a échoué. Consultez le diagnostic.");
+  await expect(dossiers.getByRole("button", { name: "Continuer avec les résultats disponibles", exact: true })).toHaveCount(0);
+  await dossiers.locator(".automation-panel__jobs button").click();
+  const detail = page.getByRole("region", { name: "Détail du dossier" });
+  await detail.getByText("Diagnostic technique", { exact: true }).click();
+  await expect(detail).toContainText("Échec simulé du moteur.");
+  await expect(detail.getByRole("button", { name: "Reprendre après vérification" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("failed-dossier-drawer.png") });
+  const drawerBounds = await page.getByRole("dialog").boundingBox();
+  expect(drawerBounds?.y).toBe(0);
+  expect(drawerBounds!.x + drawerBounds!.width).toBe(page.viewportSize()!.width);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect((await new AxeBuilder({ page }).include(".workflow-dossiers").withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze()).violations).toEqual([]);
+  await page.keyboard.press("Escape");
+  await dossiers.getByRole("button", { name: "1 Arrêté", exact: true }).click();
+  await expect(dossiers.locator(".automation-panel__jobs > li")).toHaveCount(1);
+  await expect(dossiers.locator(".automation-panel__jobs")).toContainText("Arrêté");
+});
+
 test("hourly scans create only new dossiers and imported projects infer the same internal branch without an activation step", async ({ request }) => {
   const project = await create(request);
   const id = project.projectId;
@@ -74,6 +115,7 @@ test("hourly scans create only new dossiers and imported projects infer the same
   const at = new Date(); at.setMinutes(0, 0, 0); at.setHours(at.getHours() + 1);
   await request.post("/__test/scheduled-scan", { data: { at: at.toISOString() } });
   await expect.poll(async () => (await jobs(request, id)).filter(job => job.status === "waiting").length).toBe(2);
+  await expect.poll(async () => (await (await request.get(`/api/agents/projects/${id}/workflow/schedule`)).json()).lastRunStatus).toBe("succeeded");
   at.setHours(at.getHours() + 1);
   await request.post("/__test/scheduled-scan", { data: { at: at.toISOString() } });
   await expect.poll(async () => (await jobs(request, id)).filter(job => job.status === "waiting").length).toBe(3);

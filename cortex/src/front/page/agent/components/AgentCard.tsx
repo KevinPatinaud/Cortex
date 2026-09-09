@@ -568,6 +568,25 @@ export function AgentCard({
     ? t("agent.continueSelectionRequired")
     : t("agent.continueUnavailable");
 
+  if (dossierTemplate) return <article className="agent-card agent-card--async agent-card--dossier-template" tabIndex={-1} aria-label={agent.name}>
+    <header className="agent-card__header">
+      <GitBranch aria-hidden="true" size={22} strokeWidth={1.7} />
+      <div className="agent-card__identity">
+        <h2>{agent.name}</h2>
+        <span className="agent-card__async-badge" title={t("agent.dossierHelp")}>{t("agent.async")}</span>
+      </div>
+    </header>
+    <p className="agent-card__dossier-description">{agent.description || t("agent.dossierHelp")}</p>
+    <details className="agent-card__dossier-configuration">
+      <summary>{t("agent.configuration")}</summary>
+      {(agent.model || agent.reasoningEffort) && <p className="agent-card__dossier-model">
+        {agent.model && <span>{t("agent.model")} : <strong>{agent.model}</strong></span>}
+        {agent.reasoningEffort && <span>{t("agent.reasoning")} : <strong>{agent.reasoningEffort}</strong></span>}
+      </p>}
+      <MarkdownContent content={agent.prompt || t("agent.noInstruction")} />
+    </details>
+  </article>;
+
   return (
     <article
       tabIndex={-1}
