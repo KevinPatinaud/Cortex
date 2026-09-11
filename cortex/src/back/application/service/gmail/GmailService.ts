@@ -18,6 +18,7 @@ type WorkflowAccess = Pick<AgentUseCase, "loadProject" | "receiveWorkflowEvent">
 
 /** Local Gmail OAuth connection. No credentials are exposed to agents or project exports. */
 export class GmailService {
+  private static readonly POLL_INTERVAL_MS = 30 * 60 * 1000;
   private readonly db: Database.Database;
   private pending = new Map<string, { verifier: string; expiresAt: number; projectId: string }>();
   private refreshing: Promise<Tokens> | null = null;
@@ -176,7 +177,7 @@ export class GmailService {
   start(): void {
     if (this.timer) return;
     this.stopped = false;
-    this.timer = setInterval(() => { void this.poll().catch(() => {}); }, 30_000);
+    this.timer = setInterval(() => { void this.poll().catch(() => {}); }, GmailService.POLL_INTERVAL_MS);
     this.timer.unref();
     void this.poll().catch(() => {});
   }
