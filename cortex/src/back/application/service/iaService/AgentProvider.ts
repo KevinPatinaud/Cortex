@@ -1,4 +1,7 @@
 
+import type { TokenUsage } from "../../../../shared/ExecutionControl.ts";
+import type { ExecutionCallContext } from "../executionControl/ExecutionControlService.ts";
+
 export type AgentEngine = "codex" | "claude" | "copilot";
 
 export interface AgentConfiguration {
@@ -11,7 +14,9 @@ export const DEFAULT_AGENT_CONFIGURATION: AgentConfiguration = {
   allowAll: false
 };
 
-export interface AgentExecutionOptions {
+export interface AgentExecutionOptions extends ExecutionCallContext {
+  /** Called inside the global slot immediately before starting the provider. */
+  beforeStart?: () => void;
   signal?: AbortSignal;
   onProgress?: (progress: string) => void;
   timeoutMs?: number;
@@ -28,6 +33,7 @@ export interface AgentExecutionOptions {
 export interface AgentExecutionResult {
   answer: string;
   sessionId?: string;
+  usage?: TokenUsage;
 }
 
 export interface AgentProvider {

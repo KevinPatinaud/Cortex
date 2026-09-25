@@ -1,0 +1,471 @@
+/* Keep the settings hierarchy above the legacy two-column declarations. */
+.agent-settings-dialog[open] {
+  grid-template-rows: auto auto minmax(0, 1fr);
+}
+
+.agent-settings-dialog__body.agent-engine-settings__content {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.agent-settings-dialog__section[hidden] {
+  display: none;
+}
+
+.agent-settings-dialog .agent-settings-dialog__section-content > label strong,
+.agent-settings-dialog .agent-engine-storage strong,
+.agent-settings-dialog .agent-engine-plugins > header strong,
+.agent-settings-dialog .agent-engine-mcp > header strong {
+  font-size: 0.82rem;
+}
+
+.agent-settings-dialog .agent-settings-dialog__section-content > label small,
+.agent-settings-dialog .agent-engine-storage small,
+.agent-settings-dialog .agent-engine-plugins > header small,
+.agent-settings-dialog .agent-engine-mcp > header small {
+  font-size: 0.68rem;
+  line-height: 1.45;
+}
+
+@media (max-width: 700px) {
+  .project-sidebar--collapsed.project-sidebar--expanded .project-sidebar__content,
+  .project-sidebar--collapsed.project-sidebar--expanded .project-sidebar__footer {
+    display: block;
+  }
+
+  .agent-settings-dialog.agent-engine-settings {
+    width: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+}
+
+/* Workflow handoff selection must remain explicit and immediately actionable. */
+.agent-card__conversation-selection-help {
+  margin: 0 0 0.55rem;
+  color: #536f96;
+  font-size: 0.68rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.agent-card__conversation-response-button {
+  display: grid;
+  grid-template-columns: 1.3rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.6rem;
+}
+
+.agent-card__conversation-selection-indicator {
+  display: grid;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.12rem;
+  border: 1px solid #9db4d2;
+  border-radius: 50%;
+  place-items: center;
+  background: #fff;
+  color: transparent;
+}
+
+.agent-card__conversation-selection-indicator svg {
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.agent-card__conversation-response-button--selected .agent-card__conversation-selection-indicator {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.agent-card__conversation-response-button--selected {
+  border-color: #2563eb;
+  background: #eaf2ff;
+  box-shadow: inset 3px 0 0 #2563eb, 0 5px 14px rgb(37 99 235 / 10%);
+  color: #173c72;
+}
+
+.agent-card__conversation-response-button--selected:hover:not([aria-disabled="true"]) {
+  border-color: #1d4ed8;
+  background: #dfeaff;
+}
+
+.agent-card__conversation-response-button--selected .agent-card__markdown a,
+.agent-card__conversation-response-button--selected .agent-card__markdown blockquote {
+  color: inherit;
+}
+
+/* dialog input's generic min-height must not turn switches into vertical pills. */
+.agent-settings-dialog.agent-engine-settings input[type="checkbox"] {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  height: 1.5rem;
+  min-height: 1.5rem;
+  padding: 0;
+  border-width: 1px;
+  box-sizing: border-box;
+}
+
+.agent-settings-dialog.agent-engine-settings input[type="checkbox"]::after {
+  top: 0.19rem;
+  left: 0.19rem;
+  width: 1rem;
+  height: 1rem;
+}
+
+.agent-settings-dialog.agent-engine-settings input[type="checkbox"]:checked::after {
+  transform: translateX(1.2rem);
+}
+
+.agent-settings-dialog.agent-engine-settings input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+
+.project-editor__recovery {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  border: 1px solid #bad0ed;
+  border-radius: 12px;
+  background: #f0f6ff;
+  color: #214b82;
+}
+
+.project-editor__recovery > div {
+  min-width: 0;
+  flex: 1 1 20rem;
+}
+
+.project-editor__recovery strong {
+  font-size: 0.88rem;
+}
+
+.project-editor__recovery p,
+.project-editor__storage-warning {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  line-height: 1.55;
+}
+
+.project-editor__recovery button,
+.workspace-welcome__create {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 2.75rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid #abc5e8;
+  border-radius: 9px;
+  background: #fff;
+  color: #214b82;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.workspace-welcome__create {
+  margin-top: 1rem;
+  background: #245baf;
+  color: #fff;
+}
+
+.workspace-welcome__help {
+  max-width: 40rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}
+
+.project-editor__storage-warning {
+  margin: 0 0 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid #ebcb8a;
+  border-radius: 9px;
+  background: #fff8e9;
+  color: #71521e;
+}
+
+.agent-project__tab-actions {
+  flex-wrap: wrap;
+}
+
+.agent-project__stop-button {
+  border-color: #e3b5b5;
+  background: #fff4f4;
+  color: #9c3030;
+}
+
+.agent-project__resume-button {
+  background: #eaf7f1;
+  border-color: #afd3c1;
+  color: #216348;
+}
+
+.agent-card__activity {
+  margin-top: 1rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid #c9daf0;
+  border-radius: 10px;
+  background: #f4f8ff;
+  color: #2c527f;
+  font-size: 0.76rem;
+}
+
+.agent-card__activity-times,
+.agent-card__activity-times > span {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem 1rem;
+}
+
+.agent-card__activity-times > span {
+  gap: 0.4rem;
+}
+
+.agent-card__activity p {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0.6rem 0 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.agent-card__activity svg {
+  flex: 0 0 auto;
+}
+
+.agent-card__activity p svg {
+  margin-top: 0.15rem;
+}
+
+.agent-card__retry {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.agent-card__retry p {
+  flex: 1 1 15rem;
+  margin: 0;
+  color: #71521e;
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.agent-card__expand {
+  display: grid;
+  width: 2.75rem;
+  min-height: 2.75rem;
+  place-items: center;
+  border: 1px solid #c9daf0;
+  border-radius: 9px;
+  background: #f4f8ff;
+  color: #285289;
+}
+
+.agent-card__expand[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.agent-card:focus-visible {
+  outline: 3px solid #366cb9;
+  outline-offset: 4px;
+}
+
+@media (max-width: 980px) {
+  .agent-project__tab-actions {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 700px) {
+  .project-editor__recovery {
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+
+  .project-editor__recovery button {
+    flex: 1 1 12rem;
+  }
+
+  .agent-project__tab-actions .agent-project__stop-button,
+  .agent-project__tab-actions .agent-project__resume-button {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+    padding: 0.55rem 0.68rem;
+    font-size: 0.68rem;
+  }
+
+  .agent-card__retry .agent-card__run-button {
+    width: 100%;
+  }
+}
+
+/* UX audit: visible keyboard focus, readable forms and recoverable navigation. */
+.skip-link {
+  position: fixed;
+  z-index: 100;
+  top: 0.75rem;
+  left: 0.75rem;
+  padding: 0.8rem 1rem;
+  border-radius: 0.6rem;
+  background: #fff;
+  color: #173c72;
+  font-weight: 700;
+  transform: translateY(-200%);
+}
+
+.skip-link:focus {
+  transform: none;
+  outline: 3px solid #2563eb;
+}
+
+.connection-state h1 {
+  font-size: 1.65rem;
+}
+
+.connection-state > button {
+  min-height: 2.75rem;
+  padding: 0.65rem 1rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: #2563eb;
+  color: white;
+  font-weight: 650;
+}
+
+.project-sidebar :focus-visible {
+  outline-color: #93c5fd;
+}
+
+.project-sidebar__search:focus-within,
+.engine-option:has(input:focus-visible) {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.project-sidebar__search:focus-within {
+  outline-color: #93c5fd;
+}
+
+.agent-engine-mcp__help,
+.agent-engine-plugins__help {
+  color: #a2b8d4;
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.handoff-toggle--mixed {
+  border-color: #b78130;
+  background: #fff6e5;
+  color: #825313;
+}
+
+.workflow-parameters__footer {
+  flex-wrap: wrap;
+}
+
+.workflow-parameters__focus {
+  min-height: 2.75rem;
+  margin-left: auto;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #b78130;
+  border-radius: 0.5rem;
+  background: #fff;
+  color: #825313;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.workflow-parameters__field [aria-invalid="true"] {
+  border-color: #b9384e;
+}
+
+.workflow-parameters__field .workflow-parameters__error {
+  color: #a5263c;
+}
+
+.agent-card__conversation-response-option {
+  display: grid;
+  min-width: 0;
+  padding: 0.72rem 0.85rem;
+  gap: 0.35rem;
+  border: 1px solid #c0d2eb;
+  border-radius: 8px;
+  background: #f1f7ff;
+  color: #29486f;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.agent-card__conversation-response-option--selected {
+  border-color: #2563eb;
+  background: #eaf2ff;
+  box-shadow: inset 3px 0 0 #2563eb;
+  color: #173c72;
+}
+
+.agent-card__conversation-response-select {
+  display: flex;
+  align-items: center;
+  min-height: 2.75rem;
+  gap: 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.agent-card__conversation-response-select:has(input:disabled) {
+  cursor: default;
+}
+
+.agent-card__conversation-response-choice {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: #2563eb;
+}
+
+@media (max-width: 700px) {
+  .project-sidebar--expanded .project-sidebar__content {
+    max-height: min(22rem, 40dvh);
+  }
+
+  .project-sidebar__toggle,
+  .project-sidebar__import-button,
+  .project-sidebar__error button {
+    min-height: 2.75rem;
+  }
+
+  .engine-option strong {
+    font-size: 0.82rem;
+  }
+
+  .editor-field input,
+  .editor-field textarea,
+  .editor-field select,
+  .project-creation-dialog input,
+  .project-creation-dialog textarea,
+  .workflow-parameters__field input,
+  .workflow-parameters__field textarea,
+  .workflow-parameters__field select,
+  .project-sidebar__search input {
+    font-size: 1rem;
+  }
+
+  .workflow-parameters__focus {
+    width: 100%;
+  }
+}

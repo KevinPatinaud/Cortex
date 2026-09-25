@@ -1,3 +1,5 @@
+import { ExecutionControlService } from "../../../application/service/executionControl/ExecutionControlService.ts";
+import { SqliteExecutionControlRepository } from "../../audit/SqliteExecutionControlRepository.ts";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -60,12 +62,14 @@ const codexPluginService = new CodexPluginService();
 const agentConfigurationService = new AgentConfigurationService(
   configurationFile
 );
+const executionControlRepository = new SqliteExecutionControlRepository(auditDatabaseFile);
+const executionControl = new ExecutionControlService(executionControlRepository, readPositiveSetting("CORTEX_MAX_CONCURRENT_CALLS", 4));
 const agentService = new AgentService([
   new CodexAgentProvider(workspaceDirectory),
   new ClaudeAgentProvider(workspaceDirectory),
   new CopilotAgentProvider(agentToolRegistry, mcpConfigurationService)
 ], agentConfigurationService, mcpConfigurationService, codexPluginService,
-readPositiveSetting("CORTEX_AGENT_TIMEOUT_MS", 15 * 60 * 1000));
+readPositiveSetting("CORTEX_AGENT_TIMEOUT_MS", 15 * 60 * 1000), executionControl);
 const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(
   configurationFile,
@@ -104,7 +108,7 @@ const gmail = new GmailService(
   agentUseCase
 );
 const app = createCortexApplication({
-  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations
+  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations, executionControl
 });
 
 const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase);
@@ -153,6 +157,7 @@ async function shutdown(): Promise<void> {
   await gmail.close();
   await automationsStopped;
   automationRepository.close();
+  executionControlRepository.close();
   workflowAuditRepository.close();
   clearTimeout(deadline);
 }

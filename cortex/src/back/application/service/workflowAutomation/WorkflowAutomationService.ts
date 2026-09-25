@@ -1,3 +1,4 @@
+import { ExecutionSuspendedError } from "../executionControl/ExecutionControlService.ts";
 import { randomUUID } from "node:crypto";
 import type { AgentUseCase, AgentProject, AgentDefinition } from "../../usecase/AgentUseCase.ts";
 import type { ProjectUseCase } from "../../usecase/ProjectUseCase.ts";
@@ -175,7 +176,7 @@ export class WorkflowAutomationService {
   private runner(job: StoredWorkflowJob): AgentUseCase {
     let runner = this.runners.get(job.id);
     if (!runner) {
-      runner = this.agents.createIsolatedWorkflow(job.snapshot, job.id, job.payload);
+      runner = this.agents.createIsolatedWorkflow(job.snapshot, job.id, job.payload, job.sourceProjectId);
       this.runners.set(job.id, runner);
     }
     return runner;
@@ -183,7 +184,7 @@ export class WorkflowAutomationService {
 
   async detail(projectId: string, id: string) {
     const job = this.requireJob(projectId, id);
-    const runner = this.runners.get(id) ?? this.agents.createIsolatedWorkflow(job.snapshot, job.id, job.payload);
+    const runner = this.runners.get(id) ?? this.agents.createIsolatedWorkflow(job.snapshot, job.id, job.payload, job.sourceProjectId);
     return { job: this.publicJob(job), project: await runner.loadProject(job.targetProjectId, false) };
   }
   private publicJob({ snapshot, parameterValues, ...job }: StoredWorkflowJob) { return this.withBlockedStatus(job); }
@@ -219,6 +220,9 @@ export class WorkflowAutomationService {
   }
   async resume(projectId: string, id: string, input: unknown = {}): Promise<void> {
     const job = this.requireJob(projectId, id);
+    if (this.agents.isProjectPaused?.(job.sourceProjectId) || this.agents.isProjectPaused?.(job.targetProjectId)) {
+      throw new ValidationError("Réactivez le projet avant de reprendre ce dossier.");
+    }
     if (!["failed", "blocked", "interrupted"].includes(job.status) || this.active.has(id)) throw new ValidationError("Ce dossier ne peut pas être repris maintenant.");
     if (!isRecord(input) || (input.clarification !== undefined && typeof input.clarification !== "string")) throw new ValidationError("Les précisions doivent être du texte.");
     const clarification = typeof input.clarification === "string" ? input.clarification.trim() : "";
@@ -297,6 +301,7 @@ export class WorkflowAutomationService {
         if (!projectIds.has(job.sourceProjectId) || !projectIds.has(job.targetProjectId)) {
           await this.cancel(job.targetProjectId, job.id); continue;
         }
+        if (this.agents.isProjectPaused?.(job.sourceProjectId) || this.agents.isProjectPaused?.(job.targetProjectId)) continue;
         if (this.stopped || this.active.has(job.id) || this.active.size >= this.concurrency) continue;
         const state = readWorkflowCheckpoint(this.audit.forInstance(job.id).getCheckpoint(job.targetProjectId)?.state);
         const resume = Boolean(state?.instance);
@@ -322,7 +327,7 @@ export class WorkflowAutomationService {
       const result = await runner.runWorkflow(job.targetProjectId, job.parameterValues, "scheduled", { resume, now, additionalInstructions });
       if (this.store.get(job.id)?.status !== "cancelled") this.store.update(job.id, result.status === "waiting" ? "waiting" : "completed");
     } catch (error) {
-      if (this.store.get(job.id)?.status !== "cancelled") this.store.update(job.id, this.stopped ? "interrupted" : error instanceof AgentBlockedError ? "blocked" : "failed", error instanceof Error ? error.message : "Échec du dossier.");
+      if (this.store.get(job.id)?.status !== "cancelled") this.store.update(job.id, (this.stopped || error instanceof ExecutionSuspendedError) ? "interrupted" : error instanceof AgentBlockedError ? "blocked" : "failed", error instanceof Error ? error.message : "Échec du dossier.");
     }
   }
 }

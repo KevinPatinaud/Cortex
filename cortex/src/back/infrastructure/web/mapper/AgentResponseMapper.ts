@@ -136,6 +136,8 @@ export interface AgentStatusResponse {
 }
 
 export interface AgentProjectResponse {
+  executionPaused?: boolean;
+  workflowDefinitionError?: string;
   dispatchRules?: AgentProject["dispatchRules"];
   workflowInstance?: AgentProject["workflowInstance"];
   workflowWaits?: AgentProject["workflowWaits"];
@@ -171,6 +173,8 @@ export function toAgentProjectResponse(
   project: AgentProject
 ): AgentProjectResponse {
   return {
+    executionPaused: project.executionPaused,
+    workflowDefinitionError: project.workflowDefinitionError,
     projectId: project.projectId,
     dispatchRules: project.dispatchRules,
     workflowResumable: project.workflowResumable,

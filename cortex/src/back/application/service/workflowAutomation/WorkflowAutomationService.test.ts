@@ -104,6 +104,25 @@ async function settle(f: ReturnType<Awaited<ReturnType<typeof fixture>>["open"]>
   assert.fail(`Dossiers did not reach the expected state: ${JSON.stringify(f.store.list("source").jobs.map(job => [job.key, job.status, job.error]))}`);
 }
 
+test("pausing either source or target prevents queued dossiers from starting", async t => {
+  const state = await fixture();
+  const f = state.open();
+  const paused = new Set<string>();
+  t.mock.method(f.agents, "isProjectPaused", (id: string) => paused.has(id));
+  try {
+    await f.service.saveRule("source", { sourceAgentId: agentId("scan"), targetProjectId: "target", enabled: true });
+    await f.agents.runWorkflow("source");
+    const calls = state.calls.length;
+    paused.add("source"); await f.service.start(); await f.service.tick();
+    assert.equal(state.calls.length, calls);
+    paused.delete("source"); paused.add("target"); await f.service.tick();
+    assert.equal(state.calls.length, calls);
+    assert.ok(f.store.list("source").jobs.every(job => job.status === "queued"));
+    paused.clear(); await settle(f, () => f.store.list("source").jobs.every(job => job.status === "waiting"));
+    assert.equal(state.calls.length, calls + 2);
+  } finally { await f.close(); await state.cleanup(); }
+});
+
 test("dossier filters count every page, retain dispatched keys and keep ordering stable when statuses change", async () => {
   const state = await fixture();
   state.setKeys(Array.from({ length: 61 }, (_, index) => `property-${index}`));

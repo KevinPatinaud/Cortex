@@ -1,4 +1,5 @@
 import { isExecutionCancelled } from "../workflowExecution/WorkflowExecution.ts";
+import { ExecutionSuspendedError } from "../executionControl/ExecutionControlService.ts";
 import type { AgentUseCase } from "../../usecase/AgentUseCase.ts";
 import type { ProjectUseCase } from "../../usecase/ProjectUseCase.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
@@ -191,6 +192,7 @@ export class WorkflowScheduler {
     for (const [projectId, schedule] of this.schedules) {
       if (
         !schedule.enabled ||
+        this.agentUseCase.isProjectPaused?.(projectId) ||
         this.handledMinuteKeys.get(projectId) === minuteKey ||
         !cronMatchesDate(schedule.cron, date, schedule.timezone ?? serverTimezone())
       ) {
@@ -254,7 +256,7 @@ export class WorkflowScheduler {
       this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, status);
       if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) runtime.lastRunStatus = status;
     } catch (error) {
-      const status = isExecutionCancelled(error) ? "cancelled" : "failed";
+      const status = error instanceof ExecutionSuspendedError ? "interrupted" : isExecutionCancelled(error) ? "cancelled" : "failed";
       const message = error instanceof Error ? error.message : "The scheduled workflow execution failed.";
       this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, status, message);
       if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) {

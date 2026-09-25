@@ -30,6 +30,10 @@ export function createAgentController(
 ): Router {
   const router = Router();
 
+  router.get("/projects/:projectId/runtime", async (request, response) => {
+    response.set("Cache-Control", "no-store").json(await agentUseCase.getWorkflowRuntime(request.params.projectId));
+  });
+
   router.get("/projects/actual", (_request, response) => {
     const project = agentUseCase.getActualLoadedProject();
     response.json(project ? toAgentProjectResponse(project) : null);

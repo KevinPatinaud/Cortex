@@ -37,6 +37,8 @@ const fr = {
   "wait.sent": "Réponse enregistrée. La reprise est automatique.",
   "wait.error": "Impossible de transmettre la réponse.",
   "wait.paused": "La reprise automatique est arrêtée. Consultez l’erreur ou réinitialisez le workflow.",
+  "wait.projectPaused": "Le projet est en pause. Les réponses sont conservées et les attentes reprendront après sa réactivation.",
+  "wait.sentWhilePaused": "Réponse conservée. Réactivez le projet pour permettre la reprise.",
 
   "workflow.legend.title": "Légende des liaisons",
   "workflow.legend.pending": "Possible",
@@ -670,6 +672,8 @@ const en: Record<TranslationKey, string> = {
   "wait.sent": "Reply saved. The workflow will resume automatically.",
   "wait.error": "Unable to submit the reply.",
   "wait.paused": "Automatic resumption has stopped. Review the error or reset the workflow.",
+  "wait.projectPaused": "The project is paused. Replies are retained and waits will resume after reactivation.",
+  "wait.sentWhilePaused": "Reply retained. Reactivate the project to allow resumption.",
 
   "workflow.legend.title": "Connection legend",
   "workflow.legend.pending": "Possible",

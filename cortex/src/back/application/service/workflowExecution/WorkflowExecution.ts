@@ -16,11 +16,26 @@ export class WorkflowExecutionPool {
   private active = 0;
   private readonly waiting: Array<() => void> = [];
 
-  constructor(private readonly concurrency: number) {}
+  constructor(private readonly concurrency: number) {
+    if (!Number.isSafeInteger(concurrency) || concurrency < 1) throw new Error("Concurrency must be a positive integer.");
+  }
+
+  get activeCount(): number { return this.active; }
+  get queuedCount(): number { return this.waiting.length; }
 
   async execute<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T> {
+    signal.throwIfAborted();
     if (this.active >= this.concurrency) {
-      await new Promise<void>((resolve) => this.waiting.push(resolve));
+      await new Promise<void>((resolve, reject) => {
+        const ready = () => { signal.removeEventListener("abort", abort); resolve(); };
+        const abort = () => {
+          const index = this.waiting.indexOf(ready);
+          if (index >= 0) this.waiting.splice(index, 1);
+          reject(signal.reason);
+        };
+        this.waiting.push(ready);
+        signal.addEventListener("abort", abort, { once: true });
+      });
     } else {
       this.active += 1;
     }

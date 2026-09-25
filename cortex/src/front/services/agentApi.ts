@@ -91,6 +91,8 @@ export interface ProjectInstructions {
 }
 
 export interface AgentProject {
+  executionPaused?: boolean;
+  workflowDefinitionError?: string;
   dispatchRules?: WorkflowDispatchRule[];
   workflowInstance?: WorkflowInstanceState;
   workflowWaits?: WorkflowWaitingThread[];

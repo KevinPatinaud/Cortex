@@ -1,4 +1,6 @@
 import express from "express";
+import { createExecutionControlController } from "./ExecutionControlController.ts";
+import type { ExecutionControlService } from "../../../application/service/executionControl/ExecutionControlService.ts";
 import path from "node:path";
 import type { AgentUseCase } from "../../../application/usecase/AgentUseCase.ts";
 import type { ProjectUseCase } from "../../../application/usecase/ProjectUseCase.ts";
@@ -21,6 +23,7 @@ export function createCortexApplication(options: {
   clientDirectory: string;
   gmail?: GmailService;
   automations?: WorkflowAutomationService;
+  executionControl?: ExecutionControlService;
 }) {
   const app = express();
   app.disable("x-powered-by");
@@ -43,6 +46,7 @@ export function createCortexApplication(options: {
   app.use("/api/auth", createAuthenticationRouter(options.authentication));
   app.get("/api/health", (_request, response) => { response.json({ status: "ok" }); });
   if (options.authentication) app.use("/api", requireAuthentication(options.authentication));
+  if (options.executionControl) app.use("/api/projects", createExecutionControlController(options.projectUseCase, options.executionControl));
   if (options.gmail) app.use("/api/gmail", createGmailController(options.gmail));
   if (options.automations) app.use("/api/automations", createWorkflowAutomationController(options.automations));
   app.use("/api/projects", createProjectController(options.projectUseCase, options.automations));

@@ -222,6 +222,7 @@ for (const engine of ["codex", "claude", "copilot"] as const) {
       const agentServiceCalls: string[] = [];
       const agentService = new Proxy({} as AgentService, {
         get(_target, property) {
+          if (property === "executionControl") return undefined;
           agentServiceCalls.push(String(property));
           throw new Error("An empty project must not use the AI service.");
         }

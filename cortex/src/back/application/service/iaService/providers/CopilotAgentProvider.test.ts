@@ -31,6 +31,26 @@ test("cancels a stuck Copilot session creation and force-stops stuck cleanup", a
   assert.equal(forced, true);
 });
 
+test("Copilot accumulates usage across model turns in a session", async () => {
+  const provider = new TestProvider({
+    async start() {},
+    async createSession() {
+      return {
+        sessionId: "usage-session",
+        on(handler: (event: unknown) => void) {
+          handler({ type: "assistant.usage", data: { inputTokens: 11, outputTokens: 3, cacheReadTokens: 2 } });
+          handler({ type: "assistant.usage", data: { inputTokens: 9, outputTokens: 2 } });
+          return () => {};
+        },
+        async sendAndWait() { return { data: { content: "Final" } }; },
+        async abort() {}, async disconnect() {}
+      };
+    },
+    async stop() { return []; }
+  } as unknown as CopilotClient);
+  assert.deepEqual((await provider.ask("Run")).usage, { inputTokens: 20, outputTokens: 5, cachedInputTokens: 2 });
+});
+
 test("a successful Copilot answer survives stuck cleanup and reports streamed text", async () => {
   let forced = false;
   let unsubscribed = false;

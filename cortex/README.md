@@ -295,15 +295,73 @@ engine must still be able to access any saved session. A reset or project edit
 invalidates the checkpoint.
 
 Automatic workflows follow selected branches and loops until completion, with
-a default maximum of 100 agent executions per run. Each agent launch executes at
-most four instances concurrently. Engine executions have a default 15-minute
-timeout. These limits are configurable using the variables below.
+a default maximum of 100 actual provider requests per workflow instance, including
+fan-out and resumed requests. Each workflow has a local concurrency limit of four;
+all provider requests also share a server-wide limit of four. Engine executions
+have a default 15-minute timeout. These limits are configurable using the variables below.
 
 Independent ready agents run concurrently, sharing the workflow's instance
 concurrency limit. A convergence waits for all applicable branches before
 combining their results. In manual mode, a project with multiple entry points
 can start them together while preserving each agent's manual/automatic setting
 and additional instructions.
+
+## Project pause, usage and limits
+
+The project header includes **Mettre le projet en pause** and **Consommation et
+limites**. Pausing is persisted in SQLite and applies to manual calls, graph
+analysis, revisions, schedules, dossiers and wait wake-ups. It does not cancel
+requests already sent to a provider: those requests finish and checkpoint their
+results. Queued requests recheck the policy immediately before starting.
+
+Received replies remain stored while a workflow waits. Reactivating a project
+allows waiting workflows and queued dossiers to run again. Interrupted runs and
+dossiers require explicit resumption. Cron occurrences missed while paused are
+not replayed. Resetting a workflow does not clear the project policy or its daily
+consumption; restarting Cortex preserves both. Cross-project dossiers respect
+the policy of both their source and target project.
+
+Optional limits cover provider requests per day, measured tokens per day, and
+provider requests per workflow instance or dossier. Days start at **00:00 UTC**.
+Per-instance counts survive resumptions and daily rollover; a new instance gets
+its own counter. Graph analysis and revisions count toward the project's daily
+usage, while generation before a project exists is only covered by the shared
+server concurrency limit. An actual request means a call to a provider's `ask`
+method, which may itself perform several model turns and tool calls. Failed
+requests count; requests rejected before provider invocation do not.
+
+Codex, Claude and Copilot usage events supply token measurements when available.
+Cached input is included in total input, not added a second time. Missing
+measurements are shown as unavailable or partial, never as a measured zero.
+With a token limit enabled, an unmeasured completed request blocks subsequent
+calls until the limit is removed or the UTC day changes. The limit checks observed
+usage before each request; in-flight requests can exceed it. These figures are
+neither an estimated price nor the remaining quota of a provider subscription.
+Counters start when this ledger is introduced; older history is not backfilled.
+
+`GET` and `PUT /api/projects/:projectId/execution-control` expose this policy and
+the day's usage. The server-wide pool covers authoring, graph analysis, manual
+runs, schedules and dossiers in this server process. Running multiple server
+processes does not create a distributed concurrency limit.
+
+## Project loading and refresh
+
+Loading a workflow reads only its instructions, engine configuration and direct
+agent-definition files. Limits are 2 MiB per definition, 8 MiB in total and 2,000
+files. Outputs, dependencies and arbitrary binaries are not read during loading.
+Explicit full-content inspection remains available with a 20 MiB per-file,
+100 MiB total, 2,000-file, 4,000-entry and 32-level limit; generated directories
+such as `.git`, `node_modules`, `dist`, `build` and test reports are skipped.
+
+`GET /api/agents/projects/:projectId/runtime` returns execution state and
+conversations without prompts or file definitions. It reuses loaded definitions;
+the workspace polls every second while active, every five seconds while waiting,
+and every fifteen seconds while idle. Requests do not overlap and are cancelled
+when the project changes. Explicit loading and editing refresh the definition.
+Opening a paused project with a missing graph cache does not call AI or invalidate
+its saved checkpoint; graph recovery is deferred until reactivation. If a budget
+blocks graph reconstruction, the definition remains visible with an explicit error
+and accessible budget controls. Execution stays blocked until the graph is rebuilt.
 
 ## Workflow parameters
 
@@ -388,8 +446,9 @@ See the [Playwright server setup](https://playwright.dev/docs/test-webserver) an
 | `CORTEX_PROJECTS_DIRECTORY` | `<workspace>/projects` | Directory used to store projects uploaded through the browser |
 | `CORTEX_AUDIT_DATABASE` | `<workspace>/data/audit/cortex-audit.sqlite` | SQLite file used for persistent workflow audit history |
 | `CORTEX_AGENT_TIMEOUT_MS` | `900000` | Maximum engine execution time in milliseconds |
-| `CORTEX_MAX_CONCURRENT_INSTANCES` | `4` | Maximum concurrent instances within an agent launch |
-| `CORTEX_MAX_WORKFLOW_EXECUTIONS` | `100` | Maximum agent executions in one automatic workflow, including loop iterations |
+| `CORTEX_MAX_CONCURRENT_INSTANCES` | `4` | Maximum concurrent instances within a workflow |
+| `CORTEX_MAX_CONCURRENT_CALLS` | `4` | Shared concurrent provider requests across this server process |
+| `CORTEX_MAX_WORKFLOW_EXECUTIONS` | `100` | Maximum actual provider requests in a workflow instance, including fan-out and resumptions |
 | `CORTEX_COPILOT_MCP_CONFIG` | `<COPILOT_HOME>/mcp-config.json` | Optional Copilot MCP configuration file override |
 | `CORTEX_CLAUDE_MCP_CONFIG` | `~/.claude.json` | Optional Claude MCP configuration file override |
 
@@ -402,4 +461,8 @@ The password protects the application, but remote deployments must still use HTT
 - `src/back/application`: use cases, services, and agent providers;
 - `src/back/infrastructure`: Express HTTP server;
 - `src/shared`: shared contracts and algorithms;
-- `docs`: manual acceptance test campaigns.
+- `docs`: architecture, workflow guides and manual acceptance campaigns.
+
+See [architecture and maintenance boundaries](docs/architecture.md). The GitHub
+Actions workflow lives at the Git root in `../.github/workflows/ci.yml`; its commands
+run from `cortex/`, with cache and report paths relative to the Git root.

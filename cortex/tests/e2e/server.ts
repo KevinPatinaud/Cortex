@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
+import { ExecutionControlService } from "../../src/back/application/service/executionControl/ExecutionControlService.ts";
+import { SqliteExecutionControlRepository } from "../../src/back/infrastructure/audit/SqliteExecutionControlRepository.ts";
 import { AgentService } from "../../src/back/application/service/iaService/AgentService.ts";
 import { AgentConfigurationService } from "../../src/back/application/service/iaService/AgentConfigurationService.ts";
 import type { AgentProvider } from "../../src/back/application/service/iaService/AgentProvider.ts";
@@ -93,7 +95,9 @@ const simulatedProvider: AgentProvider = {
     };
   }
 };
-const agentService = new AgentService([simulatedProvider], configuration);
+const executionLedger = new SqliteExecutionControlRepository(path.join(directory, "execution.sqlite"));
+const executionControl = new ExecutionControlService(executionLedger, 4);
+const agentService = new AgentService([simulatedProvider], configuration, undefined, undefined, 15 * 60 * 1000, executionControl);
 const projectService = new ProjectService(path.join(directory, "config.json"), path.join(directory, "projects"));
 const projectUseCase = new ProjectUseCase(projectService, new DirectoryPickerService(), agentService);
 const repository = new SqliteWorkflowAuditRepository(path.join(directory, "audit.sqlite"));
@@ -124,7 +128,7 @@ const gmail = new GmailService(path.join(directory, "gmail.sqlite"), "http://127
   throw new Error("Unexpected fake Gmail URL");
 }) as typeof fetch);
 const app = createCortexApplication({ projectUseCase, agentUseCase, workflowScheduler,
-  authentication: null, clientDirectory: path.resolve("dist"), gmail, automations });
+  authentication: null, clientDirectory: path.resolve("dist"), gmail, automations, executionControl });
 // Test-only endpoint outside /api, never registered by production.
 app.post("/__test/gmail-reply", async (_request, response) => { gmailReply = true; await gmail.poll(); response.json({ ok: true }); });
 app.post("/__test/scheduled-scan", (request, response) => {
@@ -153,6 +157,7 @@ async function close() {
   await gmail.close();
   automationStore.close();
   repository.close();
+  executionLedger.close();
   const resolved = path.resolve(directory);
   if (path.dirname(resolved) !== path.resolve(tmpdir()) || !path.basename(resolved).startsWith("cortex-e2e-")) {
     throw new Error("Refusing to clean an unexpected test directory.");

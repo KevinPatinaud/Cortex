@@ -1,3 +1,4 @@
+import { readAgentProjectDefinition, readProjectTree } from "./ProjectContentReader.ts";
 
 import { randomUUID } from "node:crypto";
 import {
@@ -5,7 +6,6 @@ import {
   mkdtemp,
   readdir,
   readFile,
-  readlink,
   rename,
   stat,
   writeFile
@@ -553,6 +553,12 @@ export class ProjectService {
     return this.loadProjects();
   }
 
+  async getAgentProjectDefinition(id: string): Promise<ProjectContent> {
+    const project = (await this.getProjects()).find(project => project.id === id.trim());
+    if (!project) throw new NotFoundError("The project could not be found.");
+    return { id: project.id, directoryPath: project.directoryPath, root: await readAgentProjectDefinition(project.directoryPath) };
+  }
+
   async getProjectContent(id: string): Promise<ProjectContent> {
     const projectId = id.trim();
 
@@ -571,10 +577,7 @@ export class ProjectService {
     return {
       id: project.id,
       directoryPath: project.directoryPath,
-      root: await this.readProjectDirectory(
-        project.directoryPath,
-        project.directoryPath
-      )
+      root: await readProjectTree(project.directoryPath)
     };
   }
 
@@ -722,101 +725,6 @@ export class ProjectService {
 
       throw error;
     }
-  }
-
-  private async readProjectDirectory(
-    rootDirectory: string,
-    directoryPath: string
-  ): Promise<ProjectDirectoryContent> {
-    const directoryEntries = await readdir(directoryPath, {
-      withFileTypes: true
-    });
-    const sortedEntries = directoryEntries.sort((firstEntry, secondEntry) =>
-      firstEntry.name.localeCompare(secondEntry.name)
-    );
-    const children: ProjectContentEntry[] = [];
-
-    for (const entry of sortedEntries) {
-      const entryPath = path.join(directoryPath, entry.name);
-      const relativePath = this.toPortableRelativePath(
-        rootDirectory,
-        entryPath
-      );
-
-      if (entry.isDirectory()) {
-        children.push(await this.readProjectDirectory(rootDirectory, entryPath));
-        continue;
-      }
-
-      if (entry.isFile()) {
-        children.push(await this.readProjectFile(entryPath, relativePath));
-        continue;
-      }
-
-      if (entry.isSymbolicLink()) {
-        children.push({
-          type: "symbolicLink",
-          name: entry.name,
-          relativePath,
-          target: await readlink(entryPath)
-        });
-        continue;
-      }
-
-      children.push({
-        type: "other",
-        name: entry.name,
-        relativePath
-      });
-    }
-
-    return {
-      type: "directory",
-      name: path.basename(directoryPath) || directoryPath,
-      relativePath: this.toPortableRelativePath(rootDirectory, directoryPath),
-      children
-    };
-  }
-
-  private async readProjectFile(
-    filePath: string,
-    relativePath: string
-  ): Promise<ProjectFileContent> {
-    const fileContent = await readFile(filePath);
-    const isBinary = this.isBinaryContent(fileContent);
-
-    return {
-      type: "file",
-      name: path.basename(filePath),
-      relativePath,
-      size: fileContent.byteLength,
-      encoding: isBinary ? "base64" : "utf8",
-      content: fileContent.toString(isBinary ? "base64" : "utf8")
-    };
-  }
-
-  private isBinaryContent(content: Buffer): boolean {
-    const sampleLength = Math.min(content.byteLength, 8_000);
-
-    if (sampleLength === 0) {
-      return false;
-    }
-
-    let controlCharacterCount = 0;
-
-    for (let index = 0; index < sampleLength; index += 1) {
-      const byte = content[index];
-
-      if (byte === 0) {
-        return true;
-      }
-
-      if (byte < 7 || (byte > 13 && byte < 32)) {
-        controlCharacterCount += 1;
-      }
-    }
-
-    return controlCharacterCount / sampleLength > 0.1;
   }
 
   private toPortableRelativePath(

@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
   pull_request:
 
 permissions:
@@ -10,12 +9,15 @@ permissions:
 
 jobs:
   validate:
+    defaults:
+      run:
+        working-directory: cortex
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -24,6 +26,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: cortex/package-lock.json
       - name: Install dependencies
         run: npm ci
       - name: Validate
@@ -38,6 +41,6 @@ jobs:
         with:
           name: browser-report-${{ matrix.os }}
           path: |
-            playwright-report/
-            test-results/
+            cortex/playwright-report/
+            cortex/test-results/
           retention-days: 7

@@ -6,6 +6,7 @@ class CapturingCodexAgentProvider extends CodexAgentProvider {
   capturedArgs: string[] = [];
   capturedTimeout: number | undefined;
   capturedInput: string | undefined;
+  usageEvents: unknown[] = [];
 
   protected override async runCommand(
     _command: string,
@@ -23,10 +24,18 @@ class CapturingCodexAgentProvider extends CodexAgentProvider {
       JSON.stringify({
         type: "item.completed",
         item: { type: "agent_message", text: "reponse" }
-      })
+      }),
+      ...this.usageEvents.map(usage => JSON.stringify({ type: "turn.completed", usage }))
     ].join("\n");
   }
 }
+
+test("Codex sums reported turn usage without treating absent measurements as zero", async () => {
+  const provider = new CapturingCodexAgentProvider(process.cwd());
+  assert.equal((await provider.ask("Run")).usage, undefined);
+  provider.usageEvents = [{ input_tokens: 12, output_tokens: 4, cached_input_tokens: 3 }, { input_tokens: 8, output_tokens: 2 }];
+  assert.deepEqual((await provider.ask("Run")).usage, { inputTokens: 20, outputTokens: 6, cachedInputTokens: 3 });
+});
 
 test("désactive le multi-agent interne quand Cortex lance Codex", async () => {
   const provider = new CapturingCodexAgentProvider(process.cwd());

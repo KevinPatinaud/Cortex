@@ -448,6 +448,7 @@ test("configure le graphe des agents selon la réponse du moteur local", async (
   assert.equal(calls.length, 1);
   assert.equal(calls[0].engine, "claude");
   assert.deepEqual(calls[0].options, {
+    projectId: "project-id",
     persistSession: false,
     readOnly: true,
     workingDirectory: "C:\\projects\\sample"

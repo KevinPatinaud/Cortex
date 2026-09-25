@@ -1,5 +1,19 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+
+test("a paused project never starts its cron and resumes only on a due minute", async () => {
+  let paused = true, runs = 0;
+  const projects = { getProjects: async () => [{ id: "p" }], getWorkflowScheduleConfiguration: async () => ({ cron: "* * * * *", enabled: true, parameterValues: {} }) } as unknown as ProjectUseCase;
+  const agents = { isProjectPaused: () => paused, isProjectRunning: () => false, runWorkflow: async () => { runs++; } } as unknown as AgentUseCase;
+  const scheduler = new WorkflowScheduler(projects, agents, () => new Date("2026-09-25T12:00:00Z"));
+  try {
+    await scheduler.start(); await new Promise(setImmediate);
+    scheduler.checkDueSchedules(new Date("2026-09-25T12:01:00Z")); await new Promise(setImmediate);
+    assert.equal(runs, 0);
+    paused = false; scheduler.checkDueSchedules(new Date("2026-09-25T12:02:00Z")); await new Promise(setImmediate);
+    assert.equal(runs, 1);
+  } finally { scheduler.stop(); }
+});
 import type { AgentUseCase } from "../../usecase/AgentUseCase.ts";
 import type { ProjectUseCase } from "../../usecase/ProjectUseCase.ts";
 import { WorkflowScheduler } from "./WorkflowScheduler.ts";

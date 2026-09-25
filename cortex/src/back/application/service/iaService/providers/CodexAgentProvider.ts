@@ -1,5 +1,6 @@
 
 import { existsSync } from "node:fs";
+import { readTokenUsage, type TokenUsage } from "../../../../../shared/ExecutionControl.ts";
 import path from "node:path";
 import type {
   AgentExecutionOptions,
@@ -128,6 +129,7 @@ function parseCodexJsonOutput(
 ): AgentExecutionResult {
   let sessionId = existingSessionId;
   const messages: string[] = [];
+  let usage: TokenUsage | undefined;
 
   for (const line of output.split(/\r?\n/)) {
     if (!line.trim()) {
@@ -136,6 +138,13 @@ function parseCodexJsonOutput(
 
     try {
       const event = JSON.parse(line) as Record<string, unknown>;
+      if (event.type === "turn.completed") {
+        const value = readRecord(event.usage);
+        const measured = readTokenUsage(value.input_tokens, value.output_tokens, value.cached_input_tokens);
+        if (measured) usage = { inputTokens: (usage?.inputTokens ?? 0) + measured.inputTokens,
+          outputTokens: (usage?.outputTokens ?? 0) + measured.outputTokens,
+          cachedInputTokens: (usage?.cachedInputTokens ?? 0) + (measured.cachedInputTokens ?? 0) };
+      }
       const eventSessionId = readString(event.thread_id) ||
         readString(event.session_id);
 
@@ -162,6 +171,7 @@ function parseCodexJsonOutput(
 
   return {
     answer: messages.at(-1) || "",
+    ...(usage ? { usage } : {}),
     ...(sessionId ? { sessionId } : {})
   };
 }

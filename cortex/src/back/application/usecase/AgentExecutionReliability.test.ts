@@ -12,6 +12,8 @@ import type { WorkflowExecutionLimits } from "../service/workflowExecution/Workf
 import type { WorkflowParameterDefinition } from "../../../shared/WorkflowParameter.ts";
 import { WorkflowAuditService } from "../service/workflowAudit/WorkflowAuditService.ts";
 import { SqliteWorkflowAuditRepository } from "../../infrastructure/audit/SqliteWorkflowAuditRepository.ts";
+import { ExecutionControlService } from "../service/executionControl/ExecutionControlService.ts";
+import { SqliteExecutionControlRepository } from "../../infrastructure/audit/SqliteExecutionControlRepository.ts";
 
 const agentId = (name: string): string => `.claude/agents/${name}.md`;
 
@@ -64,6 +66,7 @@ function fixture(
   inputModes: Record<string, "separate" | "aggregate"> = {}
 ) {
   let configuration: AgentWorkflowConfiguration | null = null;
+  let contentReads = 0;
   const file = (name: string, relativePath: string, content: string) => ({
     type: "file" as const, name, relativePath, content, size: content.length, encoding: "utf8" as const
   });
@@ -81,7 +84,7 @@ function fixture(
   };
   const project = {
     getProjects: async () => [{ id: "project", directoryPath: process.cwd() }],
-    getProjectContent: async () => content,
+    getProjectContent: async () => { contentReads++; return content; },
     getAgentWorkflowConfiguration: async () => configuration,
     saveAgentWorkflowConfiguration: async (_id: string, value: AgentWorkflowConfiguration) => { configuration = value; }
   } as unknown as ProjectUseCase;
@@ -94,9 +97,120 @@ function fixture(
       return execute(name, prompt, options);
     }
   } as unknown as AgentService;
-  return { repository, content, createUseCase: (storage = repository) =>
+  return { repository, content, service, project, readCount: () => contentReads, createUseCase: (storage = repository) =>
     new AgentUseCase(service, project, new WorkflowAuditService(storage), limits) };
 }
+
+test("the workflow execution ceiling counts each provider call in a threaded fan-out", async () => {
+  const calls: string[] = [];
+  const f = fixture({ source: ["worker"], worker: [] }, async name => {
+    calls.push(name);
+    return name === "source" ? response(["one", "two", "three", "four", "five"], ["worker"], true) : response(["done"], []);
+  }, { maxWorkflowExecutions: 2, maxConcurrentInstances: 4 });
+  try {
+    const agents = f.createUseCase();
+    await assert.rejects(agents.runWorkflow("project"), /execution limit/);
+    assert.deepEqual(calls, ["source", "worker"]);
+    assert.equal((await agents.getWorkflowRuntime("project")).workflowInstance?.executionCount, 2);
+  } finally { f.repository.close(); }
+});
+
+test("runtime polling serves sleeping state without rereading project definitions", async () => {
+  const f = fixture({ hotel: [] }, async () => waitingResponse(new Date(Date.now() + 3600000).toISOString()));
+  try {
+    const agents = f.createUseCase(); await agents.runWorkflow("project");
+    const reads = f.readCount();
+    for (let i = 0; i < 10; i++) {
+      const state = await agents.getWorkflowRuntime("project");
+      assert.equal(state.workflowInstance?.status, "waiting");
+      assert.equal("prompt" in state.agents[0], false);
+    }
+    assert.equal(f.readCount(), reads);
+  } finally { f.repository.close(); }
+});
+
+test("a project pause retains a wake event and blocks manual and automatic calls until reactivated", async () => {
+  const ledger = new SqliteExecutionControlRepository(":memory:");
+  const control = new ExecutionControlService(ledger);
+  let calls = 0;
+  const f = fixture({ hotel: [] }, async (_name, prompt) => {
+    calls++;
+    return prompt.includes("Cortex durable workflow wake") ? response(["confirmed"], []) : waitingResponse(new Date(Date.now() + 3600000).toISOString());
+  });
+  Object.defineProperty(f.service, "executionControl", { value: control });
+  const execute = f.service.execute.bind(f.service);
+  f.service.execute = (engine, prompt, options) => control.execute(options, engine, options.signal ?? new AbortController().signal,
+    () => execute(engine, prompt, options), options.beforeStart);
+  try {
+    const agents = f.createUseCase(); await agents.runWorkflow("project");
+    const before = await agents.getWorkflowRuntime("project");
+    control.update("project", { paused: true });
+    const wait = before.workflowWaits![0];
+    await agents.receiveWorkflowEvent("project", { instanceId: before.workflowInstance!.id, id: "reply-while-paused", key: wait.eventKey!, payload: "Confirmed" });
+    await agents.wakeWaitingWorkflows();
+    await assert.rejects(agents.runAgent("project", { agentId: agentId("hotel") }), /pause/);
+    await assert.rejects(agents.runWorkflow("project"), /pause/);
+    assert.equal(calls, 1);
+    assert.equal((await agents.getWorkflowRuntime("project")).workflowInstance?.status, "waiting");
+    control.update("project", { paused: false }); await agents.wakeWaitingWorkflows();
+    assert.equal(calls, 2);
+    assert.equal((await agents.getWorkflowRuntime("project")).workflowInstance?.status, "completed");
+  } finally { f.repository.close(); ledger.close(); }
+});
+
+test("pausing in flight retains the finished branch and requires an explicit resume", async () => {
+  const ledger = new SqliteExecutionControlRepository(":memory:");
+  const control = new ExecutionControlService(ledger, 1);
+  const calls: string[] = [];
+  const f = fixture({ source: ["next"], next: [] }, async name => {
+    calls.push(name);
+    if (name === "source") control.update("project", { paused: true });
+    return response([name], name === "source" ? ["next"] : []);
+  });
+  Object.defineProperty(f.service, "executionControl", { value: control });
+  const execute = f.service.execute.bind(f.service);
+  f.service.execute = (engine, prompt, options) => control.execute(options, engine, options.signal ?? new AbortController().signal,
+    () => execute(engine, prompt, options), options.beforeStart);
+  try {
+    const agents = f.createUseCase();
+    await assert.rejects(agents.runWorkflow("project"), /pause/);
+    assert.equal((await agents.getWorkflowRuntime("project")).workflowInstance?.status, "interrupted");
+    assert.deepEqual(calls, ["source"]);
+    control.update("project", { paused: false });
+    await agents.wakeWaitingWorkflows();
+    assert.deepEqual(calls, ["source"]);
+    await agents.runWorkflow("project", {}, "manual", { resume: true });
+    assert.deepEqual(calls, ["source", "next"]);
+    assert.equal((await agents.getWorkflowRuntime("project")).workflowInstance?.status, "completed");
+  } finally { ledger.close(); f.repository.close(); }
+});
+
+test("opening a paused project without a graph cache preserves its checkpoint for later recovery", async () => {
+  const ledger = new SqliteExecutionControlRepository(":memory:");
+  const control = new ExecutionControlService(ledger);
+  const f = fixture({ source: ["next"], next: [] }, async name => response([name], name === "source" ? ["next"] : []));
+  Object.defineProperty(f.service, "executionControl", { value: control });
+  try {
+    const agents = f.createUseCase();
+    await agents.loadProject("project");
+    await agents.runAgent("project", { agentId: agentId("source") });
+    const checkpoint = f.repository.getCheckpoint("project");
+    assert.ok(checkpoint);
+    const getConfiguration = f.project.getAgentWorkflowConfiguration;
+    f.project.getAgentWorkflowConfiguration = async () => null;
+    control.update("project", { paused: true });
+    const restarted = f.createUseCase();
+    const pausedProject = await restarted.loadProject("project");
+    assert.equal(pausedProject.workflowInstance?.id, (checkpoint.state as {instance: {id: string}}).instance.id);
+    assert.ok(pausedProject.workflowDefinitionError);
+    assert.deepEqual(f.repository.getCheckpoint("project"), checkpoint);
+    f.project.getAgentWorkflowConfiguration = getConfiguration;
+    control.update("project", { paused: false });
+    const restored = await restarted.loadProject("project");
+    assert.equal(restored.agents[0].hasSession, true);
+    assert.equal(restored.workflowInstance?.id, (checkpoint.state as {instance: {id: string}}).instance.id);
+  } finally { ledger.close(); f.repository.close(); }
+});
 
 test("independent entry points run together and their threaded flows join once", async () => {
   const graph = { agenda: ["analysis"], news: ["writer"], analysis: ["summary"], writer: ["summary"], summary: ["publisher"], publisher: [] };
@@ -258,13 +372,13 @@ test("automatic workflows follow feedback edges until the selected exit", async 
   } finally { f.repository.close(); }
 });
 
-test("an endless cycle fails at its execution budget", async () => {
+test("an endless cycle is interrupted at its execution budget", async () => {
   const f = fixture({ entry: ["loop"], loop: ["entry"] }, async (name) =>
     response([name], [name === "entry" ? "loop" : "entry"]), { maxWorkflowExecutions: 3 });
   try {
     await assert.rejects(f.createUseCase().runWorkflow("project"), /execution limit/);
     const run = f.repository.listRuns("project", 20, 0).items[0];
-    assert.equal(run.status, "failed");
+    assert.equal(run.status, "interrupted");
     assert.equal(run.agentExecutionCount, 3);
   } finally { f.repository.close(); }
 });
@@ -632,7 +746,7 @@ test("the execution budget spans every durable wake", async (t) => {
   await useCase.wakeWaitingWorkflows(new Date(Date.now() + 2000));
   await useCase.wakeWaitingWorkflows(new Date(Date.now() + 4000));
   assert.equal(calls, 2);
-  assert.equal((await useCase.loadProject("project")).workflowInstance?.status, "failed");
+  assert.equal((await useCase.loadProject("project")).workflowInstance?.status, "interrupted");
   f.repository.close();
 });
 

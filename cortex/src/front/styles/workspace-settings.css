@@ -1,0 +1,296 @@
+/* Workspace settings */
+
+.agent-engine-settings-trigger {
+  display: flex;
+  width: 100%;
+  min-height: 3.35rem;
+  padding: 0.65rem 0.75rem;
+  align-items: center;
+  gap: 0.62rem;
+  border: 1px solid rgb(75 143 237 / 18%);
+  border-radius: 9px;
+  background: rgb(44 105 194 / 7%);
+  color: #8eb8f1;
+  text-align: left;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.agent-engine-settings-trigger:hover {
+  border-color: rgb(95 159 245 / 42%);
+  background: rgb(44 105 194 / 13%);
+  box-shadow: 0 8px 22px rgb(0 0 0 / 12%);
+}
+
+.agent-engine-settings-trigger:focus-visible {
+  outline: 2px solid #5f9ff5;
+  outline-offset: 2px;
+}
+
+.agent-engine-settings-trigger > svg {
+  flex: 0 0 auto;
+}
+
+.agent-engine-settings-trigger > svg:first-child {
+  color: #5f9ff5;
+}
+
+.agent-engine-settings-trigger > svg:last-child {
+  color: #7898c2;
+}
+
+.agent-engine-settings-trigger .agent-engine-status__content strong {
+  margin-top: 0;
+}
+
+.agent-engine-settings-trigger .agent-engine-status__content small {
+  margin-top: 0.2rem;
+}
+
+.agent-settings-dialog.agent-engine-settings {
+  width: min(69rem, calc(100% - 2rem));
+  max-height: calc(100vh - 2rem);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgb(75 143 237 / 28%);
+  border-radius: 20px;
+  background: #08182c;
+  box-shadow: 0 34px 110px rgb(3 14 31 / 58%), 0 0 0 1px rgb(255 255 255 / 5%);
+  color: #dceaff;
+}
+
+.agent-settings-dialog[open] {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.agent-settings-dialog::backdrop {
+  background: rgb(3 14 31 / 72%);
+  backdrop-filter: blur(7px);
+}
+
+.agent-settings-dialog__header {
+  display: grid;
+  padding: 1.2rem 1.35rem;
+  align-items: center;
+  grid-template-columns: 2.8rem minmax(0, 1fr) 2.2rem;
+  gap: 0.85rem;
+  border-bottom: 1px solid rgb(75 143 237 / 16%);
+  background:
+    radial-gradient(circle at 10% 0%, rgb(55 125 228 / 17%), transparent 20rem),
+    #0a1c33;
+}
+
+.agent-settings-dialog__icon {
+  display: grid;
+  width: 2.8rem;
+  height: 2.8rem;
+  place-items: center;
+  border: 1px solid rgb(95 159 245 / 28%);
+  border-radius: 11px;
+  background: rgb(37 99 235 / 13%);
+  color: #71aaf7;
+}
+
+.agent-settings-dialog__eyebrow {
+  display: block;
+  margin-bottom: 0.22rem;
+  color: #70a6ed;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 0.6rem;
+  font-weight: 750;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.agent-settings-dialog h2 {
+  color: #f2f7ff;
+  font-size: 1.35rem;
+}
+
+.agent-settings-dialog__header p {
+  margin-top: 0.25rem;
+  color: #829bbd;
+  font-size: 0.72rem;
+}
+
+.agent-settings-dialog__close {
+  display: grid;
+  width: 2.2rem;
+  height: 2.2rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgb(111 137 170 / 28%);
+  border-radius: 8px;
+  background: rgb(9 29 53 / 72%);
+  color: #8eacd2;
+}
+
+.agent-settings-dialog__close:hover {
+  border-color: rgb(95 159 245 / 55%);
+  color: #eef6ff;
+}
+
+.agent-settings-dialog__body.agent-engine-settings__content {
+  display: grid;
+  min-height: 0;
+  padding: 1rem;
+  overflow-y: auto;
+  grid-template-columns: minmax(18rem, 0.8fr) minmax(24rem, 1.2fr);
+  gap: 0.9rem;
+  border-top: 0;
+  scrollbar-color: #315b8f transparent;
+  scrollbar-width: thin;
+}
+
+.agent-settings-dialog__section {
+  min-width: 0;
+  overflow: hidden;
+  align-self: start;
+  border: 1px solid rgb(75 143 237 / 17%);
+  border-radius: 13px;
+  background: rgb(9 30 55 / 76%);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 2%);
+}
+
+.agent-settings-dialog__section-header {
+  display: flex;
+  min-height: 4.1rem;
+  padding: 0.8rem 0.9rem;
+  align-items: center;
+  gap: 0.65rem;
+  background: rgb(35 78 137 / 9%);
+  color: #75a9ef;
+}
+
+.agent-settings-dialog__section-header > svg {
+  flex: 0 0 auto;
+}
+
+.agent-settings-dialog__section-header > div,
+.agent-settings-dialog__section-header > span {
+  min-width: 0;
+}
+
+.agent-settings-dialog__section-header h3,
+.agent-settings-dialog__section-header p {
+  margin: 0;
+}
+
+.agent-settings-dialog__section-header h3 {
+  color: #e5efff;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.agent-settings-dialog__section-header p {
+  margin-top: 0.15rem;
+  color: #728baa;
+  font-size: 0.62rem;
+  line-height: 1.4;
+}
+
+.agent-settings-dialog__section-content {
+  border-top: 1px solid rgb(75 143 237 / 12%);
+}
+
+.agent-settings-dialog .agent-settings-dialog__section-content > label {
+  min-height: 3.8rem;
+  padding: 0.72rem 0.9rem;
+}
+
+.agent-settings-dialog .agent-settings-dialog__section-content > label strong,
+.agent-settings-dialog .agent-engine-storage strong,
+.agent-settings-dialog .agent-engine-plugins > header strong,
+.agent-settings-dialog .agent-engine-mcp > header strong {
+  font-size: 0.74rem;
+}
+
+.agent-settings-dialog .agent-settings-dialog__section-content > label small,
+.agent-settings-dialog .agent-engine-storage small,
+.agent-settings-dialog .agent-engine-plugins > header small,
+.agent-settings-dialog .agent-engine-mcp > header small {
+  font-size: 0.61rem;
+}
+
+.agent-settings-dialog .agent-engine-storage {
+  padding: 0.8rem 0.9rem 0.9rem;
+}
+
+.agent-settings-dialog .agent-engine-storage input[type="text"] {
+  height: 2.35rem;
+  font-size: 0.62rem;
+}
+
+.agent-settings-dialog .agent-engine-storage form button {
+  width: 2.35rem;
+  height: 2.35rem;
+}
+
+.agent-settings-dialog__section-content > .agent-engine-plugins {
+  border-top: 0;
+}
+
+.agent-settings-dialog .agent-engine-plugins > header,
+.agent-settings-dialog .agent-engine-mcp > header {
+  min-height: 3.8rem;
+  padding: 0.65rem 0.9rem;
+}
+
+.agent-settings-dialog .agent-engine-plugins__help,
+.agent-settings-dialog .agent-engine-mcp__help {
+  padding-right: 0.9rem;
+  padding-bottom: 0.7rem;
+  padding-left: 3rem;
+  font-size: 0.59rem;
+}
+
+.agent-settings-dialog .agent-engine-plugins__list li {
+  padding-right: 0.9rem;
+  padding-left: 3rem;
+}
+
+.agent-settings-dialog .agent-engine-mcp__list li {
+  padding-right: 0.9rem;
+  padding-left: 0.9rem;
+}
+
+.agent-settings-dialog .agent-engine-plugins__other {
+  padding: 0.7rem 0.9rem;
+}
+
+.agent-settings-dialog .agent-engine-settings__error {
+  padding: 0.7rem 0.9rem;
+  font-size: 0.65rem;
+}
+
+@media (max-width: 900px) {
+  .agent-settings-dialog__body.agent-engine-settings__content {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 700px) {
+  .agent-settings-dialog.agent-engine-settings {
+    width: calc(100% - 1rem);
+    max-height: calc(100vh - 1rem);
+  }
+
+  .agent-settings-dialog__header {
+    padding: 0.9rem;
+    grid-template-columns: 2.5rem minmax(0, 1fr) 2.2rem;
+    gap: 0.65rem;
+  }
+
+  .agent-settings-dialog__icon {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .agent-settings-dialog__header p {
+    display: none;
+  }
+
+  .agent-settings-dialog__body.agent-engine-settings__content {
+    padding: 0.65rem;
+  }
+}

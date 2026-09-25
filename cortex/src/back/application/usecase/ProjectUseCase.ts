@@ -167,6 +167,10 @@ export class ProjectUseCase {
     );
   }
 
+  getAgentProjectDefinition(id: string): Promise<ProjectContent> {
+    return this.projectService.getAgentProjectDefinition(id);
+  }
+
   getProjectContent(id: string): Promise<ProjectContent> {
     const projectId = id.trim();
 

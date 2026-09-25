@@ -1,3 +1,5 @@
+import { useWorkflowPolling } from "./useWorkflowPolling.ts";
+import { ProjectExecutionControls } from "./ProjectExecutionControls.tsx";
 import {
   lazy,
   Suspense,
@@ -11,15 +13,13 @@ import {
 import { CalendarClock, Download, LoaderCircle, Pencil, Play, Plus, RotateCcw, Square } from "lucide-react";
 import {
   loadAgentProject,
-  getWorkflowSchedule,
   resetAgentProjectWorkflow,
   cancelProjectExecution,
   resumeWorkflow,
   type AgentDefinition,
   type AgentProject,
   type UpstreamAgentResult,
-  type WorkflowParameterValues,
-  type WorkflowSchedule
+  type WorkflowParameterValues
 } from "../../../services/agentApi.ts";
 import {
   exportProjectArchive,
@@ -218,8 +218,7 @@ export function AgentProjectWorkspace({
   const [resetError, setResetError] = useState("");
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState("");
-  const [workflowSchedule, setWorkflowSchedule] =
-    useState<WorkflowSchedule | null>(null);
+  const { workflowSchedule, setWorkflowSchedule } = useWorkflowPolling(content, locallyRunning.size > 0, onContentRefresh);
   const [workflowParameterValues, setWorkflowParameterValues] =
     useState<WorkflowParameterValues>({});
   const hydratedParameterProjectId = useRef<string | null>(null);
@@ -273,45 +272,6 @@ export function AgentProjectWorkspace({
     }
   }, [content, workflowSchedule]);
 
-  useEffect(() => {
-    if (!content) {
-      return;
-    }
-
-    let isActive = true;
-    let isRefreshing = false;
-
-    const refreshSchedule = async (): Promise<void> => {
-      if (isRefreshing) return;
-      isRefreshing = true;
-
-      try {
-        const schedule = await getWorkflowSchedule(content.projectId);
-
-        if (isActive) {
-          setWorkflowSchedule(schedule);
-
-          if (schedule.running) {
-            onContentRefresh(await loadAgentProject(content.projectId));
-          }
-        }
-      } catch {
-        // The scheduler remains unavailable without blocking manual execution.
-      } finally {
-        isRefreshing = false;
-      }
-    };
-
-    void refreshSchedule();
-    const refreshTimer = window.setInterval(() => {
-      void refreshSchedule();
-    }, 15_000);
-
-    return () => {
-      isActive = false;
-      window.clearInterval(refreshTimer);
-    };
-  }, [content?.projectId, onContentRefresh]);
 
   useEffect(() => {
     if (!content) {
@@ -390,45 +350,6 @@ export function AgentProjectWorkspace({
     ));
   }, [content]);
 
-  useEffect(() => {
-    if (!content || (!locallyRunning.size && !content.agents.some(
-      (agent) => agent.executionStatus === "running" || agent.executionStatus === "waiting"
-    ))) {
-      return;
-    }
-
-    let isActive = true;
-    let isRefreshing = false;
-
-    const refreshProject = async (): Promise<void> => {
-      if (isRefreshing) {
-        return;
-      }
-
-      isRefreshing = true;
-
-      try {
-        const refreshedContent = await loadAgentProject(content.projectId);
-
-        if (isActive) {
-          onContentRefresh(refreshedContent);
-        }
-      } catch {
-        // The run request already displays execution errors.
-      } finally {
-        isRefreshing = false;
-      }
-    };
-    void refreshProject();
-    const refreshTimer = window.setInterval(() => {
-      void refreshProject();
-    }, 1_000);
-
-    return () => {
-      isActive = false;
-      window.clearInterval(refreshTimer);
-    };
-  }, [content?.projectId, Boolean(locallyRunning.size || content?.agents.some((agent) => agent.executionStatus === "running" || agent.executionStatus === "waiting")), onContentRefresh]);
 
   useEffect(() => {
     if (!content) {
@@ -983,6 +904,10 @@ export function AgentProjectWorkspace({
             {isExporting ? t("project.exporting") : t("project.export")}
           </button>
         </div>
+        <ProjectExecutionControls key={content.projectId} projectId={content.projectId} onChange={paused => {
+          onContentRefresh({ ...content, executionPaused: paused });
+          if (!paused) void loadAgentProject(content.projectId).then(onContentRefresh).catch(() => undefined);
+        }} />
         <div className="agent-project__tabs-row">
           <div className="agent-project__tabs" role="tablist" aria-label={t("workspace.contentAria")}>
             <button
@@ -1037,7 +962,7 @@ export function AgentProjectWorkspace({
           <div className="agent-project__tab-actions">
             {activeTab === "agents" && unstartedRootAgents.length > 1 && (
               <button type="button" className="agent-project__resume-button"
-                disabled={isAnyRunning || isStopping || isResetting || missingWorkflowParameters.length > 0 ||
+                disabled={content.executionPaused || isAnyRunning || isStopping || isResetting || missingWorkflowParameters.length > 0 ||
                   unstartedRootAgents.some((agent) => !agent.prompt.trim())}
                 title={t("workspace.startRootsHelp")}
                 onClick={() => {
@@ -1057,7 +982,7 @@ export function AgentProjectWorkspace({
               {t(isStopping ? "execution.stopping" : "execution.stop")}
             </button>}
             {(content.workflowResumable || isResuming) && <button type="button" className="agent-project__resume-button"
-              disabled={isAnyRunning || isStopping || isResetting} aria-busy={isResuming}
+              disabled={content.executionPaused || isAnyRunning || isStopping || isResetting} aria-busy={isResuming}
               title={t("execution.resumeHelp")} onClick={() => void handleResume()}>
               <Play aria-hidden="true" size={15} />{t(isResuming ? "execution.resuming" : "execution.resumeWorkflow")}
             </button>}
@@ -1137,6 +1062,7 @@ export function AgentProjectWorkspace({
         </p>
       )}
       {executionControlError && <p className="agent-project__export-error" role="alert">{executionControlError}</p>}
+      {content.workflowDefinitionError && <p className="agent-project__export-error" role="alert">{content.workflowDefinitionError}</p>}
 
       {activeTab === "instructions" ? (
         <section
@@ -1337,7 +1263,7 @@ export function AgentProjectWorkspace({
                                 workflowFeedbackEdgeKeys
                               ).length > 0}
                               shouldAutoRun={
-                                !dossierAgent && !content.workflowInstance?.automatic && !isResuming && !isStopping && startedInBrowserByProject[projectId] === true &&
+                                !content.executionPaused && !dossierAgent && !content.workflowInstance?.automatic && !isResuming && !isStopping && startedInBrowserByProject[projectId] === true &&
                                 agent.executionStatus !== "failed" && agent.executionStatus !== "cancelled" &&
                                 (upstreamAgents.length > 0 || releasedAgentIds.has(agent.id)) &&
                                 !launchedAgentIds.has(agent.id) &&
@@ -1356,11 +1282,11 @@ export function AgentProjectWorkspace({
                               isInvalidated={
                                 agentResultStates[agent.id]?.isInvalidated ?? false
                               }
-                              executionLockMessage={content.workflowInstance?.automatic && content.workflowInstance.status === "running"
+                              executionLockMessage={content.workflowDefinitionError || (content.executionPaused ? "Projet en pause" : content.workflowInstance?.automatic && content.workflowInstance.status === "running"
                                 ? t("execution.resuming") : isStopping
                                 ? t("execution.stopping")
                                 : isResuming ? t("execution.resuming")
-                                : isResetting ? t("project.resetting") : null}
+                                : isResetting ? t("project.resetting") : null)}
                               isFrozen={[
                                 ...getForwardDescendantAgentIds(agent.id)
                               ].some((descendantId) =>
@@ -1371,7 +1297,7 @@ export function AgentProjectWorkspace({
                                 (agentResultStates[agent.id]?.responses.length ?? 0) > 0 &&
                                 pendingSuccessorIds.length > 0
                               }
-                              canContinue={!isStopping && !isResuming && readySuccessorIds.length > 0}
+                              canContinue={!content.executionPaused && !isStopping && !isResuming && readySuccessorIds.length > 0}
                               prerequisiteMessage={prerequisiteMessage}
                               missingWorkflowParameterLabels={
                                 isRootAgent && !agent.hasSession

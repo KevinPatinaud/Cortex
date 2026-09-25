@@ -130,7 +130,7 @@ export function WorkflowDossiers({ project, rule }: { project: AgentProject; rul
     {feedback && !selected && <p role="status">{feedback}</p>}
     {!loaded && !loadError && <p className="workflow-dossiers__empty" role="status">{say("Chargement…", "Loading…")}</p>}
     {loaded && !jobs.length && <p className="workflow-dossiers__empty">{filter === "all" ? say("Aucun dossier pour le moment. Les résultats retenus apparaîtront ici.", "No dossiers yet. Qualifying results will appear here.") : say("Aucun dossier dans cette catégorie.", "No dossiers in this category.")}</p>}
-    {rule && loaded && hasPendingResults && <button type="button" disabled={busy || project.agents.some(agent => agent.executionStatus === "running")}
+    {rule && loaded && hasPendingResults && <button type="button" disabled={project.executionPaused || busy || project.agents.some(agent => agent.executionStatus === "running")}
       onClick={() => void action(() => post(`${base}/continue`, { agentId: rule.sourceAgentId }), say("Résultats transmis. Les dossiers sont suivis ci-dessous.", "Results submitted. Track dossiers below."))}>
       <Play aria-hidden="true" size={16} />{say("Continuer avec les résultats disponibles", "Continue with available results")}
     </button>}
@@ -168,7 +168,7 @@ export function WorkflowDossiers({ project, rule }: { project: AgentProject; rul
           {detail.job.status !== "blocked" && <details><summary>{say("Diagnostic technique", "Technical diagnostic")}</summary><pre>{detail.job.error}</pre></details>}
         </div>}
         <details><summary>{say("Résultat à l’origine du dossier", "Original result")}</summary><MarkdownContent content={detail.job.payload} /></details>
-        {["failed", "blocked", "interrupted"].includes(detail.job.status) && <JobResume key={detail.job.id} job={detail.job} base={`${base}/jobs/${selected}`} onResumed={() => setRevision(value => value + 1)} />}
+        {["failed", "blocked", "interrupted"].includes(detail.job.status) && <JobResume key={detail.job.id} job={detail.job} paused={!!project.executionPaused || !!detail.project.executionPaused} base={`${base}/jobs/${selected}`} onResumed={() => setRevision(value => value + 1)} />}
         <div className="automation-panel__detail-actions">
           {!["completed", "cancelled"].includes(detail.job.status) && <button type="button" disabled={busy} onClick={() => void action(() => post(`${base}/jobs/${selected}/cancel`, {}))}>{say("Arrêter ce dossier", "Stop this dossier")}</button>}
         </div>
@@ -196,7 +196,7 @@ function JobStatus({ status, label }: { status: WorkflowJobStatus; label: string
   return <span className={`automation-panel__status automation-panel__status--${status}`}><Icon size={14} aria-hidden="true" />{label}</span>;
 }
 
-function JobResume({ job, base, onResumed }: { job: WorkflowJob; base: string; onResumed: () => void }) {
+function JobResume({ job, base, paused, onResumed }: { job: WorkflowJob; base: string; paused: boolean; onResumed: () => void }) {
   const { language } = useTranslation();
   const say = (fr: string, en: string) => language === "fr" ? fr : en;
   const id = useId();
@@ -213,7 +213,8 @@ function JobResume({ job, base, onResumed }: { job: WorkflowJob; base: string; o
     <p id={`${id}-help`}>{say("Indiquez les informations manquantes ou ce que vous avez corrigé. Ces précisions seront transmises aux agents de ce dossier. La reprise peut déclencher les actions autorisées, dont l’envoi de mails.", "Provide the missing information or explain what you corrected. These clarifications will reach this dossier’s agents. Resuming may trigger authorized actions, including sending emails.")}</p>
     <textarea id={id} aria-describedby={`${id}-help`} value={clarification} onChange={event => setClarification(event.target.value)} required={blocked} maxLength={32000} disabled={busy} />
     {error && <p role="alert" className="automation-panel__error">{error}</p>}
-    <button type="submit" disabled={busy || (blocked && !clarification.trim())}><RefreshCw aria-hidden="true" size={16} />
+    {paused && <p role="status">{say("Réactivez le projet avant de reprendre ce dossier.", "Reactivate the project before resuming this dossier.")}</p>}
+    <button type="submit" disabled={paused || busy || (blocked && !clarification.trim())}><RefreshCw aria-hidden="true" size={16} />
       {blocked ? say("Transmettre et reprendre", "Submit and resume") : say("Reprendre après vérification", "Resume after review")}</button>
   </form>;
 }

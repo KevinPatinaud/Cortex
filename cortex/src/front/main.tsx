@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "./App.tsx";
 import { I18nProvider } from "./i18n.tsx";
 import "./styles.css";
+import "./styles/execution-controls.css";
 
 const rootElement = document.getElementById("root");
 

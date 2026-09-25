@@ -1,5 +1,6 @@
 
 import { randomUUID } from "node:crypto";
+import { readTokenUsage } from "../../../../../shared/ExecutionControl.ts";
 import type {
   AgentExecutionOptions,
   AgentExecutionResult,
@@ -74,6 +75,12 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
     }
     const answer: string = typeof result?.result === "string" ? result.result : "";
     const effectiveSessionId = typeof result?.session_id === "string" ? result.session_id : sessionId;
+    const measured = readTokenUsage(result?.usage?.input_tokens, result?.usage?.output_tokens, result?.usage?.cache_read_input_tokens);
+    if (measured) {
+      measured.inputTokens += measured.cachedInputTokens ?? 0;
+      const created = result?.usage?.cache_creation_input_tokens;
+      if (Number.isSafeInteger(created) && created >= 0) measured.inputTokens += created;
+    }
 
     if (!answer) {
       throw new Error("Claude did not return a response.");
@@ -81,6 +88,7 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
 
     return {
       answer,
+      ...(measured ? { usage: measured } : {}),
       ...(effectiveSessionId ? { sessionId: effectiveSessionId } : {})
     };
   }

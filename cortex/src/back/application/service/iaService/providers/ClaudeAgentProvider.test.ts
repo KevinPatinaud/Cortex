@@ -7,12 +7,13 @@ class StreamingClaude extends ClaudeAgentProvider {
   input?: string;
   args: string[] = [];
   fail = false;
+  usage?: Record<string, number>;
   protected override async runCommand(_command: string, args: string[], _timeout?: number,
     _directory?: string, input?: string, options: AgentExecutionOptions = {}) {
     this.input = input;
     this.args = args;
     options.onProgress?.(JSON.stringify({ type: "stream_event", event: { delta: { type: "text_delta", text: "Preview" } } }) + "\n");
-    return JSON.stringify({ type: "result", result: this.fail ? "Engine failed" : "Final answer", session_id: "session-1", is_error: this.fail });
+    return JSON.stringify({ type: "result", result: this.fail ? "Engine failed" : "Final answer", session_id: "session-1", is_error: this.fail, usage: this.usage });
   }
 }
 
@@ -25,6 +26,12 @@ test("Claude streams a preview and returns only the final answer with its sessio
   assert.equal(provider.input, "Large prompt");
   assert.equal(provider.args.includes("Large prompt"), false);
   assert.equal(provider.args.includes("--include-partial-messages"), true);
+});
+
+test("Claude includes cached reads and cache creation in measured input tokens", async () => {
+  const provider = new StreamingClaude(process.cwd());
+  provider.usage = { input_tokens: 10, output_tokens: 4, cache_read_input_tokens: 6, cache_creation_input_tokens: 2 };
+  assert.deepEqual((await provider.ask("Run")).usage, { inputTokens: 18, outputTokens: 4, cachedInputTokens: 6 });
 });
 
 test("Claude refuses an error result instead of reporting success", async () => {

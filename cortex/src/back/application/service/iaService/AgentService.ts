@@ -10,6 +10,7 @@ import type { AgentConfigurationService } from "./AgentConfigurationService.ts";
 import type { McpConfigurationService } from "./McpConfigurationService.ts";
 import type { CodexPluginService } from "./CodexPluginService.ts";
 import type { CodexPluginCatalog } from "../../../../shared/CodexPlugin.ts";
+import type { ExecutionControlService } from "../executionControl/ExecutionControlService.ts";
 import type {
   McpConnectionEngine,
   McpConnectionSummary,
@@ -63,7 +64,8 @@ export class AgentService {
     private readonly configurationService: AgentConfigurationService,
     private readonly mcpConfigurationService?: McpConfigurationService,
     private readonly codexPluginService?: CodexPluginService,
-    private readonly executionTimeoutMs = 15 * 60 * 1000
+    private readonly executionTimeoutMs = 15 * 60 * 1000,
+    readonly executionControl?: ExecutionControlService
   ) {}
 
   getCodexPlugins(): Promise<CodexPluginCatalog> {
@@ -191,9 +193,7 @@ export class AgentService {
         ? { autopilot: false, allowAll: false }
         : await this.configurationService.getConfiguration();
       options.signal?.throwIfAborted();
-      return provider.ask(prompt, {
-        ...options, configuration, timeoutMs: options.timeoutMs ?? this.executionTimeoutMs
-      });
+      return this.askProvider(provider, prompt, { ...options, configuration });
     });
   }
 
@@ -215,10 +215,18 @@ export class AgentService {
         : await this.configurationService.getConfiguration();
 
       options.signal?.throwIfAborted();
-      return provider.ask(prompt, {
-        ...options, configuration, timeoutMs: options.timeoutMs ?? this.executionTimeoutMs
-      });
+      return this.askProvider(provider, prompt, { ...options, configuration });
     });
+  }
+
+  private askProvider(provider: AgentProvider, prompt: string, options: AgentExecutionOptions): Promise<AgentExecutionResult> {
+    const operation = () => {
+      options.signal?.throwIfAborted();
+      return provider.ask(prompt, { ...options, timeoutMs: options.timeoutMs ?? this.executionTimeoutMs });
+    };
+    return this.executionControl
+      ? this.executionControl.execute(options, provider.engine, options.signal!, operation, options.beforeStart)
+      : (options.beforeStart?.(), operation());
   }
 
   private async getActiveProvider(): Promise<AgentProvider | null> {

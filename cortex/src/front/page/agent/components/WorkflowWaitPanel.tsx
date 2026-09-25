@@ -11,7 +11,7 @@ export function WorkflowWaitPanel({ project, onRefresh }: { project: AgentProjec
   const active = ["running", "waiting"].includes(project.workflowInstance.status);
   return <section className="workflow-waits" aria-label={t("wait.title")}>
     <h3><Clock3 aria-hidden="true" size={18} />{t("wait.title")}</h3>
-    <p>{t(active ? "wait.automatic" : "wait.paused")}</p>
+    <p>{t(project.executionPaused ? "wait.projectPaused" : active ? "wait.automatic" : "wait.paused")}</p>
     {project.workflowWaits.map((wait) => <WaitItem key={wait.id} wait={wait} project={project} active={active} onRefresh={onRefresh} />)}
   </section>;
 }
@@ -40,7 +40,7 @@ function WaitItem({ wait, project, active, onRefresh }: {
             method: "POST", headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ instanceId: project.workflowInstance!.id, id: eventId, key: wait.eventKey, payload: message })
           });
-          setMessage(""); setEventId(crypto.randomUUID()); setFeedback(t("wait.sent"));
+          setMessage(""); setEventId(crypto.randomUUID()); setFeedback(t(project.executionPaused ? "wait.sentWhilePaused" : "wait.sent"));
           onRefresh(await loadAgentProject(project.projectId));
         } catch (error) { setFeedback(error instanceof Error ? error.message : t("wait.error")); }
         finally { setBusy(false); }
