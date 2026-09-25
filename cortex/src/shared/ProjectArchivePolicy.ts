@@ -1,6 +1,7 @@
 export const maximumProjectFiles = 2_000;
 export const maximumProjectBytes = 100 * 1024 * 1024;
 export const maximumFileBytes = 20 * 1024 * 1024;
+export const maximumProjectNameLength = 120;
 
 const excludedDirectories = new Set([
   ".git", "node_modules", "dist", "build", "coverage", ".next", ".ssh"
@@ -29,7 +30,7 @@ export function isPortableProjectPath(relativePath: string): boolean {
 }
 
 export function assertPortableProjectName(name: string): void {
-  if (name.length > 120 || name.includes("/") || !isPortableProjectPath(name)) {
+  if (name.length > maximumProjectNameLength || name.includes("/") || !isPortableProjectPath(name)) {
     throw new TypeError("The project name contains invalid characters.");
   }
 }

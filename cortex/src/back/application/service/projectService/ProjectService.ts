@@ -18,7 +18,7 @@ import { prepareImportedProject } from "./ProjectImportConverter.ts";
 import { canonicalizeArchivedWorkflow, projectWorkflowArchivePath, remapArchivedWorkflow } from "./ProjectWorkflowArchive.ts";
 import { JsonConfigurationRepository } from "../configuration/JsonConfigurationRepository.ts";
 import { removeOwnedDirectory, withProjectFileTransaction, type ProjectFileChange } from "./ProjectFileTransaction.ts";
-import { assertPortableProjectName, assertProjectFileManifest } from "../../../../shared/ProjectArchivePolicy.ts";
+import { assertPortableProjectName, assertProjectFileManifest, maximumProjectNameLength } from "../../../../shared/ProjectArchivePolicy.ts";
 
 interface ProjectConfiguration {
   projects?: unknown;
@@ -381,13 +381,34 @@ export class ProjectService {
     if (workflow && prepared.converted) workflow = remapArchivedWorkflow(workflow, prepared.files, prepared.agentIdMap!);
     this.validateImportedProject(name, prepared.files);
     const directory = await this.ensureManagedProjectsDirectory();
-    const result = await this.publishProject(directory, name, prepared.files, workflow);
+    const importName = await this.findAvailableImportName(directory, name);
+    const result = await this.publishProject(directory, importName, prepared.files, workflow);
     return {
       ...result,
       ...(prepared.converted && prepared.sourceEngine && prepared.targetEngine ? {
         conversion: { sourceEngine: prepared.sourceEngine, targetEngine: prepared.targetEngine }
       } : {})
     };
+  }
+
+  private async findAvailableImportName(directory: string, name: string): Promise<string> {
+    // Removing a project keeps its files. An import must use the uploaded
+    // content in a new directory, including when the old project was removed.
+    const occupiedNames = new Set((await readdir(directory)).map((entry) => entry.toLowerCase()));
+    for (const project of await this.getProjects()) {
+      if (this.pathsAreEqual(path.dirname(project.directoryPath), directory)) {
+        occupiedNames.add(path.basename(project.directoryPath).toLowerCase());
+      }
+    }
+    let candidate = name;
+    for (let copy = 2; occupiedNames.has(candidate.toLowerCase()); copy += 1) {
+      const suffix = ` (${copy})`;
+      // Do not split a Unicode character when shortening a maximum-length name.
+      const characters = Array.from(name);
+      while (characters.join("").length + suffix.length > maximumProjectNameLength) characters.pop();
+      candidate = characters.join("").trimEnd() + suffix;
+    }
+    return candidate;
   }
 
   private async publishProject(

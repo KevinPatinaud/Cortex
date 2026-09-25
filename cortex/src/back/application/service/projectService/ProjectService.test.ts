@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -34,6 +34,60 @@ async function withProjectService(
     await rm(temporaryDirectory, { recursive: true, force: true });
   }
 }
+
+test("reimports a removed project without overwriting its retained files or restoring its schedule", async () => {
+  await withProjectService(async (service, parentDirectory, directory) => {
+    await service.saveManagedProjectsDirectory(parentDirectory);
+    const files = [{ relativePath: "AGENTS.md", content: Buffer.from("archived instructions") }];
+    const first = await service.importProject("Immobilier - La Réunion", files);
+    await service.saveWorkflowScheduleConfiguration(first.project.id, {
+      cron: "0 5 * * *", enabled: true, parameterValues: {}
+    });
+    await writeFile(path.join(first.project.directoryPath, "AGENTS.md"), "retained local changes");
+    await service.deleteProject(first.project.directoryPath);
+
+    // Reopening Cortex must not depend on an in-memory record of the deletion.
+    const reopened = new ProjectService(path.join(directory, "config.json"));
+    const imported = await reopened.importProject("Immobilier - La Réunion", files);
+
+    assert.notEqual(imported.project.id, first.project.id);
+    assert.equal(imported.project.directoryPath, path.join(parentDirectory, "Immobilier - La Réunion (2)"));
+    assert.deepEqual(imported.projects, [imported.project]);
+    assert.equal(await readFile(path.join(first.project.directoryPath, "AGENTS.md"), "utf8"), "retained local changes");
+    assert.equal(await readFile(path.join(imported.project.directoryPath, "AGENTS.md"), "utf8"), "archived instructions");
+    assert.equal(await reopened.getWorkflowScheduleConfiguration(imported.project.id), null);
+  });
+});
+
+test("imports concurrent copies around occupied paths and registered projects with missing directories", async () => {
+  await withProjectService(async (service, parentDirectory, directory) => {
+    await service.saveManagedProjectsDirectory(parentDirectory);
+    await mkdir(path.join(parentDirectory, "Atlas"));
+    await writeFile(path.join(parentDirectory, "Atlas (2)"), "unrelated file");
+    await service.saveProject(path.join(parentDirectory, "Atlas (3)"));
+    const other = new ProjectService(path.join(directory, "config.json"));
+    const files = [{ relativePath: "AGENTS.md", content: Buffer.from("imported") }];
+    const copies = await Promise.all([
+      service.importProject("Atlas", files), other.importProject("Atlas", files)
+    ]);
+    assert.deepEqual(copies.map(({ project }) => path.basename(project.directoryPath)).sort(), ["Atlas (4)", "Atlas (5)"]);
+    assert.equal(await readFile(path.join(parentDirectory, "Atlas (2)"), "utf8"), "unrelated file");
+    assert.deepEqual(await readdir(path.join(parentDirectory, "Atlas")), []);
+    assert.equal((await service.getProjects()).length, 3);
+  });
+});
+
+test("keeps a colliding imported name within the portable name length limit", async () => {
+  await withProjectService(async (service, parentDirectory) => {
+    await service.saveManagedProjectsDirectory(parentDirectory);
+    const name = "a".repeat(120);
+    await mkdir(path.join(parentDirectory, name));
+    const imported = await service.importProject(name, [
+      { relativePath: "AGENTS.md", content: Buffer.from("imported") }
+    ]);
+    assert.equal(path.basename(imported.project.directoryPath), `${"a".repeat(116)} (2)`);
+  });
+});
 
 test("preserves concurrent project, agent and workflow settings across service instances", async () => {
   await withProjectService(async (service, parentDirectory, directory) => {

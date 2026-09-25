@@ -94,3 +94,29 @@ test("deleting another project keeps the current project open and persists after
   await expect(page).toHaveURL(new RegExp(`project=${active.id}`));
   await expect(page.getByRole("button", { name: `Supprimer ${other.name}`, exact: true })).toHaveCount(0);
 });
+
+test("a removed project archive can be reimported under its original filename", async ({ page, request }) => {
+  const project = await createProject(request);
+  const archive = await request.get(`/api/projects/${project.id}/export`);
+  expect(archive.status()).toBe(200);
+  const instructions = await readFile(path.join(project.directoryPath, "AGENTS.md"), "utf8");
+  const deleted = await request.delete("/api/projects", { data: { directoryPath: project.directoryPath } });
+  expect(deleted.status()).toBe(200);
+
+  await page.goto("/");
+  const importedResponse = page.waitForResponse(response =>
+    response.url().endsWith("/api/projects/import-archive") && response.request().method() === "POST"
+  );
+  await page.locator('input[type="file"][accept^=".ctx"]').setInputFiles({
+    name: `${project.name}.ctx`, mimeType: "application/zip", buffer: await archive.body()
+  });
+  const response = await importedResponse;
+  expect(response.status()).toBe(201);
+  const imported = (await response.json()).project;
+  expect(imported.id).not.toBe(project.id);
+  expect(path.basename(imported.directoryPath)).toBe(`${project.name} (2)`);
+  await expect(page).toHaveURL(new RegExp(`project=${imported.id}`));
+  await expect(page.getByRole("button", { name: "Modifier le projet", exact: true })).toBeVisible();
+  expect(await readFile(path.join(imported.directoryPath, "AGENTS.md"), "utf8")).toBe(instructions);
+  expect(await readFile(path.join(project.directoryPath, "AGENTS.md"), "utf8")).toBe(instructions);
+});
