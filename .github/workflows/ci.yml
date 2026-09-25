@@ -28,7 +28,7 @@ jobs:
           cache: npm
           cache-dependency-path: cortex/package-lock.json
       - name: Install dependencies
-        run: npm ci --verbose --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Validate
         run: npm run check
       - name: Install test browser
