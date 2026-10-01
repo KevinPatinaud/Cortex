@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "check:all": "npm run check && npm run test:e2e",
-    "check": "npm run typecheck && npm test && npm run build",
+    "check": "npm run typecheck && npm test && npm run test:journal-supervisor && npm run build",
+    "test:journal-supervisor": "node --test ops/journal-supervisor/journal-supervisor.test.mjs",
     "preview": "vite preview"
   },
   "engines": {
