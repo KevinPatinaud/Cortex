@@ -15,7 +15,7 @@ import { WorkflowAutomationService } from "./WorkflowAutomationService.ts";
 import { readWorkflowCheckpoint } from "../workflowExecution/WorkflowCheckpoint.ts";
 
 const agentId = (name: string) => `.claude/agents/${name}.md`;
-const response = (items: string[], next: string[] = [], wait?: unknown) => ({
+const response = (items: unknown[], next: string[] = [], wait?: unknown) => ({
   sessionId: randomUUID(), answer: JSON.stringify({ status: wait ? "waiting" : "success", items: items.map(content => ({ content })),
     nextAgentIds: next, isMultiSelectionAllowed: true, isMultiSelectionThreaded: false, notes: null, ...(wait ? { wait } : {}) })
 });
@@ -30,6 +30,7 @@ async function fixture(unified = false, inferBranches = false) {
   let wakeAfterSeconds: number | null = null;
   let changedTemplate = false;
   let branchEnabled = true;
+  let structuredItems = false;
   const calls: Array<{ prompt: string; sessionId?: string }> = [];
   const configurations = new Map();
   const content = (id: string): ProjectContentOutput => ({ id, directoryPath: directory, root: {
@@ -57,7 +58,10 @@ async function fixture(unified = false, inferBranches = false) {
         parameters: unified ? [{ id: "criteria", label: "Criteria", description: "", required: true, inputType: "text", placeholder: "", options: [] }] : [] }) };
     }
     calls.push({ prompt, sessionId: options.sessionId });
-    if (prompt.includes("TASK_SCAN")) return response(keys.map(key => JSON.stringify({ key, title: key, payload: `Dossier ${key}` })));
+    if (prompt.includes("TASK_SCAN")) return response(keys.map(key => {
+      const item = { key, title: key, payload: `Dossier ${key}` };
+      return structuredItems ? item : JSON.stringify(item);
+    }));
     if (prompt.includes("TASK_NEGOTIATE")) {
       if (stallNegotiation) await new Promise((_resolve, reject) => {
         options.signal?.throwIfAborted();
@@ -85,6 +89,7 @@ async function fixture(unified = false, inferBranches = false) {
     setBlocked: (value: boolean) => { blockNegotiation = value; },
     changeTemplate: () => { changedTemplate = true; },
     setBranchEnabled: (enabled: boolean) => { branchEnabled = enabled; },
+    setStructuredItems: () => { structuredItems = true; },
     setStall: (value: boolean) => { stallNegotiation = value; },
     setWait: (value: number | null, at: string) => { wakeAfterSeconds = value; deadline = at; },
     cleanup: async () => {
@@ -103,6 +108,26 @@ async function settle(f: ReturnType<Awaited<ReturnType<typeof fixture>>["open"]>
   }
   assert.fail(`Dossiers did not reach the expected state: ${JSON.stringify(f.store.list("source").jobs.map(job => [job.key, job.status, job.error]))}`);
 }
+
+test("three native structured selection items create independent waiting dossiers and remain deduplicated", async () => {
+  const state = await fixture(true, true);
+  state.setKeys(["one", "two", "three"]);
+  state.setStructuredItems();
+  const f = state.open();
+  try {
+    await f.service.start();
+    await f.agents.runWorkflow("source", { criteria: "Rental investment" });
+    await settle(f, () => f.store.list("source").jobs.filter(job => job.status === "waiting").length === 3);
+    assert.deepEqual(f.store.list("source").jobs.map(job => job.key).sort(), ["one", "three", "two"]);
+    for (const job of f.store.list("source").jobs) {
+      assert.equal(job.payload, `Dossier ${job.key}`);
+    }
+    await f.agents.runWorkflow("source", { criteria: "Rental investment" });
+    await f.service.tick();
+    assert.equal(f.store.list("source").total, 3);
+    assert.equal(state.calls.filter(call => call.prompt.includes("TASK_NEGOTIATE")).length, 3);
+  } finally { await f.close(); await state.cleanup(); }
+});
 
 test("dossier filters count every page, retain dispatched keys and keep ordering stable when statuses change", async () => {
   const state = await fixture();

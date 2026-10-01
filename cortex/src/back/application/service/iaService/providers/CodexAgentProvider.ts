@@ -1,5 +1,7 @@
 
 import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type {
   AgentExecutionOptions,
@@ -93,32 +95,43 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
       );
     }
 
-    if (options.sessionId) {
-      args.push(options.sessionId);
+    let schemaDirectory: string | undefined;
+    try {
+      if (options.outputSchema) {
+        schemaDirectory = await mkdtemp(path.join(tmpdir(), "cortex-response-schema-"));
+        const schemaFile = path.join(schemaDirectory, "response.json");
+        await writeFile(schemaFile, JSON.stringify(options.outputSchema), { mode: 0o600 });
+        // Supported by both exec and exec resume. JSONL alone only formats
+        // the event stream; it does not constrain the model's final answer.
+        args.push("--output-schema", schemaFile);
+      }
+
+      if (options.sessionId) args.push(options.sessionId);
+      // Passing a large prompt as a process argument can exceed the operating
+      // system's command-line limit (E2BIG). Codex accepts `-` as an explicit
+      // instruction to read the prompt from stdin, including resumed sessions.
+      args.push("-");
+      const output = await this.runCommand(this.command, [
+        ...this.argumentPrefix,
+        ...args
+      ], options.timeoutMs ?? AGENT_EXECUTION_TIMEOUT_MS, options.workingDirectory, prompt, {
+        signal: options.signal,
+        onProgress: createCodexProgress(options.onProgress)
+      });
+      const result = parseCodexJsonOutput(output, options.sessionId);
+
+      if (!result.answer) {
+        throw new Error("Codex did not return a response.");
+      }
+
+      if (!result.sessionId) {
+        throw new Error("Codex did not return a session ID.");
+      }
+
+      return result;
+    } finally {
+      if (schemaDirectory) await rm(schemaDirectory, { recursive: true, force: true });
     }
-
-    // Passing a large prompt as a process argument can exceed the operating
-    // system's command-line limit (E2BIG). Codex accepts `-` as an explicit
-    // instruction to read the prompt from stdin, including resumed sessions.
-    args.push("-");
-    const output = await this.runCommand(this.command, [
-      ...this.argumentPrefix,
-      ...args
-    ], options.timeoutMs ?? AGENT_EXECUTION_TIMEOUT_MS, options.workingDirectory, prompt, {
-      signal: options.signal,
-      onProgress: createCodexProgress(options.onProgress)
-    });
-    const result = parseCodexJsonOutput(output, options.sessionId);
-
-    if (!result.answer) {
-      throw new Error("Codex did not return a response.");
-    }
-
-    if (!result.sessionId) {
-      throw new Error("Codex did not return a session ID.");
-    }
-
-    return result;
   }
 }
 

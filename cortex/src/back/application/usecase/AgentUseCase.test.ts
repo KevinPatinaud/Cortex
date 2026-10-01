@@ -12,6 +12,9 @@ import { WorkflowAuditService } from "../service/workflowAudit/WorkflowAuditServ
 import { SqliteWorkflowAuditRepository } from "../../infrastructure/audit/SqliteWorkflowAuditRepository.ts";
 import { AgentUseCase } from "./AgentUseCase.ts";
 import { ValidationError } from "../error/ValidationError.ts";
+import { parseAgentResponse } from "../../../shared/AgentResponse.ts";
+import { parseWorkflowDispatchItem, type WorkflowDispatchRule } from "../../../shared/WorkflowAutomation.ts";
+import { createAgentResponseSchema } from "../../../shared/AgentResponseSchema.ts";
 
 interface ExecutionCall {
   engine: string;
@@ -727,6 +730,30 @@ test("réserve l'orchestration des agents suivants à Cortex", async () => {
   );
   assert.match(calls[0].prompt, /Toujours analyser avant d'implémenter/);
   assert.match(calls[0].prompt, /logically consistent with the facts/);
+});
+
+test("transmet au moteur le schéma du déclencheur et conserve ses trois dossiers lors d'une reprise", async () => {
+  const agentId = ".claude/agents/implementation.md";
+  const targetAgentId = ".claude/agents/analysis.md";
+  const items = [1, 2, 3].map(index => ({ key: `agence:${index}`, title: `Bien ${index}`, payload: 'Analyse "documentée"\nRéserves.' }));
+  const answer = JSON.stringify({ status: "success", items: items.map(content => ({ content })),
+    isMultiSelectionAllowed: true, isMultiSelectionThreaded: true, nextAgentIds: [], wait: null, notes: null });
+  const { useCase, calls } = createSequentialUseCase([
+    { answer: JSON.stringify({ agents: [agentId, targetAgentId].map(id => ({ id, nextAgentIds: [], inputMode: "separate" })) }) },
+    { answer, sessionId: "selection-session" }, { answer, sessionId: "selection-session" }
+  ], 2);
+  const rule: WorkflowDispatchRule = { id: "rule-id", sourceProjectId: "project-id", sourceAgentId: agentId,
+    targetProjectId: "project-id", targetAgentId, enabled: true, createdAt: new Date().toISOString(), parameterValues: {} };
+  useCase.setWorkflowDispatch(() => "Older instructions request a JSON-encoded string.", async () => {}, () => [rule]);
+  await useCase.loadProject("project-id");
+  for (let index = 0; index < 2; index++) {
+    const result = await useCase.runAgent("project-id", { agentId });
+    assert.deepEqual(parseAgentResponse(result.answer)?.items.map(item => parseWorkflowDispatchItem(item.content)), items);
+    assert.deepEqual(calls[index + 1].options.outputSchema, createAgentResponseSchema([], true));
+    assert.match(calls[index + 1].prompt, /must be a JSON OBJECT/);
+    assert.match(calls[index + 1].prompt, /schema overrides older instructions/);
+  }
+  assert.equal(calls[2].options.sessionId, "selection-session");
 });
 
 test("transmet un résultat uniquement aux branches sélectionnées", async () => {

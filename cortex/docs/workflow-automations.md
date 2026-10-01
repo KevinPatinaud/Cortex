@@ -35,6 +35,8 @@ Une attente durable ne suffit pas, à elle seule, à créer une branche indépen
 
 Cortex fournit automatiquement au déclencheur le format de sortie requis. Chaque résultat retenu contient une clé stable, un titre et les informations utiles au suivi. Une même clé ne crée pas deux dossiers dans la même branche, même après une nouvelle recherche ou un redémarrage. Une sélection vide n’ouvre aucun dossier.
 
+Avec Codex, le schéma de la réponse finale est imposé au moteur via `--output-schema`, aussi lors d’une reprise de session. Les déclencheurs produisent directement les objets `key`, `title` et `payload`, sans devoir encoder un deuxième JSON dans une chaîne. Cortex valide ces objets et les sérialise pour les conversations et les transmissions existantes ; les anciennes réponses encodées en chaînes restent lisibles. Le fichier temporaire de schéma est propre à chaque appel et supprimé après son succès ou son échec.
+
 Les dossiers héritent des paramètres du projet au moment de leur création. Leurs sessions, conversations, événements et attentes sont isolés. Les fichiers restent dans le répertoire partagé du projet ; les fichiers produits pour un dossier doivent donc porter un nom propre à ce dossier.
 
 Une réponse `blocked` ou `error` arrête la branche et conserve l’explication, la session et l’éventuel événement de réveil pour une reprise explicite. Un accord, un refus et une échéance n’affectent que le dossier concerné. Les réponses répétées avec le même identifiant ne sont pas appliquées deux fois.

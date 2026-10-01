@@ -1,4 +1,5 @@
 import { isWorkflowWaitRequest, type WorkflowWaitRequest } from "./WorkflowWait.ts";
+import { parseWorkflowDispatchItem } from "./WorkflowAutomation.ts";
 export type AgentResponseStatus = "success" | "partial" | "blocked" | "error" | "waiting";
 
 export interface AgentResponsePayload {
@@ -26,7 +27,9 @@ export function parseAgentResponse(
       (parsedContent.status !== "waiting" && parsedContent.wait != null) ||
       !Array.isArray(parsedContent.items) ||
       !parsedContent.items.every(
-        (item) => isRecord(item) && typeof item.content === "string"
+        (item) => isRecord(item) && (
+          typeof item.content === "string" || isRecord(item.content)
+        )
       ) ||
       !(
         typeof parsedContent.isMultiSelectionAllowed === "boolean" ||
@@ -57,7 +60,11 @@ export function parseAgentResponse(
 
     return {
       status: parsedContent.status,
-      items: parsedContent.items as Array<{ content: string }>,
+      // Native structured output avoids manually escaping dossier JSON inside
+      // a string. Keep the existing conversation and handoff contract intact.
+      items: parsedContent.items.map((item) => ({ content: typeof item.content === "string"
+        ? item.content
+        : JSON.stringify(parseWorkflowDispatchItem(JSON.stringify(item.content))) })),
       isMultiSelectionAllowed: parsedContent.isMultiSelectionAllowed,
       isMultiSelectionThreaded: parsedContent.isMultiSelectionThreaded,
       nextAgentIds: parsedContent.nextAgentIds === undefined
