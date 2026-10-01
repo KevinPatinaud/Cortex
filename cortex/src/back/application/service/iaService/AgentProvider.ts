@@ -22,6 +22,8 @@ export interface AgentExecutionOptions extends ExecutionCallContext {
   timeoutMs?: number;
   configuration?: AgentConfiguration;
   model?: string;
+  /** Constrain the final response when the provider supports structured output. */
+  outputSchema?: Record<string, unknown>;
   persistSession?: boolean;
   /** Restrict internal generation to the provider's read-only or planning mode. */
   readOnly?: boolean;
