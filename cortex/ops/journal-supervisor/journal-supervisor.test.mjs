@@ -6,6 +6,7 @@ import {tmpdir} from 'node:os';
 import {checkPublication, inspectEditionHTML, parisDate} from './check-journal.mjs';
 import {recoverJournal} from './recover-journal.mjs';
 import {patchSynthesePrompt} from './apply-journal-fidelity.mjs';
+import {patchCalendarCollectorPrompt} from './apply-journal-continuity.mjs';
 import {restoreAvailableWriterArticles} from './journal-repair/article-fidelity.mjs';
 
 const now = new Date('2026-10-01T06:30:00Z');
@@ -104,4 +105,13 @@ test('le correctif supprime le contrôle obligatoire et accepte les titres sans 
   const absent = restoreAvailableWriterArticles({articles: []}, [{response: 'invalid JSON'}]);
   assert.equal(absent.changed, false);
   assert.equal(absent.warnings.length, 1);
+});
+
+test('une collecte Agenda indisponible reste une restitution réussie et ne bloque pas le journal', () => {
+  const before = 'Début. La restitution réussie d’un bilan d’erreur au workflow ne signifie jamais que Google Agenda a été lu avec succès. Si tu peux produire ce bilan, transmets-le à l’analyste pour informer le journal.';
+  const patched = patchCalendarCollectorPrompt(before);
+  assert.match(patched, /retourne status success/);
+  assert.match(patched, /Ne retourne pas blocked/);
+  assert.match(patched, /autres contenus disponibles/);
+  assert.equal(patchCalendarCollectorPrompt(patched), patched);
 });

@@ -6,11 +6,14 @@ En cas d'absence, `recover-journal.mjs` tente un rendu depuis les données du jo
 
 Les scripts et consignes ici sont versionnés. Le projet installé, ses résultats, les articles et les agendas restent dans les dossiers ignorés par Git. La clé GitHub du serveur est une clé de déploiement en écriture limitée au dépôt Cortex; aucune clé n'est enregistrée dans ce répertoire.
 
+`apply-journal-continuity.mjs` met à jour de façon idempotente la consigne du collecteur Agenda : une collecte partielle ou indisponible est signalée dans son bilan, mais sa restitution réussie ne bloque pas les articles et la synthèse du journal.
+
 Sur le serveur, depuis `cortex` :
 
 ```sh
 python3 ops/journal-supervisor/install.py
 node --test ops/journal-supervisor/journal-supervisor.test.mjs
+node ops/journal-supervisor/apply-journal-continuity.mjs
 node ops/journal-supervisor/check-journal.mjs
 ```
 
