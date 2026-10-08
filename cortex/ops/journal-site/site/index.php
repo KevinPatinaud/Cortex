@@ -45,7 +45,7 @@ $currentYear = (new DateTimeImmutable('now', new DateTimeZone('Europe/Paris')))-
   <meta name="robots" content="noindex,nofollow">
   <meta name="description" content="Le Journal de Kévin. Retrouvez la dernière édition, explorez les archives et recherchez dans les articles et l’agenda.">
   <title>Le Journal de Kévin — <?= $isFiltered ? 'Recherche & archives' : 'Toutes les éditions' ?></title>
-  <link rel="stylesheet" href="site.css?v=2">
+  <link rel="stylesheet" href="site.css?v=3">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
 </head>
 <body class="journal-portal">

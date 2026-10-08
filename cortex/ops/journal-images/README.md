@@ -1,86 +1,78 @@
-# Images du journal personnel
+# Images réelles du journal
 
-Le journal peut afficher des illustrations de contexte et des photographies avec
-texte alternatif, légende et crédit. Les images sont servies depuis son propre
-domaine, en WebP léger pour la bibliothèque, et chargées à la demande dans les
-articles. Les textes, sources, commandes de lecture et alertes mail sont conservés.
-La page d’accueil et les cartes d’archives reprennent l’image de l’article à la une.
+Le **Rédacteur journalistique** recherche une image pendant la préparation de
+chaque actualité. Il examine le fichier, vérifie le contexte, le crédit et les
+droits de republication, puis utilise `import-news-image.mjs`. **Synthèse** conserve
+le titre et le texte intégral du rédacteur et publie avec le renderer habituel.
+Le renderer retrouve automatiquement les fiches du jour par titre et source.
 
-## Sélection quotidienne
+Aucune image générée par IA, aucun repli par mots-clés ou banque décorative.
+Une vraie photo des événements/personnes/lieux concernés est préférée. Un document
+ou une infographie effectivement publiée par une source est possible. Une photo
+d’archive ou de contexte est légendée comme telle, sans inventer sa date.
+Sans image pertinente et réutilisable, l’article est publié sans image.
 
-Une bibliothèque initiale de quatre visuels originaux générés par IA couvre les
-carburants, l’économie, l’informatique et les sciences du vivant. Ils sont identifiés
-comme illustrations, jamais comme des photographies d’un événement réel. Leur
-sélection repose sur le titre et la catégorie, avec au plus quatre images distinctes
-par édition. Un sujet qui ne correspond pas à la bibliothèque reste sans image.
-Une scène générée n’est pas ajoutée automatiquement aux articles concernant un
-conflit, une catastrophe, une affaire judiciaire ou un diagnostic personnel.
+## Acquisition quotidienne
 
-La synthèse peut choisir `illustration: "energy"`, `"economy"`, `"technology"` ou
-`"science"` sur un article, ou `null` pour le laisser sans image. Le champ est
-facultatif. `image: null` désactive également l’image de cet article ; `images: false`
-désactive les images de toute l’édition. Le moteur quotidien ne fait aucun nouvel
-appel à un modèle d’image, et l’absence d’un visuel n’empêche pas la publication.
-
-Pour utiliser une photographie réelle, déposer un fichier dont les droits de
-réutilisation ont effectivement été vérifiés dans le dossier public `images/`,
-puis fournir les métadonnées sur l’article :
-
-```json
-{
-  "image": {
-    "src": "/journal/images/photo-2026-10-08.webp",
-    "alt": "Description précise de ce qui est visible",
-    "caption": "Légende factuelle, lieu et date s’ils sont établis",
-    "credit": "Auteur de la photographie",
-    "kind": "photo",
-    "sourceUrl": "https://example.org/page-originale",
-    "license": "Licence effectivement vérifiée",
-    "width": 1536,
-    "height": 1024
-  }
-}
-```
-
-Le fichier de cet exemple est fictif. Les photos nécessitent crédit, provenance et
-licence ; le code valide ces métadonnées mais ne vérifie pas lui-même les droits
-sur une page distante. Seuls des noms locaux simples en WebP/JPEG/PNG sont permis,
-sans traversée de répertoire, ressource externe, données embarquées ou paramètres
-d’accès. Un fichier absent, lié symboliquement ou une image invalide est omis.
-Les images Markdown ordinaires continuent à devenir des liens ; elles ne sont pas
-insérées automatiquement sans le contrat de métadonnées.
-
-## Installation
+Le rédacteur écrit un JSON à un **chemin unique par article** sous
+`.cortex/journal/news-images/candidates/`, puis exécute :
 
 ```sh
-cd /home/kevin/Cortex/cortex
-npm run test:journal-images
-php ops/journal-site/site.test.php
-python3 ops/journal-site/install.py
-node ops/journal-images/install.mjs --edition 2026-10-08
+node .cortex/journal/import-news-image.mjs --candidate CHEMIN-UNIQUE.json
 ```
 
-L’installateur déploie les quatre images et le module, adapte le renderer existant
-et les consignes de Synthèse, et sauvegarde les fichiers modifiés dans
-`data/backups/journal-images-<horodatage>`. Le patch du renderer est borné : il
-s’arrête lorsque le gabarit est inconnu, et préserve ses autres validations.
-`--edition` est facultatif : il ajoute les figures à une édition existante sans
-réécrire les paragraphes, les liens, les scripts ni la date de génération. Les
-autres éditions sont préservées. Une réinstallation ne duplique pas les images.
-La file mail et ses marqueurs ne sont pas touchés ; aucun mail de test n’est envoyé.
+Le JSON contient `editionDate`, `articleTitle`, `articleSourceUrl` (une source
+présente dans l’article), `imageUrl`, `sourceUrl`, `origin: "published"`,
+`kind: "photo"` ou `"graphic"`, `alt`, `caption`, `credit`, `license`, `licenseUrl`,
+`rightsNote`, `relation`, `visualVerified: true`, `rightsVerified: true`.
+`sourcePublishedAt` et `photoDate` sont facultatifs (AAAA-MM-JJ, null si inconnue).
+Une date de publication ne vaut pas date de prise de vue. Un crédit ou une page
+accessible ne constitue pas à lui seul une autorisation de republication.
 
-Les options `--journal-project`, `--web-root`, `--cortex-root` permettent des essais
-isolés. L’installateur vérifie les empreintes et le format des images. Les fichiers
-`*-v1.webp` sont immuables : une autre image doit recevoir un nouveau nom. Les
-origines et briefs de génération se trouvent dans `assets.json` et `prompts.md`.
+L’importeur accepte HTTPS public, JPEG/PNG/WebP, jusqu’à 8 Mo, avec des dimensions
+bornées. Il valide chaque redirection, refuse les réseaux privés et fixe la
+réponse DNS validée pour la connexion. Il ne fournit ni cookie ni identifiant et
+ne contourne aucun refus d’accès. Il conserve les octets originaux, sans retouche,
+avec une empreinte SHA-256 et un nom immuable :
+`/journal/images/news-AAAA-MM-JJ-empreinte.jpg` (ou png/webp).
 
-## Vérification
+La fiche reste privée dans `.cortex/journal/news-images/AAAA-MM-JJ/`. Plusieurs
+rédacteurs peuvent importer en parallèle grâce aux noms fondés sur les empreintes.
+Ils rendent uniquement leur article Markdown, afin que le garde de fidélité ne
+mélange pas métadonnées et texte. Les imports réseau ne se font pas à la lecture.
 
-`npm run check` inclut les tests du module : sélection, désactivation, données
-invalides, ressources interdites, provenance des photos, légendes accessibles,
-fichiers absents, préservation de contenu, installation et réinstallation.
-Le test PHP couvre la reprise de l’image, de son texte alternatif et du crédit
-dans les archives. Après installation, tester le renderer réel sur une copie des
-données d’édition, puis vérifier les images chargées, leurs légendes, le sommaire,
-l’impression et les largeurs 320/390/430 px. La prochaine production quotidienne
-reste à observer pour confirmer le choix éditorial effectué par l’agent.
+## Rendu et publication
+
+Le renderer charge les fiches après récupération des articles complets, exige la
+même édition, le même titre et une source effectivement citée, puis contrôle
+l’empreinte du fichier. Il affiche une image par article, sans doublons, jusqu’à
+huit images, avec texte alternatif, dimensions, légende, crédit et lien de licence.
+Un asset absent ou modifié est ignoré. `image: null` désactive un article et
+`images: false` toute l’édition. Les photos et documents ne sont pas recadrés.
+Le site affiche l’image du premier article dans la une et les archives.
+
+```sh
+node --test ops/journal-images/journal-images.test.mjs
+php ops/journal-site/site.test.php
+python3 ops/journal-site/install.py
+node ops/journal-images/install.mjs --edition AAAA-MM-JJ
+```
+
+L’installation sauvegarde et remplace atomiquement les modules, le renderer et
+les blocs de consignes de Rédacteur/Synthèse. Elle préserve les consignes hors
+blocs, les autres agents et le workflow. `--edition` retire les anciens visuels
+produits par ce module et insère les images importées, sans réécrire paragraphes,
+liens, agenda, date d’origine ou scripts. Une réinstallation est idempotente.
+Les JSON d’éditions et les autres éditions ne sont pas modifiés.
+
+La notification quotidienne par mail conserve son workflow, sa file, son cron et
+ses marqueurs anti-doublons. Aucune installation ne déclenche d’envoi de test.
+
+## Validation
+
+Les tests couvrent l’absence de repli artificiel, les métadonnées nécessaires,
+l’échappement, les assets absents/modifiés, le rapprochement des fiches, l’import,
+les refus de ressources réseau locales, la migration d’une édition publiée et
+l’installation idempotente. Avant livraison, vérifier aussi le renderer réel sur
+une copie des données et le site public sur ordinateur et téléphone. Une
+publication manuelle validée ne prouve pas l’exécution du prochain cycle quotidien.
