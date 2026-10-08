@@ -25,10 +25,10 @@
 .live-badge{font-size:9px;font-weight:700;letter-spacing:1px;padding:5px 8px;border:1px solid #56766f;color:#d4e7b7}
 .feature-kicker{margin:29px 0 12px;font-size:10px;letter-spacing:1.6px;text-transform:uppercase;color:#bfd9cb}
 .journal-portal .feature-photo{margin:0 0 20px}
-.journal-portal .feature-photo img{display:block;width:100%;height:auto;aspect-ratio:2/1;object-fit:cover;border-radius:2px}
+.journal-portal .feature-photo img{display:block;width:100%;height:auto;object-fit:contain;border-radius:2px}
 .journal-portal .feature-photo figcaption{font-size:11px;color:#c9d7d5;margin-top:7px;line-height:1.5}
 .journal-portal .card-photo{display:block;margin:0 0 17px}
-.journal-portal .card-photo img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:cover;border-radius:2px}
+.journal-portal .card-photo img{display:block;width:100%;height:auto;aspect-ratio:16/9;object-fit:contain;border-radius:2px}
 .feature-main h1{font:400 clamp(26px,3.3vw,41px)/1.15 Georgia,'Times New Roman',serif;letter-spacing:-.7px;margin:0;max-width:640px;text-wrap:balance}
 .feature-description{font-size:13px;line-height:1.7;color:#c9d7d5;max-width:430px;margin:22px 0 25px}
 .journal-portal .button{display:inline-flex;align-items:center;justify-content:space-between;gap:24px;font:700 12px/1.4 Arial,Helvetica,sans-serif;min-height:47px;padding:13px 20px;border:0;border-radius:2px;background:#1f6763;color:#fff;cursor:pointer;text-decoration:none}

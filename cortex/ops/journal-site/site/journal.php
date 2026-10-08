@@ -118,7 +118,7 @@ function journal_navigation(array $editions, string $date, string $position = 't
 }
 
 function journal_reader(string $html, array $editions, string $date): string {
-    $style = '<link rel="stylesheet" href="site.css?v=2">';
+    $style = '<link rel="stylesheet" href="site.css?v=3">';
     $html = preg_replace('/<\/head\s*>/i', $style . '</head>', $html, 1) ?? $html;
     // Insert UI around the document without parsing/reserializing its articles:
     // original text, source URLs, IDs, scripts and footer remain byte-for-byte.
