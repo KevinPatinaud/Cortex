@@ -5,6 +5,9 @@ Le site complète les éditions publiées par Cortex à
 édition, des archives paginées, une recherche dans les articles et l’agenda et un
 filtre par mois. La recherche ignore la casse et les principaux accents français.
 La page reste entièrement utilisable sans JavaScript et sur téléphone.
+La une et les cartes peuvent afficher l’image créditée de leur premier article.
+Le [module d’images](../journal-images/README.md) installe la bibliothèque locale
+et son intégration au renderer des éditions, en complément de ce site.
 
 Chaque URL historique `AAAA-MM-JJ.html` reste valide, y compris dans les mails.
 Une règle Apache affiche le fichier existant à travers le lecteur PHP qui ajoute

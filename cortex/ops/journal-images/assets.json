@@ -1,0 +1,42 @@
+[
+  {
+    "key": "energy",
+    "file": "energy-v1.webp",
+    "bytes": 99692,
+    "sha256": "e7b64f397b110a9df27c66c0f9111bba68b993e3222d113e214e75a7f0afe199",
+    "width": 1536,
+    "height": 1024,
+    "kind": "illustration",
+    "credit": "Visuel généré par IA pour Le Journal"
+  },
+  {
+    "key": "economy",
+    "file": "economy-v1.webp",
+    "bytes": 121836,
+    "sha256": "b2a71a59eb578a4839cd0a3f61bbe79033bd297304698b00bbd8cff951a4ea89",
+    "width": 1536,
+    "height": 1024,
+    "kind": "illustration",
+    "credit": "Visuel généré par IA pour Le Journal"
+  },
+  {
+    "key": "technology",
+    "file": "technology-v1.webp",
+    "bytes": 126010,
+    "sha256": "0b4b40f5ab48b0343c3545d805f27d1b023ba89d5e19a0fdbecc28ddf6dc46bb",
+    "width": 1536,
+    "height": 1024,
+    "kind": "illustration",
+    "credit": "Visuel généré par IA pour Le Journal"
+  },
+  {
+    "key": "science",
+    "file": "science-v1.webp",
+    "bytes": 100978,
+    "sha256": "ff0099364870d1140b79c2bde4111455d8896425a64fe238230fea5fa034c98d",
+    "width": 1536,
+    "height": 1024,
+    "kind": "illustration",
+    "credit": "Visuel généré par IA pour Le Journal"
+  }
+]
