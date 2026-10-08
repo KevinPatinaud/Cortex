@@ -43,6 +43,11 @@ try {
     check(str_contains(journal_reader($old, $all, '2026-09-06'), 'href="2026-10-08.html" rel="next"'), 'Navigation depuis la première édition.');
     check(substr_count($rendered, 'id="journal-edition-top"') === 1 && substr_count($rendered, 'id="journal-edition-bottom"') === 1, 'Identifiants des menus uniques.');
     check(journal_escape('<script>"&') === '&lt;script&gt;&quot;&amp;', 'Échappement HTML.');
+    $illustrated = str_replace('<div class="prose">', '<figure class="journal-figure"><img data-journal-image src="/journal/images/energy-v1.webp" alt="Une pompe" width="1536" height="1024"><figcaption>Illustration — Carburants. <small>Visuel généré par IA</small></figcaption></figure><div class="prose">', $latest);
+    check(journal_metadata($illustrated, '2026-10-08')['articles'][0]['image']['src'] === '/journal/images/energy-v1.webp', 'Image locale transmise à la une et aux archives.');
+    check(journal_metadata($illustrated, '2026-10-08')['articles'][0]['image']['alt'] === 'Une pompe', 'Texte alternatif conservé.');
+    check(str_contains(journal_metadata($illustrated, '2026-10-08')['articles'][0]['image']['caption'], 'généré par IA'), 'Légende et crédit conservés.');
+    check(journal_metadata(str_replace('/journal/images/energy-v1.webp', 'https://tracker.example/image.jpg', $illustrated), '2026-10-08')['articles'][0]['image'] === null, 'Ressource externe non reprise dans les archives.');
     $_GET = ['q' => ['unexpected'], 'page' => '2', 'month' => '2026-09'];
     check(journal_parameter('q') === '', 'Paramètre tableau ignoré.');
     $_GET['q'] = '<script> &';

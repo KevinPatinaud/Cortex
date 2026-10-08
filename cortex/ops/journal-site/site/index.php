@@ -45,7 +45,7 @@ $currentYear = (new DateTimeImmutable('now', new DateTimeZone('Europe/Paris')))-
   <meta name="robots" content="noindex,nofollow">
   <meta name="description" content="Le Journal de Kévin. Retrouvez la dernière édition, explorez les archives et recherchez dans les articles et l’agenda.">
   <title>Le Journal de Kévin — <?= $isFiltered ? 'Recherche & archives' : 'Toutes les éditions' ?></title>
-  <link rel="stylesheet" href="site.css?v=1">
+  <link rel="stylesheet" href="site.css?v=2">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
 </head>
 <body class="journal-portal">
@@ -61,6 +61,7 @@ $currentYear = (new DateTimeImmutable('now', new DateTimeZone('Europe/Paris')))-
     <div class="feature-main">
       <div class="feature-meta"><span class="live-badge">DERNIÈRE ÉDITION</span><time datetime="<?= $latest['date'] ?>"><?= journal_escape($latest['label']) ?></time></div>
       <p class="feature-kicker"><?= $lead && $lead['category'] !== '' ? journal_escape($lead['category']) : 'À la une' ?></p>
+      <?php if ($lead && $lead['image']): $image=$lead['image']; ?><figure class="feature-photo"><a href="<?= $latest['date'] ?>.html#<?= journal_escape($lead['anchor']) ?>"><img src="<?= journal_escape($image['src']) ?>" alt="<?= journal_escape($image['alt']) ?>" width="<?= $image['width'] ?>" height="<?= $image['height'] ?>" loading="eager" fetchpriority="high" decoding="async"></a><figcaption><?= journal_escape($image['caption']) ?></figcaption></figure><?php endif; ?>
       <h1 id="latest-title"><?= $lead ? journal_escape($lead['title']) : 'Votre dernière édition est disponible.' ?></h1>
       <p class="feature-description">L’essentiel, votre agenda et <?= count($latest['articles']) ?> articles à retrouver dans l’édition du jour.</p>
       <a class="button button-light" href="<?= $latest['date'] ?>.html">Lire l’édition <span aria-hidden="true">↗</span></a>
@@ -88,6 +89,7 @@ $currentYear = (new DateTimeImmutable('now', new DateTimeZone('Europe/Paris')))-
       <?php foreach ($visible as $value): ?>
       <article class="edition-card">
         <div class="card-date"><time datetime="<?= $value['date'] ?>"><span class="date-day"><?= (int)substr($value['date'], 8, 2) ?></span><span><?= journal_escape(preg_replace('/^\d+ /', '', journal_date_label($value['date'], false))) ?></span></time><?= $value['date'] === $latest['date'] ? '<span class="latest-dot">LA DERNIÈRE</span>' : '' ?></div>
+        <?php if (!empty($value['articles'][0]['image'])): $image=$value['articles'][0]['image']; ?><a class="card-photo" href="<?= $value['date'] ?>.html" aria-label="Lire l’édition du <?= journal_escape(journal_date_label($value['date'], false)) ?>"><img src="<?= journal_escape($image['src']) ?>" alt="<?= journal_escape($image['alt']) ?>" width="<?= $image['width'] ?>" height="<?= $image['height'] ?>" loading="lazy" decoding="async"></a><?php endif; ?>
         <h3><a href="<?= $value['date'] ?>.html"><?= journal_escape($value['articles'][0]['title'] ?? 'L’agenda et l’actualité de Kévin') ?></a></h3>
         <ul><?php foreach (array_slice($value['articles'], 1, 2) as $article): ?><li><a href="<?= $value['date'] ?>.html<?= $article['anchor'] ? '#' . $article['anchor'] : '' ?>"><?= journal_escape($article['title']) ?></a></li><?php endforeach; ?></ul>
         <div class="card-bottom"><span><?= count($value['articles']) ?> articles</span><a href="<?= $value['date'] ?>.html" aria-label="Lire l’édition du <?= journal_escape(journal_date_label($value['date'], false)) ?>">Lire l’édition <span aria-hidden="true">↗</span></a></div>

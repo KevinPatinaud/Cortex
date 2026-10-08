@@ -47,10 +47,19 @@ function journal_metadata(string $html, string $date): array {
         if (!$heading) continue;
         $category = $xpath->query('.//*[contains(concat(" ", normalize-space(@class), " "), " story-category ") or contains(concat(" ", normalize-space(@class), " "), " kicker ")]', $article)->item(0);
         $anchor = $article->getAttribute('id');
+        $image = null;
+        $node = $xpath->query('.//img[@data-journal-image]', $article)->item(0);
+        if ($node && preg_match('~^/journal/images/[a-z0-9][a-z0-9_-]{0,150}\.(?:webp|jpg|jpeg|png)$~D', $node->getAttribute('src'))) {
+            $caption = $xpath->query('.//figcaption', $article)->item(0);
+            $image = ['src'=>$node->getAttribute('src'), 'alt'=>$node->getAttribute('alt'),
+                'caption'=>$caption ? trim(preg_replace('/\s+/u', ' ', $caption->textContent) ?? '') : '',
+                'width'=>(int)$node->getAttribute('width'), 'height'=>(int)$node->getAttribute('height')];
+        }
         $articles[] = [
             'title' => trim(preg_replace('/\s+/u', ' ', $heading->textContent) ?? ''),
             'category' => $category ? trim($category->textContent) : '',
-            'anchor' => preg_match('/^[A-Za-z][A-Za-z0-9_-]*$/D', $anchor) ? $anchor : ''
+            'anchor' => preg_match('/^[A-Za-z][A-Za-z0-9_-]*$/D', $anchor) ? $anchor : '',
+            'image' => $image
         ];
     }
     return ['date' => $date, 'label' => journal_date_label($date), 'articles' => $articles];
@@ -109,7 +118,7 @@ function journal_navigation(array $editions, string $date, string $position = 't
 }
 
 function journal_reader(string $html, array $editions, string $date): string {
-    $style = '<link rel="stylesheet" href="site.css?v=1">';
+    $style = '<link rel="stylesheet" href="site.css?v=2">';
     $html = preg_replace('/<\/head\s*>/i', $style . '</head>', $html, 1) ?? $html;
     // Insert UI around the document without parsing/reserializing its articles:
     // original text, source URLs, IDs, scripts and footer remain byte-for-byte.
