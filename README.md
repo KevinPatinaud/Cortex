@@ -11,6 +11,10 @@ Le code de l'application se trouve dans **cortex/**. Le
 limites et la configuration. Voir aussi le [guide d'architecture](cortex/docs/architecture.md)
 et le [guide des automatisations](cortex/docs/workflow-automations.md).
 
+Le [site du journal quotidien](cortex/ops/journal-site/README.md) ajoute une page
+d’accueil, la recherche et la navigation entre les éditions déjà publiées, tout
+en conservant l’alerte quotidienne par mail.
+
 ## Démarrage
 
 Node.js **^20.19.0 || >=22.12.0** et npm sont nécessaires. Un moteur installé et
