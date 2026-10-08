@@ -1,0 +1,6 @@
+DirectoryIndex index.php
+Options -Indexes
+RewriteEngine On
+# Keep every existing mail/bookmark URL. PHP reads the original HTML and adds
+# navigation only to the response; published files are never rewritten.
+RewriteRule ^([0-9]{4}-[0-9]{2}-[0-9]{2})\.html$ index.php?edition=$1 [END]

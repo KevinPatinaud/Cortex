@@ -10,6 +10,10 @@ outils existants. Il s’appuie sur les installations et les sessions locales de
 Codex, Claude ou GitHub Copilot, puis leur ajoute une interface et un protocole
 d’orchestration communs.
 
+Le [site du journal quotidien](cortex/ops/journal-site/README.md) ajoute une page
+d’accueil, la recherche et la navigation entre les éditions déjà publiées, tout
+en conservant l’alerte quotidienne par mail.
+
 ## Objectifs
 
 Cortex poursuit cinq objectifs principaux :
