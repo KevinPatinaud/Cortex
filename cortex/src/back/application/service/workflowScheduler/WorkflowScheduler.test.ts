@@ -149,7 +149,7 @@ test("saving an unchanged schedule and restarting do not replay the same occurre
   const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-schedule-"));
   const databaseFile = path.join(directory, "audit.sqlite");
   const now = new Date("2026-09-06T10:00:05Z");
-  let schedule = { cron: "* * * * *", enabled: true, parameterValues: {} };
+  let schedule = { cron: "* * * * *", crons: ["* * * * *", "* * * * 0-6"], enabled: true, parameterValues: {} };
   let runCount = 0;
   const projectUseCase = {
     getProjects: async () => [{ id: "project", directoryPath: directory }],
@@ -200,4 +200,76 @@ test("a failed initialization can be started again", async () => {
     await scheduler.start();
     assert.equal(attempts, 2);
   } finally { scheduler.stop(); }
+});
+
+test("multiple crons survive restart, run at either time and coalesce overlapping occurrences", async () => {
+  let stored: WorkflowScheduleConfiguration | null = null;
+  let running = false;
+  let runs = 0;
+  const projects = {
+    getProjects: async () => [{ id: "project" }],
+    getWorkflowScheduleConfiguration: async () => stored,
+    saveWorkflowScheduleConfiguration: async (_id: string, value: WorkflowScheduleConfiguration) => { stored = value; }
+  } as unknown as ProjectUseCase;
+  const agents = {
+    validateWorkflowParameterValues: async () => ({ period: "today" }),
+    isProjectRunning: () => running,
+    runWorkflow: async (_id: string, values: unknown) => { assert.deepEqual(values, { period: "today" }); runs++; }
+  } as unknown as AgentUseCase;
+  const now = () => new Date("2026-10-19T08:59:00Z");
+  let scheduler = new WorkflowScheduler(projects, agents, now);
+  const saved = await scheduler.saveSchedule("project", {
+    crons: ["0 18 * * 1-5", " 0  9 * * * ", "0 9 * * 1-5", "0 9 * * *"],
+    timezone: "UTC", enabled: true
+  });
+  assert.deepEqual(saved.crons, ["0 18 * * 1-5", "0 9 * * *", "0 9 * * 1-5"]);
+  assert.equal(saved.cron, "0 18 * * 1-5");
+  assert.equal(saved.nextRunAt, "2026-10-19T09:00:00.000Z");
+  // The output must not expose the scheduler's mutable list.
+  saved.crons.push("* * * * *");
+  assert.equal((await scheduler.getSchedule("project")).crons.length, 3);
+  scheduler = new WorkflowScheduler(projects, agents, now);
+  try {
+    await scheduler.start();
+    assert.equal((await scheduler.getSchedule("project")).crons.length, 3);
+    scheduler.checkDueSchedules(new Date("2026-10-19T09:00:00Z"));
+    await new Promise(setImmediate);
+    scheduler.checkDueSchedules(new Date("2026-10-19T09:00:45Z"));
+    scheduler.checkDueSchedules(new Date("2026-10-19T10:00:00Z"));
+    await new Promise(setImmediate);
+    assert.equal(runs, 1);
+    scheduler.checkDueSchedules(new Date("2026-10-19T18:00:00Z"));
+    await new Promise(setImmediate);
+    assert.equal(runs, 2);
+    running = true;
+    scheduler.checkDueSchedules(new Date("2026-10-20T18:00:00Z"));
+    await new Promise(setImmediate);
+    assert.equal(runs, 2);
+    assert.equal((await scheduler.getSchedule("project")).lastRunStatus, "skipped");
+    running = false;
+    // Legacy saves change the first expression and retain all additional ones.
+    const disabled = await scheduler.saveSchedule("project", { cron: "0 19 * * *", enabled: false });
+    assert.deepEqual(disabled.crons, ["0 19 * * *", "0 9 * * *", "0 9 * * 1-5"]);
+    assert.equal(disabled.nextRunAt, null);
+    scheduler.checkDueSchedules(new Date("2026-10-21T09:00:00Z"));
+    await new Promise(setImmediate);
+    assert.equal(runs, 2);
+  } finally { scheduler.stop(); }
+});
+
+test("invalid cron lists never partially replace a project's existing schedule", async () => {
+  let stored: WorkflowScheduleConfiguration | null = null;
+  const projects = {
+    getProjects: async () => [{ id: "project" }],
+    getWorkflowScheduleConfiguration: async () => stored,
+    saveWorkflowScheduleConfiguration: async (_id: string, value: WorkflowScheduleConfiguration) => { stored = value; }
+  } as unknown as ProjectUseCase;
+  const agents = { validateWorkflowParameterValues: async () => ({}) } as unknown as AgentUseCase;
+  const scheduler = new WorkflowScheduler(projects, agents, () => new Date("2026-10-19T00:00:00Z"));
+  const valid = await scheduler.saveSchedule("project", { crons: ["0 9 * * *", "0 18 * * *"], timezone: "UTC", enabled: false });
+  for (const crons of [[], null, "0 9 * * *", [42], ["0 10 * * *", "invalid"], ["0 10 * * *", "0 9 31 2 *"]]) {
+    await assert.rejects(scheduler.saveSchedule("project", { crons, enabled: false }));
+    assert.deepEqual((await scheduler.getSchedule("project")).crons, valid.crons);
+    assert.deepEqual((await projects.getWorkflowScheduleConfiguration("project"))?.crons, valid.crons);
+  }
 });

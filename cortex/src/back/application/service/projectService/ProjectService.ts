@@ -48,6 +48,7 @@ export interface AgentWorkflowConfiguration {
 
 export interface WorkflowScheduleConfiguration {
   cron: string;
+  crons?: string[];
   timezone?: string;
   enabled: boolean;
   parameterValues: Record<string, string>;
@@ -622,7 +623,7 @@ export class ProjectService {
     const schedule = storedSchedules?.[projectId];
 
     return this.isWorkflowScheduleConfiguration(schedule)
-      ? { ...schedule, parameterValues: { ...schedule.parameterValues } }
+      ? { ...schedule, ...(schedule.crons ? { crons: [...schedule.crons] } : {}), parameterValues: { ...schedule.parameterValues } }
       : null;
   }
 
@@ -649,6 +650,7 @@ export class ProjectService {
         ...storedSchedules,
         [projectId]: {
           ...schedule,
+          ...(schedule.crons ? { crons: [...schedule.crons] } : {}),
           parameterValues: { ...schedule.parameterValues }
         }
       }
@@ -1143,6 +1145,7 @@ export class ProjectService {
   ): value is WorkflowScheduleConfiguration {
     return this.isRecord(value) &&
       typeof value.cron === "string" &&
+      (value.crons === undefined || (Array.isArray(value.crons) && value.crons.length > 0 && value.crons.every((cron) => typeof cron === "string"))) &&
       typeof value.enabled === "boolean" &&
       (value.timezone === undefined || typeof value.timezone === "string") &&
       (

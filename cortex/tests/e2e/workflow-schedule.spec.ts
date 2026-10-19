@@ -62,3 +62,67 @@ test("schedule uses browser time, previews server conversions, and persists edit
   expect(invalid.status()).toBe(400);
   expect(await (await request.get(base)).json()).toMatchObject({ cron: "15 23 * * 1,3,5", timezone: "UTC" });
 });
+
+test("multiple run times can be added, validated, reopened and removed", async ({ page, request }, testInfo) => {
+  const name = `Multi-schedule-${randomUUID().slice(0, 8)}`;
+  const created = await request.post("/api/projects/create", { data: { name, engine: "codex", generationMode: "empty", instructions: "Multiple schedules" } });
+  expect(created.status()).toBe(201);
+  const { project } = await created.json();
+  const base = `/api/agents/projects/${project.id}/workflow/schedule`;
+  await request.put(`/api/agents/projects/${project.id}`, { data: {
+    name, engine: "codex", instructions: "Multiple schedules", agents: [{ name: "Review", description: "Review", prompt: "Review" }]
+  } });
+  await page.goto(`/?project=${project.id}`);
+  await page.getByRole("button", { name: "Planifier", exact: true }).click();
+  const dialog = page.getByRole("dialog");
+  const save = dialog.getByRole("button", { name: "Enregistrer", exact: true });
+  const entries = dialog.getByRole("group", { name: "Horaires de lancement" });
+  await expect(dialog.getByRole("button", { name: "Supprimer l’horaire 1", exact: true })).toBeDisabled();
+  await dialog.getByLabel("Fuseau de la planification").selectOption("UTC");
+  await dialog.getByRole("button", { name: "Ajouter un horaire", exact: true }).click();
+  await expect(entries.locator(".schedule-dialog__entry")).toHaveCount(2);
+  await expect(dialog.getByLabel("Fréquence", { exact: true })).toBeFocused();
+  await dialog.getByLabel("Fréquence", { exact: true }).selectOption("custom");
+  await dialog.getByLabel("Expression cron", { exact: true }).fill("0 9 31 2 *");
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await entries.getByRole("button", { name: /^Horaire 1/ }).click();
+  await expect(dialog.getByLabel("Expression cron", { exact: true })).toHaveValue("0 9 * * 1-5");
+  await expect(save).toBeDisabled();
+  await expect(entries.getByRole("button", { name: /^Horaire 2/ })).toContainText("Horaire à vérifier");
+  await entries.getByRole("button", { name: /^Horaire 2/ }).click();
+  await dialog.getByLabel("Expression cron", { exact: true }).fill("30 18 * * 0,6");
+  await expect(dialog.locator("time")).toHaveCount(3);
+  await expect(save).toBeEnabled();
+  const dialogBox = (await dialog.boundingBox())!;
+  const headerBox = (await dialog.locator(".schedule-dialog__header").boundingBox())!;
+  const footerBox = (await dialog.locator(".schedule-dialog__actions").boundingBox())!;
+  expect(headerBox.y).toBeGreaterThanOrEqual(dialogBox.y);
+  expect(footerBox.y + footerBox.height).toBeLessThanOrEqual(dialogBox.y + dialogBox.height);
+  expect((await new AxeBuilder({ page }).include(".schedule-dialog").withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze()).violations).toEqual([]);
+  expect(await dialog.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+  await dialog.locator(".schedule-dialog__body").evaluate((el) => { el.scrollTop = 0; });
+  await mkdir("artifacts/cron-dialog", { recursive: true });
+  await page.screenshot({ path: `artifacts/cron-dialog/multiple-${testInfo.project.name}.png` });
+  await save.click();
+  await expect(dialog).not.toBeVisible();
+  expect(await (await request.get(base)).json()).toMatchObject({
+    cron: "0 9 * * 1-5", crons: ["0 9 * * 1-5", "30 18 * * 0,6"], timezone: "UTC", enabled: false
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Planifier", exact: true }).click();
+  await expect(entries.locator(".schedule-dialog__entry")).toHaveCount(2);
+  await entries.getByRole("button", { name: /^Horaire 2/ }).click();
+  await expect(dialog.getByLabel("Expression cron", { exact: true })).toHaveValue("30 18 * * 0,6");
+  await dialog.getByRole("button", { name: "Ajouter un horaire", exact: true }).click();
+  await expect(entries.locator(".schedule-dialog__entry")).toHaveCount(3);
+  await dialog.getByRole("button", { name: "Annuler", exact: true }).click();
+  await page.getByRole("button", { name: "Planifier", exact: true }).click();
+  await expect(entries.locator(".schedule-dialog__entry")).toHaveCount(2);
+  await dialog.getByRole("button", { name: "Supprimer l’horaire 1", exact: true }).click();
+  await expect(entries.locator(".schedule-dialog__entry")).toHaveCount(1);
+  await expect(dialog.getByLabel("Expression cron", { exact: true })).toHaveValue("30 18 * * 0,6");
+  await expect(dialog.getByRole("button", { name: "Supprimer l’horaire 1", exact: true })).toBeDisabled();
+  await save.click();
+  await expect(dialog).not.toBeVisible();
+  expect(await (await request.get(base)).json()).toMatchObject({ cron: "30 18 * * 0,6", crons: ["30 18 * * 0,6"] });
+});

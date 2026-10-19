@@ -143,9 +143,19 @@ an automatic recovery guarantee for a power failure during a multi-file save.
 
 ## Scheduled workflows
 
-From a project's **Workflow** tab, select **Schedule** to configure a standard
-five-field cron expression (`minute hour day-of-month month day-of-week`). The
-schedule uses the server's local timezone and remains active when the browser is
+From a project's **Workflow** tab, select **Schedule** to configure one or more
+standard five-field cron expressions (`minute hour day-of-month month day-of-week`).
+Use **Add a run time**, select a run time to edit its frequency or custom cron,
+and use its delete button to remove it. At least one run time must remain.
+All run times share the selected timezone, enabled setting and workflow parameters.
+The dialog previews the next three occurrences of the selected run time; every
+expression must be valid before the complete list can be saved. The next scheduled
+run is the earliest matching occurrence across all expressions. Overlapping or
+duplicate expressions trigger only one execution per project and UTC minute.
+Existing single-expression configurations remain supported. The API accepts a
+`crons` array alongside the legacy `cron` field, which mirrors the first expression.
+An older client updating only `cron` preserves the additional expressions.
+The schedule remains active when the browser is
 closed, as long as the Cortex server is running. Each occurrence starts a fresh
 workflow and automatically passes the selected branch results to downstream
 agents. An occurrence is skipped when the same project is already running.

@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { CalendarClock, LoaderCircle, X } from "lucide-react";
+import { CalendarClock, LoaderCircle, Plus, Trash2, X } from "lucide-react";
 import {
   saveWorkflowSchedule,
   previewWorkflowSchedule,
@@ -34,20 +34,47 @@ export function WorkflowScheduleDialog({
   const frequencyRef = useRef<HTMLSelectElement>(null);
   const titleId = useId();
   const descriptionId = useId();
-  const [cron, setCron] = useState(schedule.cron);
-  const [form, setForm] = useState(() => readScheduleForm(schedule.cron));
+  const [entries, setEntries] = useState(() => (schedule.crons ?? [schedule.cron])
+    .map((cron, id) => ({ id, cron, form: readScheduleForm(cron) })));
+  const nextEntryId = useRef(entries.length);
+  const [activeId, setActiveId] = useState(0);
+  const activeIndex = Math.max(0, entries.findIndex((entry) => entry.id === activeId));
+  const { cron, form } = entries[activeIndex];
   const [browserTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const serverTimezone = schedule.serverTimezone ?? schedule.timezone;
   const [timezone, setTimezone] = useState(schedule.configured === false ? browserTimezone : schedule.timezone);
-  const [preview, setPreview] = useState<{ key: string; value?: WorkflowSchedulePreview; error?: string } | null>(null);
+  const [preview, setPreview] = useState<{ key: string; entries: Array<{ value?: WorkflowSchedulePreview; error?: string }> } | null>(null);
   const [refresh, setRefresh] = useState(0);
-  const previewKey = JSON.stringify([cron, timezone, refresh]);
-  const currentPreview = preview?.key === previewKey ? preview : null;
+  const previewKey = JSON.stringify([entries.map((entry) => entry.cron), timezone, refresh]);
+  const currentPreviews = preview?.key === previewKey ? preview.entries : null;
+  const currentPreview = currentPreviews?.[activeIndex];
+  const allCronsValid = entries.every((entry) => describeCronExpression(entry.cron, language) !== null);
+  const canSave = allCronsValid && currentPreviews?.every((entry) => entry.value) === true;
   const zones = [...new Set([browserTimezone, serverTimezone, timezone, "UTC", ...Intl.supportedValuesOf("timeZone")])];
 
   function updateForm(next: typeof form) {
-    setForm(next);
-    if (next.frequency !== "custom") setCron(buildScheduleCron(next.frequency, next.time, next.day));
+    setEntries((values) => values.map((entry) => entry.id === activeId
+      ? { ...entry, form: next, cron: next.frequency === "custom" ? entry.cron : buildScheduleCron(next.frequency, next.time, next.day) }
+      : entry));
+  }
+
+  function setCron(value: string) {
+    setEntries((values) => values.map((entry) => entry.id === activeId ? { ...entry, cron: value } : entry));
+  }
+
+  function addEntry() {
+    const id = nextEntryId.current++;
+    const cron = "0 9 * * *";
+    setEntries((values) => [...values, { id, cron, form: readScheduleForm(cron) }]);
+    setActiveId(id);
+  }
+
+  function removeEntry(id: number) {
+    const remaining = entries.filter((entry) => entry.id !== id);
+    if (!remaining.length) return;
+    setEntries(remaining);
+    if (activeId === id) setActiveId(remaining[Math.max(0, activeIndex - 1)].id);
+    window.requestAnimationFrame(() => frequencyRef.current?.focus());
   }
 
   useEffect(() => {
@@ -57,18 +84,22 @@ export function WorkflowScheduleDialog({
 
   useEffect(() => {
     let active = true;
-    if (!describeCronExpression(cron, language)) return;
     const timer = window.setTimeout(() => {
-      void previewWorkflowSchedule(projectId, cron, timezone).then(
-        (value) => { if (active) setPreview({ key: previewKey, value }); },
-        (error: unknown) => { if (active) setPreview({ key: previewKey, error: error instanceof Error ? error.message : t("common.unexpectedError") }); }
-      );
+      void Promise.all(entries.map(async (entry) => {
+        if (!describeCronExpression(entry.cron, language)) return {};
+        try { return { value: await previewWorkflowSchedule(projectId, entry.cron, timezone) }; }
+        catch (error: unknown) { return { error: error instanceof Error ? error.message : t("common.unexpectedError") }; }
+      })).then((values) => { if (active) setPreview({ key: previewKey, entries: values }); });
     }, 300);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [projectId, cron, timezone, previewKey, language, t]);
+  }, [projectId, previewKey, language, t]);
   const [enabled, setEnabled] = useState(schedule.enabled);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    frequencyRef.current?.focus();
+  }, [activeId]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -91,13 +122,14 @@ export function WorkflowScheduleDialog({
   }, []);
 
   async function handleSubmit(): Promise<void> {
-    if (isSaving || !isCronValid || !currentPreview?.value) return;
+    if (isSaving || !canSave) return;
     setIsSaving(true);
     setError("");
 
     try {
       onSaved(await saveWorkflowSchedule(projectId, {
-        cron,
+        cron: entries[0].cron,
+        crons: entries.map((entry) => entry.cron),
         timezone,
         enabled,
         parameterValues
@@ -165,7 +197,8 @@ export function WorkflowScheduleDialog({
           </button>
         </header>
 
-        <fieldset className="schedule-dialog__body" disabled={isSaving}>
+        <div className="schedule-dialog__body">
+        <fieldset className="schedule-dialog__fields" disabled={isSaving}>
           <p id={descriptionId}>{t("schedule.description")}</p>
           <div className="schedule-dialog__project">
             <span>{t("dialog.affectedProject")}</span>
@@ -184,6 +217,25 @@ export function WorkflowScheduleDialog({
             </span>
           </label>
 
+          <div className="schedule-dialog__entries-heading">
+            <h3>{t("schedule.entries")}</h3>
+            <button type="button" onClick={addEntry}><Plus size={16} aria-hidden="true" />{t("schedule.addEntry")}</button>
+          </div>
+          <p className="schedule-dialog__entries-help">{t("schedule.entriesHelp")}</p>
+          <div className="schedule-dialog__entries" role="group" aria-label={t("schedule.entries")}>
+            {entries.map((entry, index) => {
+              const invalid = !describeCronExpression(entry.cron, language) || currentPreviews?.[index]?.error;
+              return <div className="schedule-dialog__entry" key={entry.id}>
+                <button type="button" aria-pressed={entry.id === activeId} onClick={() => setActiveId(entry.id)}>
+                  <strong>{t("schedule.entry", { number: String(index + 1) })}</strong>
+                  <code>{entry.cron}</code>
+                  <small>{invalid ? t("schedule.checkEntry") : describeCronExpression(entry.cron, language)}</small>
+                </button>
+                <button type="button" disabled={entries.length === 1} onClick={() => removeEntry(entry.id)}
+                  aria-label={t("schedule.removeEntry", { number: String(index + 1) })}><Trash2 size={16} aria-hidden="true" /></button>
+              </div>;
+            })}
+          </div>
           <div className="schedule-dialog__layout">
           <div className="schedule-dialog__editor">
             <div className="schedule-dialog__timing">
@@ -285,6 +337,7 @@ export function WorkflowScheduleDialog({
           )}
           {error && <p className="schedule-dialog__error" role="alert">{error}</p>}
         </fieldset>
+        </div>
 
         <footer className="schedule-dialog__actions">
           <button type="button" onClick={onCancel} disabled={isSaving}>
@@ -293,7 +346,7 @@ export function WorkflowScheduleDialog({
           <button
             className="schedule-dialog__save"
             type="submit"
-            disabled={isSaving || !isCronValid || !currentPreview?.value}
+            disabled={isSaving || !canSave}
           >
             {isSaving && <LoaderCircle aria-hidden="true" size={16} />}
             {isSaving ? t("common.saving") : t("common.save")}

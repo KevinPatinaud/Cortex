@@ -4,6 +4,7 @@ import type { ProjectUseCase } from "../../usecase/ProjectUseCase.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
 import { ValidationError } from "../../error/ValidationError.ts";
 import type { WorkflowAuditService } from "../workflowAudit/WorkflowAuditService.ts";
+import type { WorkflowScheduleConfiguration } from "../projectService/ProjectService.ts";
 import {
   cronMatchesDate,
   getNextCronOccurrence,
@@ -22,6 +23,7 @@ export type WorkflowScheduleLastRunStatus =
 
 export interface WorkflowScheduleOutput {
   cron: string;
+  crons: string[];
   enabled: boolean;
   timezone: string;
   serverTimezone: string;
@@ -36,6 +38,7 @@ export interface WorkflowScheduleOutput {
 
 export interface WorkflowScheduleInput {
   cron?: unknown;
+  crons?: unknown;
   timezone?: unknown;
   enabled?: unknown;
   parameterValues?: unknown;
@@ -51,10 +54,7 @@ interface WorkflowScheduleRuntimeState {
 const DEFAULT_CRON_EXPRESSION = "0 9 * * 1-5";
 
 export class WorkflowScheduler {
-  private readonly schedules = new Map<
-    string,
-    { cron: string; timezone?: string; enabled: boolean; parameterValues: Record<string, string> }
-  >();
+  private readonly schedules = new Map<string, WorkflowScheduleConfiguration>();
   private readonly configuredProjects = new Set<string>();
   private readonly runtimeStates = new Map<
     string,
@@ -146,9 +146,15 @@ export class WorkflowScheduler {
 
     const previous = await this.getSchedule(normalizedProjectId);
     const timezone = normalizeScheduleTimezone(input.timezone === undefined ? previous.timezone : input.timezone);
-    const cron = normalizeCronExpression(input.cron);
+    const expressions = input.crons === undefined
+      ? [input.cron, ...previous.crons.slice(1)]
+      : input.crons;
+    if (!Array.isArray(expressions) || expressions.length === 0) {
+      throw new ValidationError("At least one cron expression is required.");
+    }
+    const crons = [...new Set(expressions.map(normalizeCronExpression))];
     // Validate an occurrence before persisting, so an invalid schedule cannot be saved.
-    getNextCronOccurrence(cron, this.now(), timezone);
+    for (const cron of crons) getNextCronOccurrence(cron, this.now(), timezone);
     const parameterValues = await this.agentUseCase
       .validateWorkflowParameterValues(
         normalizedProjectId,
@@ -156,7 +162,8 @@ export class WorkflowScheduler {
         input.enabled
       );
     const schedule = {
-      cron,
+      cron: crons[0],
+      crons,
       timezone,
       enabled: input.enabled,
       parameterValues
@@ -192,7 +199,7 @@ export class WorkflowScheduler {
       if (
         !schedule.enabled ||
         this.handledMinuteKeys.get(projectId) === minuteKey ||
-        !cronMatchesDate(schedule.cron, date, schedule.timezone ?? serverTimezone())
+        !this.getCrons(schedule).some((cron) => cronMatchesDate(cron, date, schedule.timezone ?? serverTimezone()))
       ) {
         continue;
       }
@@ -287,29 +294,29 @@ export class WorkflowScheduler {
 
   private toOutput(
     projectId: string,
-    schedule: {
-      cron: string;
-      timezone?: string;
-      enabled: boolean;
-      parameterValues: Record<string, string>;
-    }
+    schedule: WorkflowScheduleConfiguration
   ): WorkflowScheduleOutput {
     const runtime = this.getRuntimeState(projectId);
 
     return {
       ...schedule,
+      crons: [...this.getCrons(schedule)],
       parameterValues: { ...schedule.parameterValues },
       timezone: schedule.timezone ?? serverTimezone(),
       serverTimezone: serverTimezone(),
       configured: this.configuredProjects.has(projectId),
       nextRunAt: schedule.enabled
-        ? getNextCronOccurrence(schedule.cron, this.now(), schedule.timezone ?? serverTimezone()).toISOString()
+        ? this.getCrons(schedule).map((cron) => getNextCronOccurrence(cron, this.now(), schedule.timezone ?? serverTimezone()).toISOString()).sort()[0]
         : null,
       running: runtime.running,
       lastRunAt: runtime.lastRunAt?.toISOString() ?? null,
       lastRunStatus: runtime.lastRunStatus,
       lastRunError: runtime.lastRunError
     };
+  }
+
+  private getCrons(schedule: WorkflowScheduleConfiguration): string[] {
+    return schedule.crons ?? [schedule.cron];
   }
 
   private getRuntimeState(projectId: string): WorkflowScheduleRuntimeState {
