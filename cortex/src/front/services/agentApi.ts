@@ -126,6 +126,7 @@ export interface AgentConfiguration {
 
 export interface WorkflowSchedule {
   cron: string;
+  crons?: string[];
   enabled: boolean;
   timezone: string;
   serverTimezone?: string;
@@ -453,7 +454,7 @@ export function getWorkflowSchedule(
 
 export function saveWorkflowSchedule(
   projectId: string,
-  schedule: Pick<WorkflowSchedule, "cron" | "enabled" | "parameterValues" | "timezone">
+  schedule: Pick<WorkflowSchedule, "cron" | "crons" | "enabled" | "parameterValues" | "timezone">
 ): Promise<WorkflowSchedule> {
   return requestJson(
     `/api/agents/projects/${encodeURIComponent(projectId)}/workflow/schedule`,
