@@ -239,6 +239,12 @@ export function createAgentController(
     response.json(await agentUseCase.getCodexQuotaConfiguration());
   }, agentErrorMappings.getConfiguration));
 
+  router.get("/codex-models", asyncRoute(async (request, response) => {
+    const projectId = typeof request.query.projectId === "string" ? request.query.projectId : undefined;
+    response.setHeader("Cache-Control", "no-store");
+    response.json(await agentUseCase.getCodexModels(projectId));
+  }, agentErrorMappings.getConfiguration));
+
   router.put("/codex-quota", asyncRoute(async (request, response) => {
     response.json(await agentUseCase.saveCodexQuotaConfiguration(request.body));
   }, agentErrorMappings.saveConfiguration));

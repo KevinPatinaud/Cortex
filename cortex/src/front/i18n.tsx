@@ -13,6 +13,16 @@ type Variables = Record<string, string | number>;
 const STORAGE_KEY = "cortex.language.v1";
 
 const fr = {
+  "models.loading": "Lecture des modèles sur le serveur…",
+  "models.loadError": "Liste des modèles indisponible. Vérifiez Codex sur le serveur, puis actualisez.",
+  "models.refresh": "Actualiser les modèles",
+  "models.serverVersion": "Catalogue du serveur · Codex {version}",
+  "models.serverCatalog": "Catalogue du Codex installé sur le serveur",
+  "models.savedValue": "valeur enregistrée",
+  "models.missingModel": "Ce modèle enregistré ne figure pas dans le catalogue actuel du serveur. Sa valeur est conservée ; choisissez un modèle de la liste pour le remplacer.",
+  "models.missingEffort": "Cet effort enregistré n’est pas annoncé pour ce modèle. Choisissez un effort compatible ou la valeur par défaut.",
+  "models.max": "Maximum (max)",
+  "models.ultra": "Ultra (ultra)",
   "quota.title": "Conditionner les lancements aux quotas Codex",
   "quota.help": "Autoriser le lancement uniquement si les deux réserves sont suffisantes.",
   "quota.scope": "S’applique à tous les projets : lancements manuels, planifications et reprises automatiques. Les exécutions en cours continuent. Si les quotas sont indisponibles, un nouveau lancement est bloqué.",
@@ -669,6 +679,16 @@ type TranslationKey = keyof typeof fr;
 
 const en: Record<TranslationKey, string> = {
   ...fr,
+  "models.loading": "Reading models from the server…",
+  "models.loadError": "Model list unavailable. Check Codex on the server, then refresh.",
+  "models.refresh": "Refresh models",
+  "models.serverVersion": "Server catalog · Codex {version}",
+  "models.serverCatalog": "Catalog from the server's installed Codex",
+  "models.savedValue": "saved value",
+  "models.missingModel": "This saved model is absent from the server's current catalog. Its value is preserved; select a listed model to replace it.",
+  "models.missingEffort": "The catalog does not list this saved effort for the selected model. Choose a supported effort or the default.",
+  "models.max": "Maximum (max)",
+  "models.ultra": "Ultra (ultra)",
   "quota.title": "Require sufficient Codex quotas to start projects",
   "quota.help": "Allow a launch only when both remaining quotas meet their thresholds.",
   "quota.scope": "Applies to all projects: manual launches, schedules, and automatic resumes. Current executions continue. New launches are blocked when quotas are unavailable.",

@@ -32,6 +32,7 @@ import {
 import { useTranslation } from "../../../i18n.tsx";
 import { ConfirmationDialog } from "../../project_manager/components/ConfirmationDialog.tsx";
 import { MarkdownEditor } from "./MarkdownEditor.tsx";
+import { AgentModelFields } from "./AgentModelFields.tsx";
 import { ProjectReviewDialog } from "./ProjectReviewDialog.tsx";
 import { toProjectReviewDraft } from "./projectReviewDraft.ts";
 import {
@@ -72,12 +73,6 @@ interface InstructionsImprovementPreview {
   original: string;
   improved: string;
 }
-
-const modelSuggestions = {
-  codex: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
-  claude: ["sonnet", "opus", "haiku"],
-  copilot: []
-} as const;
 
 function createClientId(): string {
   return typeof crypto.randomUUID === "function"
@@ -523,7 +518,6 @@ export function AgentProjectEditor({
     }
   }
 
-  const suggestions = modelSuggestions[content.engine];
 
   return (
     <main id="main-content" tabIndex={-1} className="workspace-content workspace-content--editor">
@@ -799,37 +793,9 @@ export function AgentProjectEditor({
                     </label>
                   </div>
 
-                  <div className="agent-inspector__row agent-inspector__row--compact">
-                    <label className="editor-field">
-                      <span>{t("agent.model")} <em>{t("editor.optional")}</em></span>
-                      <input
-                        value={selectedAgent.model ?? ""}
-                        onChange={(event) => updateSelectedAgent({ model: event.target.value })}
-                        placeholder={t("editor.defaultModel")}
-                        list="cortex-model-suggestions"
-                        disabled={isSaving || isImproving}
-                      />
-                      {suggestions.length > 0 && (
-                        <datalist id="cortex-model-suggestions">
-                          {suggestions.map((model) => <option value={model} key={model} />)}
-                        </datalist>
-                      )}
-                    </label>
-                    <label className="editor-field">
-                      <span>{t("editor.reasoningEffort")} <em>{t("editor.optional")}</em></span>
-                      <select
-                        value={selectedAgent.reasoningEffort ?? ""}
-                        onChange={(event) => updateSelectedAgent({ reasoningEffort: event.target.value })}
-                        disabled={isSaving || isImproving}
-                      >
-                        <option value="">{t("editor.default")}</option>
-                        <option value="low">{t("editor.low")}</option>
-                        <option value="medium">{t("editor.medium")}</option>
-                        <option value="high">{t("editor.high")}</option>
-                        <option value="xhigh">{t("editor.xhigh")}</option>
-                      </select>
-                    </label>
-                  </div>
+                  <AgentModelFields engine={content.engine} projectId={project.id}
+                    model={selectedAgent.model ?? ""} reasoningEffort={selectedAgent.reasoningEffort ?? ""}
+                    disabled={isSaving || isImproving} onChange={updateSelectedAgent} />
 
                   <MarkdownEditor
                     value={selectedAgent.prompt}

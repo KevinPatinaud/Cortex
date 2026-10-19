@@ -4848,6 +4848,21 @@ main,
   border-top: 1px solid rgb(75 143 237 / 10%);
 }
 
+.agent-model-fields > div { min-width: 0; }
+.agent-model-fields__catalog {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 0.45rem; margin-top: 0.5rem;
+  color: var(--color-text-muted); font-size: 0.78rem; line-height: 1.5;
+}
+.agent-model-fields__catalog > small { flex: 1; min-width: 8rem; font-size: inherit; }
+.agent-model-fields__catalog > button {
+  display: inline-grid; width: 2.25rem; height: 2.25rem; padding: 0;
+  place-items: center; border: 1px solid #adc2e2; border-radius: 0.5rem;
+  background: #f5f9ff; color: #245da5; cursor: pointer;
+}
+.agent-model-fields__catalog > button:disabled { opacity: 0.5; cursor: not-allowed; }
+.agent-model-fields__catalog > p { flex-basis: 100%; margin: 0; color: #805600; }
+.agent-model-fields__warning { display: block; margin-top: 0.5rem; color: #805600; font-size: 0.78rem; line-height: 1.5; }
+
 .agent-settings-dialog .codex-quota-panel {
   display: grid;
   gap: 0.8rem;

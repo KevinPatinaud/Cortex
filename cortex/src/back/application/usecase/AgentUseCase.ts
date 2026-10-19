@@ -495,6 +495,11 @@ export class AgentUseCase {
     return this.agentService.getMcpConnections(project?.directoryPath);
   }
 
+  async getCodexModels(projectId?: string) {
+    const project = projectId?.trim() ? await this.projectUseCase.getProject(projectId) : null;
+    return this.agentService.getCodexModels(project?.directoryPath);
+  }
+
   getMachineMcpConnection(
     engine: McpConnectionEngine,
     name: string

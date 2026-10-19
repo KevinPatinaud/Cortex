@@ -49,6 +49,13 @@ test("désactive le multi-agent interne quand Cortex lance Codex", async () => {
   assert.equal(provider.capturedArgs[disableIndex + 1], "multi_agent");
 });
 
+test("passes dynamically selected model identifiers and newer reasoning efforts directly to the deployed CLI", async () => {
+  const provider = new CapturingCodexAgentProvider(process.cwd());
+  await provider.ask("Execute", { model: "server-discovered-model", reasoningEffort: "ultra" });
+  assert.equal(provider.capturedArgs[provider.capturedArgs.indexOf("--model") + 1], "server-discovered-model");
+  assert.ok(provider.capturedArgs.includes('model_reasoning_effort="ultra"'));
+});
+
 test("laisse quinze minutes aux agents qui manipulent des fichiers ou un navigateur", async () => {
   const provider = new CapturingCodexAgentProvider(process.cwd());
 

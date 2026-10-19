@@ -7,6 +7,7 @@ import { AgentConfigurationService } from "../../../application/service/iaServic
 import { createDefaultAgentToolRegistry } from "../../../application/service/iaService/iaTools/AgentToolRegistry.ts";
 import { McpConfigurationService } from "../../../application/service/iaService/McpConfigurationService.ts";
 import { CodexPluginService } from "../../../application/service/iaService/CodexPluginService.ts";
+import { CodexModelService } from "../../../application/service/iaService/CodexModelService.ts";
 import { CodexQuotaService } from "../../../application/service/iaService/CodexQuotaService.ts";
 import { readCodexRateLimits } from "../../../application/service/iaService/CodexRateLimits.ts";
 import { ClaudeAgentProvider } from "../../../application/service/iaService/providers/ClaudeAgentProvider.ts";
@@ -67,7 +68,7 @@ const agentService = new AgentService([
   new ClaudeAgentProvider(workspaceDirectory),
   new CopilotAgentProvider(agentToolRegistry, mcpConfigurationService)
 ], agentConfigurationService, mcpConfigurationService, codexPluginService,
-readPositiveSetting("CORTEX_AGENT_TIMEOUT_MS", 15 * 60 * 1000));
+readPositiveSetting("CORTEX_AGENT_TIMEOUT_MS", 15 * 60 * 1000), new CodexModelService(workspaceDirectory));
 const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(
   configurationFile,

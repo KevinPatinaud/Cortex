@@ -8,6 +8,8 @@ In **Settings → General**, enable the Codex quota launch rule to require at le
 
 Cortex queries its server's authenticated Codex CLI using [`account/rateLimits/read`](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt), without starting an inference turn. The settings button checks that same account and displays the observation time. Missing, invalid, expired, or unavailable five-hour/weekly windows block launches while the rule is enabled. Cron occurrences are skipped with a reason until the next scheduled occurrence; waiting workflows and queued dossiers retain their state and retry automatically. Denied attempts reuse the refusal for up to 60 seconds, while every permitted launch requires a fresh reading. Disabling the rule takes effect on the next attempt.
 
+The Codex model selector reads the deployed CLI's [`model/list`](https://learn.chatgpt.com/docs/app-server#list-models-modellist) catalog in the selected project's directory, including pagination and model-specific reasoning efforts. It displays the CLI version and configured default, and can refresh after a Codex upgrade. Discovery and execution resolve the same executable on the Cortex server; the browser's local Codex installation is irrelevant. No model names are hard-coded for Codex. Missing catalogs show an error and retry action; previously saved model/effort values are preserved and identified when absent from the current catalog. Changing models clears an incompatible effort only as part of that explicit user action. Discovery starts no inference turn; final account access is checked when a real execution runs.
+
 ## Prerequisites
 
 - Node.js 20.19 or later, or Node.js 22.12 and later;

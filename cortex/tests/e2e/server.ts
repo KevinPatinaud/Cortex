@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import { AgentService } from "../../src/back/application/service/iaService/AgentService.ts";
 import { AgentConfigurationService } from "../../src/back/application/service/iaService/AgentConfigurationService.ts";
 import { CodexQuotaService } from "../../src/back/application/service/iaService/CodexQuotaService.ts";
+import { CodexModelService } from "../../src/back/application/service/iaService/CodexModelService.ts";
+import type { CodexModelCatalog } from "../../src/shared/CodexModel.ts";
 import type { AgentProvider } from "../../src/back/application/service/iaService/AgentProvider.ts";
 import { ProjectService } from "../../src/back/application/service/projectService/ProjectService.ts";
 import { DirectoryPickerService } from "../../src/back/application/service/projectService/DirectoryPickerService.ts";
@@ -25,11 +27,23 @@ import { SqliteWorkflowAutomationRepository } from "../../src/back/infrastructur
 const directory = await mkdtemp(path.join(tmpdir(), "cortex-e2e-"));
 const configuration = new AgentConfigurationService(path.join(directory, "config.json"));
 let automationScan = 0;
+let modelCatalogUnavailable = false;
+let fixtureModelName = "gpt-server-sol";
+let lastCodexExecution: { model?: string; reasoningEffort?: string } = {};
+const modelService = new CodexModelService(directory, async () => {
+  if (modelCatalogUnavailable) throw new Error("Simulated model discovery failure");
+  return { available: true, cliVersion: "0.163.0-fixture", defaultModel: fixtureModelName,
+    checkedAt: new Date().toISOString(), error: null, models: [
+      { model: fixtureModelName, displayName: "Sol du serveur", reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"], defaultReasoningEffort: "low", isDefault: true },
+      { model: "gpt-server-luna", displayName: "Luna du serveur", reasoningEfforts: ["low", "medium", "high"], defaultReasoningEffort: "medium", isDefault: false }
+    ] } satisfies CodexModelCatalog;
+});
 const simulatedProvider: AgentProvider = {
   engine: "codex",
   label: "Codex",
   async isAvailable() { return true; },
   async ask(prompt, options = {}) {
+    if (options.persistSession) lastCodexExecution = { model: options.model, reasoningEffort: options.reasoningEffort };
     if (prompt.includes("Turn the user's project description")) {
       return { answer: JSON.stringify({
         instructions: "Instructions du projet de test.",
@@ -94,7 +108,7 @@ const simulatedProvider: AgentProvider = {
     };
   }
 };
-const agentService = new AgentService([simulatedProvider], configuration);
+const agentService = new AgentService([simulatedProvider], configuration, undefined, undefined, undefined, modelService);
 const projectService = new ProjectService(path.join(directory, "config.json"), path.join(directory, "projects"));
 const projectUseCase = new ProjectUseCase(projectService, new DirectoryPickerService(), agentService);
 const repository = new SqliteWorkflowAuditRepository(path.join(directory, "audit.sqlite"));
@@ -136,6 +150,12 @@ const gmail = new GmailService(path.join(directory, "gmail.sqlite"), "http://127
 const app = createCortexApplication({ projectUseCase, agentUseCase, workflowScheduler,
   authentication: null, clientDirectory: path.resolve("dist"), gmail, automations });
 // Test-only endpoint outside /api, never registered by production.
+app.post("/__test/codex-models", (request, response) => {
+  modelCatalogUnavailable = request.body.unavailable === true;
+  fixtureModelName = request.body.model ?? "gpt-server-sol";
+  response.json({ ok: true });
+});
+app.post("/__test/last-codex-execution", (_request, response) => response.json(lastCodexExecution));
 app.post("/__test/codex-quota", async (request, response) => {
   quotaUsed = { fiveHour: request.body.fiveHourUsed ?? 50, weekly: request.body.weeklyUsed ?? 90 };
   quotaUnavailable = request.body.unavailable === true;

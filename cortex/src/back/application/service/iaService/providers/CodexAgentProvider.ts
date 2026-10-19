@@ -1,5 +1,4 @@
 
-import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,6 +10,7 @@ import type {
 import { DEFAULT_AGENT_CONFIGURATION } from "../AgentProvider.ts";
 import { CliAgentProvider } from "../CliAgentProvider.ts";
 import { createCodexProgress } from "../ExecutionProgress.ts";
+import { resolveCodexCommand } from "../CodexCommand.ts";
 
 const AGENT_EXECUTION_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -23,25 +23,9 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
   constructor(workingDirectory: string) {
     super(workingDirectory);
 
-    const npmCodexScript = process.env.APPDATA
-      ? path.join(
-          process.env.APPDATA,
-          "npm",
-          "node_modules",
-          "@openai",
-          "codex",
-          "bin",
-          "codex.js"
-        )
-      : "";
-
-    if (process.platform === "win32" && npmCodexScript && existsSync(npmCodexScript)) {
-      this.command = process.execPath;
-      this.argumentPrefix = [npmCodexScript];
-    } else {
-      this.command = "codex";
-      this.argumentPrefix = [];
-    }
+    const { command, args } = resolveCodexCommand();
+    this.command = command;
+    this.argumentPrefix = args;
   }
 
   async isAvailable(): Promise<boolean> {

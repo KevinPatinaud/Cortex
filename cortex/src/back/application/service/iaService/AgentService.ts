@@ -9,6 +9,8 @@ import type {
 import type { AgentConfigurationService } from "./AgentConfigurationService.ts";
 import type { McpConfigurationService } from "./McpConfigurationService.ts";
 import type { CodexPluginService } from "./CodexPluginService.ts";
+import type { CodexModelService } from "./CodexModelService.ts";
+import type { CodexModelCatalog } from "../../../../shared/CodexModel.ts";
 import type { CodexPluginCatalog } from "../../../../shared/CodexPlugin.ts";
 import type {
   McpConnectionEngine,
@@ -63,8 +65,15 @@ export class AgentService {
     private readonly configurationService: AgentConfigurationService,
     private readonly mcpConfigurationService?: McpConfigurationService,
     private readonly codexPluginService?: CodexPluginService,
-    private readonly executionTimeoutMs = 15 * 60 * 1000
+    private readonly executionTimeoutMs = 15 * 60 * 1000,
+    private readonly codexModelService?: CodexModelService
   ) {}
+
+  getCodexModels(workingDirectory?: string): Promise<CodexModelCatalog> {
+    if (!this.codexModelService) return Promise.resolve({ available: false, models: [], cliVersion: null,
+      defaultModel: null, checkedAt: new Date().toISOString(), error: "Codex model discovery is unavailable." });
+    return this.codexModelService.getCatalog(workingDirectory);
+  }
 
   getCodexPlugins(): Promise<CodexPluginCatalog> {
     return this.codexPluginService?.getCatalog() ?? Promise.resolve({
