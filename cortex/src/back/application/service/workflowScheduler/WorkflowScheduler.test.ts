@@ -10,6 +10,33 @@ import os from "node:os";
 import path from "node:path";
 import { serverTimezone } from "./CronExpression.ts";
 import type { WorkflowScheduleConfiguration } from "../projectService/ProjectService.ts";
+import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
+
+test("quota-denied cron occurrences are skipped with an explanation and the next occurrence can run", async () => {
+  let blocked = true;
+  const now = new Date("2026-10-19T10:00:05Z");
+  const repository = new SqliteWorkflowAuditRepository(":memory:");
+  const projects = {
+    getProjects: async () => [{ id: "project" }],
+    getWorkflowScheduleConfiguration: async () => ({ cron: "* * * * *", enabled: true, parameterValues: {} })
+  } as unknown as ProjectUseCase;
+  const agents = {
+    isProjectRunning: () => false,
+    runWorkflow: async () => { if (blocked) throw new CodexQuotaBlockedError("5 h : 49 % restants, minimum 50 %"); }
+  } as unknown as AgentUseCase;
+  const scheduler = new WorkflowScheduler(projects, agents, () => now, new WorkflowAuditService(repository));
+  try {
+    await scheduler.start();
+    await new Promise(setImmediate);
+    const skipped = await scheduler.getSchedule("project");
+    assert.equal(skipped.lastRunStatus, "skipped");
+    assert.match(skipped.lastRunError!, /49 %/);
+    blocked = false;
+    scheduler.checkDueSchedules(new Date(now.getTime() + 60_000));
+    await new Promise(setImmediate);
+    assert.equal((await scheduler.getSchedule("project")).lastRunStatus, "succeeded");
+  } finally { scheduler.stop(); repository.close(); }
+});
 
 test("persists the timezone, previews without mutation, and executes in that timezone after restart", async () => {
   let stored: WorkflowScheduleConfiguration | null = null;

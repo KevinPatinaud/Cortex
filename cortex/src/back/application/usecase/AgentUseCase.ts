@@ -19,6 +19,9 @@ import type {
   McpMachineConnectionInput
 } from "../../../shared/McpConnection.ts";
 import type { CodexPluginCatalog } from "../../../shared/CodexPlugin.ts";
+import type { CodexQuotaService } from "../service/iaService/CodexQuotaService.ts";
+import { DEFAULT_CODEX_QUOTA_CONFIGURATION } from "../../../shared/CodexQuota.ts";
+import { CodexQuotaBlockedError } from "../error/CodexQuotaBlockedError.ts";
 import {
   parseProjectReviewProposal,
   type ProjectReviewDraft,
@@ -420,7 +423,7 @@ export class AgentUseCase {
     if (!this.workflowAuditService) throw new ValidationError("Persistent workflow storage is required.");
     const runner = new AgentUseCase(this.agentService, this.projectUseCase,
       this.workflowAuditService.forInstance(instanceId), { ...this.executionLimits, maxConcurrentInstances: 1 },
-      { snapshot: structuredClone(snapshot), instanceId, payload });
+      { snapshot: structuredClone(snapshot), instanceId, payload }, this.codexQuota);
     runner.dispatchHandler = this.dispatchHandler;
     runner.dispatchInstructions = this.dispatchInstructions;
     return runner;
@@ -442,6 +445,7 @@ export class AgentUseCase {
   >();
   private readonly activeManualAuditRunIds = new Map<string, string>();
   private readonly executionControllers = new Map<string, AbortController>();
+  private readonly pendingQuotaChecks = new Map<string, AbortController>();
   private readonly failedThreadIds = new Map<string, Set<string>>();
   private readonly workflowControllers = new Map<string, AbortController>();
   private readonly workflowExecutionPools = new Map<string, WorkflowExecutionPool>();
@@ -451,7 +455,8 @@ export class AgentUseCase {
     private readonly projectUseCase: ProjectUseCase,
     private readonly workflowAuditService?: WorkflowAuditService,
     private readonly executionLimits: WorkflowExecutionLimits = {},
-    private readonly isolated?: { snapshot: AgentProject; instanceId: string; payload: string }
+    private readonly isolated?: { snapshot: AgentProject; instanceId: string; payload: string },
+    private readonly codexQuota?: CodexQuotaService
   ) {
     for (const limit of Object.values(executionLimits)) {
       if (!Number.isSafeInteger(limit) || limit < 1) {
@@ -466,6 +471,20 @@ export class AgentUseCase {
 
   getConfiguration(): Promise<AgentConfiguration> {
     return this.agentService.getConfiguration();
+  }
+
+  getCodexQuotaConfiguration() {
+    return this.codexQuota?.getConfiguration() ?? Promise.resolve({ ...DEFAULT_CODEX_QUOTA_CONFIGURATION });
+  }
+
+  saveCodexQuotaConfiguration(input: unknown) {
+    if (!this.codexQuota) throw new Error("Codex quota configuration is unavailable.");
+    return this.codexQuota.saveConfiguration(input);
+  }
+
+  getCodexQuotaStatus() {
+    if (!this.codexQuota) throw new Error("Codex quota reading is unavailable.");
+    return this.codexQuota.getStatus();
   }
 
   async getMcpConnections(projectId?: string): Promise<McpDiscoveryResult> {
@@ -700,6 +719,18 @@ export class AgentUseCase {
 
     if (input.threadId !== undefined && !threadId) {
       throw new ValidationError("The agent instance to run is invalid.");
+    }
+
+    if (!workflowExecution && this.codexQuota) {
+      const key = this.getAgentExecutionKey(normalizedProjectId, agentId);
+      if (this.runningWorkflows.has(normalizedProjectId)) throw new ValidationError("The complete workflow is already running.");
+      if (this.pendingQuotaChecks.has(key)) throw new ValidationError("This agent is already running.");
+      const pending = new AbortController();
+      this.pendingQuotaChecks.set(key, pending);
+      try {
+        await this.codexQuota.assertMayStart();
+        pending.signal.throwIfAborted();
+      } finally { this.pendingQuotaChecks.delete(key); }
     }
 
     const loadedProject = this.loadedProjects.get(normalizedProjectId);
@@ -1125,7 +1156,7 @@ export class AgentUseCase {
     projectId: string,
     workflowParameterValues?: unknown,
     trigger: WorkflowAuditTrigger = "scheduled",
-    options: { resume?: boolean; now?: Date; scheduledAt?: string; additionalInstructions?: string } = {}
+    options: { resume?: boolean; now?: Date; scheduledAt?: string; additionalInstructions?: string; onStart?: () => void } = {}
   ): Promise<WorkflowRunOutput> {
     const normalizedProjectId = projectId.trim();
 
@@ -1141,21 +1172,6 @@ export class AgentUseCase {
       throw new ValidationError("This workflow is waiting. Cancel or reset it before starting a new workflow.");
     }
 
-    const activeManualAuditRunId = this.activeManualAuditRunIds.get(
-      normalizedProjectId
-    );
-
-    if (activeManualAuditRunId && options.resume && this.workflowInstances.get(normalizedProjectId)?.automatic) {
-      this.activeManualAuditRunIds.delete(normalizedProjectId);
-    } else if (activeManualAuditRunId) {
-      this.completeManualAuditRun(
-        normalizedProjectId,
-        activeManualAuditRunId,
-        "cancelled",
-        "A complete workflow execution replaced the unfinished manual run."
-      );
-    }
-
     this.runningWorkflows.add(normalizedProjectId);
     const controller = new AbortController();
     this.workflowControllers.set(normalizedProjectId, controller);
@@ -1165,6 +1181,16 @@ export class AgentUseCase {
     let auditRunId: string | undefined;
 
     try {
+      if (this.codexQuota) await this.codexQuota.assertMayStart();
+      controller.signal.throwIfAborted();
+      options.onStart?.();
+      const activeManualAuditRunId = this.activeManualAuditRunIds.get(normalizedProjectId);
+      if (activeManualAuditRunId && options.resume && this.workflowInstances.get(normalizedProjectId)?.automatic) {
+        this.activeManualAuditRunIds.delete(normalizedProjectId);
+      } else if (activeManualAuditRunId) {
+        this.completeManualAuditRun(normalizedProjectId, activeManualAuditRunId, "cancelled",
+          "A complete workflow execution replaced the unfinished manual run.");
+      }
       const project = await this.loadProject(normalizedProjectId, false, true);
       controller.signal.throwIfAborted();
       if (options.resume && (!project.agents.some((agent) =>
@@ -1321,6 +1347,9 @@ export class AgentUseCase {
   cancelProjectExecution(projectId: string): boolean {
     const normalizedProjectId = projectId.trim();
     let cancelled = false;
+    for (const [key, controller] of this.pendingQuotaChecks) {
+      if (key.startsWith(`${normalizedProjectId}:`)) { cancelExecution(controller); cancelled = true; }
+    }
     const instance = this.workflowInstances.get(normalizedProjectId);
     if (instance?.automatic && ["waiting", "running", "failed", "interrupted"].includes(instance.status)) {
       instance.status = "cancelled";
@@ -1349,12 +1378,13 @@ export class AgentUseCase {
   }
 
   cancelAllExecutions(): void {
+    for (const controller of this.pendingQuotaChecks.values()) cancelExecution(controller);
     for (const controller of this.workflowControllers.values()) cancelExecution(controller);
     for (const controller of this.executionControllers.values()) cancelExecution(controller);
   }
 
   hasActiveExecutions(): boolean {
-    return this.executionControllers.size > 0 || this.workflowControllers.size > 0;
+    return this.executionControllers.size > 0 || this.workflowControllers.size > 0 || this.pendingQuotaChecks.size > 0;
   }
 
   hasWorkflowWaits(projectId: string): boolean {
@@ -1381,6 +1411,7 @@ export class AgentUseCase {
       try {
         await this.runWorkflow(projectId, undefined, "scheduled", { resume: true, now });
       } catch (error) {
+        if (error instanceof CodexQuotaBlockedError) return;
         console.error(`Unable to resume waiting workflow ${projectId}:`, error);
       }
     });
@@ -1499,6 +1530,7 @@ export class AgentUseCase {
     const normalizedProjectId = projectId.trim();
 
     return this.runningWorkflows.has(normalizedProjectId) ||
+      [...this.pendingQuotaChecks.keys()].some(key => key.startsWith(`${normalizedProjectId}:`)) ||
       [...this.agentExecutions.entries()].some(
       ([key, execution]) => key.startsWith(`${normalizedProjectId}:`) &&
         execution.status === "running"

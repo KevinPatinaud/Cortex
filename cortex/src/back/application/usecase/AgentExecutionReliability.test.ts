@@ -12,6 +12,8 @@ import type { WorkflowExecutionLimits } from "../service/workflowExecution/Workf
 import type { WorkflowParameterDefinition } from "../../../shared/WorkflowParameter.ts";
 import { WorkflowAuditService } from "../service/workflowAudit/WorkflowAuditService.ts";
 import { SqliteWorkflowAuditRepository } from "../../infrastructure/audit/SqliteWorkflowAuditRepository.ts";
+import type { CodexQuotaService } from "../service/iaService/CodexQuotaService.ts";
+import { CodexQuotaBlockedError } from "../error/CodexQuotaBlockedError.ts";
 
 const agentId = (name: string): string => `.claude/agents/${name}.md`;
 
@@ -61,7 +63,8 @@ function fixture(
   limits: WorkflowExecutionLimits = {},
   repository = new SqliteWorkflowAuditRepository(":memory:"),
   parameters: WorkflowParameterDefinition[] = [],
-  inputModes: Record<string, "separate" | "aggregate"> = {}
+  inputModes: Record<string, "separate" | "aggregate"> = {},
+  quota?: CodexQuotaService
 ) {
   let configuration: AgentWorkflowConfiguration | null = null;
   const file = (name: string, relativePath: string, content: string) => ({
@@ -95,8 +98,106 @@ function fixture(
     }
   } as unknown as AgentService;
   return { repository, content, createUseCase: (storage = repository) =>
-    new AgentUseCase(service, project, new WorkflowAuditService(storage), limits) };
+    new AgentUseCase(service, project, new WorkflowAuditService(storage), limits, undefined, quota) };
 }
+
+test("quota gate covers manual agents, scheduled workflows and resumes before changing any workflow state", async () => {
+  let allowed = false, checks = 0, calls = 0;
+  const quota = { assertMayStart: async () => {
+    checks++;
+    if (!allowed) throw new CodexQuotaBlockedError("Lancement bloqué par les quotas Codex");
+  } } as unknown as CodexQuotaService;
+  const f = fixture({ source: [] }, async () => { calls++; return response(["Done"], []); }, {}, undefined, [], {}, quota);
+  try {
+    const useCase = f.createUseCase();
+    await useCase.loadProject("project");
+    for (const run of [() => useCase.runAgent("project", { agentId: agentId("source") }),
+      () => useCase.runWorkflow("project", {}, "manual"),
+      () => useCase.runWorkflow("project", {}, "scheduled"),
+      () => useCase.runWorkflow("project", {}, "scheduled", { resume: true })]) {
+      await assert.rejects(run(), CodexQuotaBlockedError);
+      assert.equal(useCase.isProjectRunning("project"), false);
+      assert.equal(f.repository.listRuns("project", 20, 0).total, 0);
+      assert.equal(f.repository.getCheckpoint("project"), null);
+    }
+    assert.equal(checks, 4);
+    assert.equal(calls, 0);
+    allowed = true;
+    await useCase.runWorkflow("project", {}, "manual");
+    assert.equal(calls, 1);
+  } finally { f.repository.close(); }
+});
+
+test("quota checked at launch does not interrupt downstream steps when the reserve drops mid-workflow", async () => {
+  let allowed = true, checks = 0;
+  const quota = { assertMayStart: async () => {
+    checks++;
+    if (!allowed) throw new CodexQuotaBlockedError("Low reserve");
+  } } as unknown as CodexQuotaService;
+  const calls: string[] = [];
+  const f = fixture({ source: ["next"], next: [] }, async name => {
+    calls.push(name); allowed = false;
+    return response(["Done"], name === "source" ? ["next"] : []);
+  }, {}, undefined, [], {}, quota);
+  try {
+    await f.createUseCase().runWorkflow("project");
+    assert.deepEqual(calls, ["source", "next"]);
+    assert.equal(checks, 1);
+  } finally { f.repository.close(); }
+});
+
+for (const scope of ["agent", "workflow"] as const) test(`${scope}: cancellation during a pending quota read prevents execution and reset cannot bypass the gate`, async () => {
+  let allowRead!: () => void, entered!: () => void, calls = 0;
+  const reading = new Promise<void>(resolve => { entered = resolve; });
+  const quota = { assertMayStart: async () => {
+    entered();
+    await new Promise<void>(resolve => { allowRead = resolve; });
+  } } as unknown as CodexQuotaService;
+  const f = fixture({ source: [] }, async () => { calls++; return response(["Done"], []); }, {}, undefined, [], {}, quota);
+  try {
+    const useCase = f.createUseCase();
+    await useCase.loadProject("project");
+    const execution = scope === "agent" ? useCase.runAgent("project", { agentId: agentId("source") }) : useCase.runWorkflow("project");
+    await reading;
+    assert.equal(useCase.isProjectRunning("project"), true);
+    assert.throws(() => useCase.resetWorkflow("project"), /cannot be reset/);
+    assert.equal(useCase.cancelProjectExecution("project"), true);
+    allowRead();
+    await assert.rejects(execution, { name: "AbortError" });
+    assert.equal(useCase.isProjectRunning("project"), false);
+    assert.equal(calls, 0);
+    assert.equal(f.repository.getCheckpoint("project"), null);
+  } finally { f.repository.close(); }
+});
+
+test("quota-denied automatic wake preserves its event and checkpoint and resumes after the reserve recovers", async () => {
+  let allowed = true, calls = 0;
+  const quota = { assertMayStart: async () => {
+    if (!allowed) throw new CodexQuotaBlockedError("Low reserve");
+  } } as unknown as CodexQuotaService;
+  const f = fixture({ source: [] }, async () => {
+    calls++;
+    if (calls > 1) return response(["Done"], []);
+    return { sessionId: "waiting-session", answer: JSON.stringify({ status: "waiting", items: [{ content: "Waiting" }], nextAgentIds: [],
+      isMultiSelectionAllowed: false, isMultiSelectionThreaded: false, notes: null,
+      wait: { reason: "Reply", eventKey: "reply", wakeAfterSeconds: null, deadlineAt: new Date(Date.now() + 3600_000).toISOString(), state: "Sent once" } }) };
+  }, {}, undefined, [], {}, quota);
+  try {
+    const useCase = f.createUseCase();
+    await useCase.runWorkflow("project");
+    const instance = (await useCase.loadProject("project")).workflowInstance!;
+    await useCase.receiveWorkflowEvent("project", { instanceId: instance.id, id: "reply-1", key: "reply", payload: "Confirmed" });
+    const checkpoint = f.repository.getCheckpoint("project");
+    allowed = false;
+    await useCase.wakeWaitingWorkflows();
+    assert.deepEqual(f.repository.getCheckpoint("project"), checkpoint);
+    assert.equal(calls, 1);
+    allowed = true;
+    await useCase.wakeWaitingWorkflows();
+    assert.equal(calls, 2);
+    assert.equal((await useCase.loadProject("project")).workflowInstance?.status, "completed");
+  } finally { f.repository.close(); }
+});
 
 test("independent entry points run together and their threaded flows join once", async () => {
   const graph = { agenda: ["analysis"], news: ["writer"], analysis: ["summary"], writer: ["summary"], summary: ["publisher"], publisher: [] };

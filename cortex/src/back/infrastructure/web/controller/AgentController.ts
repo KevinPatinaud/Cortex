@@ -235,6 +235,19 @@ export function createAgentController(
     }, agentErrorMappings.getConfiguration)
   );
 
+  router.get("/codex-quota", asyncRoute(async (_request, response) => {
+    response.json(await agentUseCase.getCodexQuotaConfiguration());
+  }, agentErrorMappings.getConfiguration));
+
+  router.put("/codex-quota", asyncRoute(async (request, response) => {
+    response.json(await agentUseCase.saveCodexQuotaConfiguration(request.body));
+  }, agentErrorMappings.saveConfiguration));
+
+  router.get("/codex-quota/status", asyncRoute(async (_request, response) => {
+    response.setHeader("Cache-Control", "no-store");
+    response.json(await agentUseCase.getCodexQuotaStatus());
+  }, agentErrorMappings.getConfiguration));
+
   router.get(
     "/mcp-connections",
     asyncRoute(async (request, response) => {

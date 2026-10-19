@@ -1,4 +1,5 @@
 import { isExecutionCancelled } from "../workflowExecution/WorkflowExecution.ts";
+import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
 import type { AgentUseCase } from "../../usecase/AgentUseCase.ts";
 import type { ProjectUseCase } from "../../usecase/ProjectUseCase.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
@@ -261,14 +262,14 @@ export class WorkflowScheduler {
       this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, status);
       if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) runtime.lastRunStatus = status;
     } catch (error) {
-      const status = isExecutionCancelled(error) ? "cancelled" : "failed";
+      const status = error instanceof CodexQuotaBlockedError ? "skipped" : isExecutionCancelled(error) ? "cancelled" : "failed";
       const message = error instanceof Error ? error.message : "The scheduled workflow execution failed.";
       this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, status, message);
       if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) {
         runtime.lastRunStatus = status;
         runtime.lastRunError = message;
       }
-      console.error(
+      if (!(error instanceof CodexQuotaBlockedError)) console.error(
         `Scheduled workflow execution failed for project ${projectId}:`,
         error
       );

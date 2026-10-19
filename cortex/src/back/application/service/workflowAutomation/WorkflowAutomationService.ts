@@ -10,6 +10,7 @@ import { SqliteWorkflowAutomationRepository, type StoredWorkflowJob } from "../.
 import { ValidationError } from "../../error/ValidationError.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
 import { AgentBlockedError } from "../../error/AgentBlockedError.ts";
+import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
 import type { WorkflowJob, WorkflowJobFilter } from "../../../../shared/WorkflowAutomation.ts";
 
 export class WorkflowAutomationService {
@@ -313,15 +314,23 @@ export class WorkflowAutomationService {
   }
   private async execute(job: StoredWorkflowJob, resume: boolean, now: Date): Promise<void> {
     const runner = this.runner(job);
-    this.store.update(job.id, "running");
     try {
       await runner.loadProject(job.targetProjectId, false);
       if (this.store.get(job.id)?.status === "cancelled" || this.stopped) return;
       const additionalInstructions = job.clarifications?.length
         ? `Précisions explicites de l’utilisateur pour ce dossier, dans l’ordre chronologique. Elles complètent ou corrigent les paramètres initiaux et restent applicables aux étapes suivantes. Ne déduisez aucune autorisation supplémentaire.\n\n${job.clarifications.map(item => `${item.createdAt}\n${item.content}`).join("\n\n")}` : undefined;
-      const result = await runner.runWorkflow(job.targetProjectId, job.parameterValues, "scheduled", { resume, now, additionalInstructions });
+      const result = await runner.runWorkflow(job.targetProjectId, job.parameterValues, "scheduled", { resume, now, additionalInstructions,
+        onStart: () => this.store.update(job.id, "running") });
       if (this.store.get(job.id)?.status !== "cancelled") this.store.update(job.id, result.status === "waiting" ? "waiting" : "completed");
     } catch (error) {
+      if (error instanceof CodexQuotaBlockedError && !this.stopped) {
+        // Retain queued jobs and durable waits; the next scan retries the quota gate.
+        const current = this.store.get(job.id);
+        if (current && current.status !== "cancelled" && (current.status !== job.status || current.error !== error.message)) {
+          this.store.update(job.id, job.status, error.message);
+        }
+        return;
+      }
       if (this.store.get(job.id)?.status !== "cancelled") this.store.update(job.id, this.stopped ? "interrupted" : error instanceof AgentBlockedError ? "blocked" : "failed", error instanceof Error ? error.message : "Échec du dossier.");
     }
   }

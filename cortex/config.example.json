@@ -4,6 +4,11 @@
     "folders": [],
     "projectFolders": {}
   },
+  "codexQuota": {
+    "enabled": false,
+    "minimumFiveHourRemainingPercent": 50,
+    "minimumWeeklyRemainingPercent": 10
+  },
   "agentOrders": {},
   "agentWorkflows": {},
   "agentConfiguration": {

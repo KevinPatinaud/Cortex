@@ -5,6 +5,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { AgentUseCase } from "../../usecase/AgentUseCase.ts";
+import type { CodexQuotaService } from "../iaService/CodexQuotaService.ts";
+import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
 import type { ProjectUseCase, ProjectContentOutput } from "../../usecase/ProjectUseCase.ts";
 import type { AgentService } from "../iaService/AgentService.ts";
 import type { AgentExecutionOptions } from "../iaService/AgentProvider.ts";
@@ -20,7 +22,7 @@ const response = (items: unknown[], next: string[] = [], wait?: unknown) => ({
     nextAgentIds: next, isMultiSelectionAllowed: true, isMultiSelectionThreaded: false, notes: null, ...(wait ? { wait } : {}) })
 });
 
-async function fixture(unified = false, inferBranches = false) {
+async function fixture(unified = false, inferBranches = false, quota?: CodexQuotaService) {
   const directory = await mkdtemp(path.join(tmpdir(), "cortex-automation-"));
   let keys = ["one", "two"];
   let failNegotiation = false;
@@ -81,7 +83,7 @@ async function fixture(unified = false, inferBranches = false) {
     const auditStore = new SqliteWorkflowAuditRepository(path.join(directory, "audit.sqlite"));
     const audit = new WorkflowAuditService(auditStore);
     const store = new SqliteWorkflowAutomationRepository(path.join(directory, "jobs.sqlite"));
-    const agents = new AgentUseCase(provider, projects, audit);
+    const agents = new AgentUseCase(provider, projects, audit, {}, undefined, quota);
     const service = new WorkflowAutomationService(store, agents, projects, audit, 2);
     return { auditStore, audit, store, agents, service, close: async () => { await service.stop(); store.close(); auditStore.close(); } };
   };
@@ -126,6 +128,35 @@ test("three native structured selection items create independent waiting dossier
     await f.service.tick();
     assert.equal(f.store.list("source").total, 3);
     assert.equal(state.calls.filter(call => call.prompt.includes("TASK_NEGOTIATE")).length, 3);
+  } finally { await f.close(); await state.cleanup(); }
+});
+
+test("quota gate inherited by isolated dossiers preserves queued jobs and waiting events until quotas recover", async () => {
+  let allowed = true;
+  const quota = { assertMayStart: async () => { if (!allowed) throw new CodexQuotaBlockedError("Low quota reserve"); } } as unknown as CodexQuotaService;
+  const state = await fixture(true, true, quota);
+  state.setKeys(["one"]);
+  const f = state.open();
+  try {
+    await f.agents.runWorkflow("source", { criteria: "Rental investment" });
+    allowed = false;
+    await f.service.start();
+    await settle(f, () => f.store.list("source").jobs[0]?.status === "queued" && Boolean(f.store.list("source").jobs[0]?.error));
+    assert.equal(state.calls.filter(call => call.prompt.includes("TASK_NEGOTIATE")).length, 0);
+    allowed = true;
+    await settle(f, () => f.store.list("source").jobs[0]?.status === "waiting");
+    const job = f.store.list("source").jobs[0];
+    const project = await f.agents.loadWorkflowInstance("source", job.id);
+    await f.agents.receiveWorkflowEvent("source", { instanceId: job.id, id: "reply-1", key: "reply", payload: "ACCEPTED" });
+    const checkpoint = f.audit.forInstance(job.id).getCheckpoint("source");
+    allowed = false;
+    await settle(f, () => f.store.list("source").jobs[0]?.status === "waiting" && Boolean(f.store.list("source").jobs[0]?.error));
+    assert.deepEqual(f.audit.forInstance(job.id).getCheckpoint("source"), checkpoint);
+    assert.equal(state.calls.filter(call => call.prompt.includes("TASK_NEGOTIATE")).length, 1);
+    assert.equal(project.workflowInstance?.status, "waiting");
+    allowed = true;
+    await settle(f, () => f.store.list("source").jobs[0]?.status === "completed");
+    assert.equal(state.calls.filter(call => call.prompt.includes("TASK_NEGOTIATE")).length, 2);
   } finally { await f.close(); await state.cleanup(); }
 });
 

@@ -4848,6 +4848,39 @@ main,
   border-top: 1px solid rgb(75 143 237 / 10%);
 }
 
+.agent-settings-dialog .codex-quota-panel {
+  display: grid;
+  gap: 0.8rem;
+  min-width: 0;
+  padding: 0.9rem;
+  border-block: 1px solid #80808040;
+  color: #dce8f8;
+}
+.agent-settings-dialog .codex-quota-panel p { margin: 0; color: #b8c9df; font-size: 0.76rem; line-height: 1.5; }
+.agent-settings-dialog .codex-quota-panel small { color: #b8c9df; font-size: 0.68rem; }
+.codex-quota-panel__toggle { display: flex; align-items: center; gap: 1rem; }
+.agent-settings-dialog .codex-quota-panel__toggle { padding: 0; border: 0; }
+.codex-quota-panel__toggle > span { flex: 1; min-width: 0; }
+.agent-settings-dialog .codex-quota-panel__toggle strong { font-size: 0.82rem; }
+.agent-settings-dialog .codex-quota-panel__toggle strong, .agent-settings-dialog .codex-quota-panel__toggle small { display: block; }
+.codex-quota-panel__toggle small { margin-top: 0.3rem; line-height: 1.5; }
+.codex-quota-panel__thresholds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem; }
+.agent-settings-dialog .codex-quota-panel__thresholds label { display: grid; padding: 0; border: 0; gap: 0.4rem; font-size: 0.76rem; }
+.agent-settings-dialog .codex-quota-panel__thresholds input {
+  width: 100%; min-width: 0; padding: 0.55rem; border: 1px solid #80808080;
+  max-width: none; border-radius: 0.45rem; color: inherit; background: transparent; font: inherit;
+}
+.agent-settings-dialog .codex-quota-panel button {
+  justify-self: start; max-width: 100%; padding: 0.55rem 0.75rem; color: inherit;
+  border: 1px solid #80808080; border-radius: 0.45rem; background: transparent; font-size: 0.76rem; cursor: pointer;
+}
+.codex-quota-panel form > button { margin-top: 0.8rem; }
+.codex-quota-panel button:disabled { opacity: 0.55; cursor: not-allowed; }
+.codex-quota-panel__status { display: grid; gap: 0.4rem; }
+@media (max-width: 480px) {
+  .codex-quota-panel__thresholds { grid-template-columns: minmax(0, 1fr); }
+}
+
 .agent-engine-storage > header {
   display: flex;
   align-items: flex-start;

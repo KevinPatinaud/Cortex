@@ -5,6 +5,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import { AgentService } from "../../src/back/application/service/iaService/AgentService.ts";
 import { AgentConfigurationService } from "../../src/back/application/service/iaService/AgentConfigurationService.ts";
+import { CodexQuotaService } from "../../src/back/application/service/iaService/CodexQuotaService.ts";
 import type { AgentProvider } from "../../src/back/application/service/iaService/AgentProvider.ts";
 import { ProjectService } from "../../src/back/application/service/projectService/ProjectService.ts";
 import { DirectoryPickerService } from "../../src/back/application/service/projectService/DirectoryPickerService.ts";
@@ -98,7 +99,16 @@ const projectService = new ProjectService(path.join(directory, "config.json"), p
 const projectUseCase = new ProjectUseCase(projectService, new DirectoryPickerService(), agentService);
 const repository = new SqliteWorkflowAuditRepository(path.join(directory, "audit.sqlite"));
 const audit = new WorkflowAuditService(repository);
-const agentUseCase = new AgentUseCase(agentService, projectUseCase, audit);
+let quotaUsed = { fiveHour: 50, weekly: 90 };
+let quotaUnavailable = false;
+const codexQuota = new CodexQuotaService(path.join(directory, "config.json"), async () => {
+  if (quotaUnavailable) throw new Error("Simulated quota connection failure");
+  return { rateLimitsByLimitId: { codex: {
+    primary: { usedPercent: quotaUsed.fiveHour, windowDurationMins: 300 },
+    secondary: { usedPercent: quotaUsed.weekly, windowDurationMins: 10080 }
+  } } };
+});
+const agentUseCase = new AgentUseCase(agentService, projectUseCase, audit, {}, undefined, codexQuota);
 const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => new Date(), audit);
 const waitScheduler = new WorkflowWaitScheduler(agentUseCase, 100);
 const automationStore = new SqliteWorkflowAutomationRepository(path.join(directory, "automation.sqlite"));
@@ -126,6 +136,12 @@ const gmail = new GmailService(path.join(directory, "gmail.sqlite"), "http://127
 const app = createCortexApplication({ projectUseCase, agentUseCase, workflowScheduler,
   authentication: null, clientDirectory: path.resolve("dist"), gmail, automations });
 // Test-only endpoint outside /api, never registered by production.
+app.post("/__test/codex-quota", async (request, response) => {
+  quotaUsed = { fiveHour: request.body.fiveHourUsed ?? 50, weekly: request.body.weeklyUsed ?? 90 };
+  quotaUnavailable = request.body.unavailable === true;
+  await codexQuota.getStatus();
+  response.json({ ok: true });
+});
 app.post("/__test/gmail-reply", async (_request, response) => { gmailReply = true; await gmail.poll(); response.json({ ok: true }); });
 app.post("/__test/scheduled-scan", (request, response) => {
   workflowScheduler.checkDueSchedules(new Date(request.body.at)); response.json({ ok: true });

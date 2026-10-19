@@ -452,8 +452,13 @@ export function AgentCard({
   useEffect(() => {
     setHasSession(agent.hasSession);
     setThreads(getAgentConversationThreads(agent));
-    setError(agent.executionError ?? "");
   }, [agent.conversation, agent.executionError, agent.hasSession, agent.threads]);
+
+  // A rejected launch has no persisted execution error. Preserve its explanation
+  // across polling responses and optimistic running states until a new attempt.
+  useEffect(() => {
+    setError(agent.executionError ?? "");
+  }, [agent.id, agent.executionError]);
 
   useEffect(() => {
     setAdditionalInstructions("");

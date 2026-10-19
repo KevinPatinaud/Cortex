@@ -4,6 +4,10 @@ Cortex is a local application for creating, visualizing, and running Codex, Clau
 
 Scheduled monitoring agents can dispatch independent, durable dossiers within the same project. Cortex identifies asynchronous branches from the project instructions when loading its graph; no separate automation configuration is needed. Dossiers and replies appear below their entry agent, with persistent deduplication and conditional follow-up. See the [workflow guide and real-estate example](docs/workflow-automations.md).
 
+In **Settings → General**, enable the Codex quota launch rule to require at least **50% remaining over five hours** and **10% remaining over the week**. Both thresholds are configurable from 0 to 100% and persist in `config.json` under `codexQuota`. The rule is disabled by default. It applies to all projects and engines, manual agent launches, scheduled workflows, and automatic resumes; already running workflows finish normally. These percentages describe the Codex subscription reserve, not raw token counts or API credits.
+
+Cortex queries its server's authenticated Codex CLI using [`account/rateLimits/read`](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt), without starting an inference turn. The settings button checks that same account and displays the observation time. Missing, invalid, expired, or unavailable five-hour/weekly windows block launches while the rule is enabled. Cron occurrences are skipped with a reason until the next scheduled occurrence; waiting workflows and queued dossiers retain their state and retry automatically. Denied attempts reuse the refusal for up to 60 seconds, while every permitted launch requires a fresh reading. Disabling the rule takes effect on the next attempt.
+
 ## Prerequisites
 
 - Node.js 20.19 or later, or Node.js 22.12 and later;

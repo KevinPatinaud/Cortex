@@ -41,6 +41,7 @@ import {
 } from "../../../services/projectApi.ts";
 import { McpConnectionDialog } from "./McpConnectionDialog.tsx";
 import { CodexPluginPanel } from "./CodexPluginPanel.tsx";
+import { CodexQuotaPanel } from "./CodexQuotaPanel.tsx";
 import { trapDialogFocus } from "../../shared/dialogFocus.ts";
 
 const EMPTY_STATUS: AgentStatus = {
@@ -483,6 +484,7 @@ export function AgentEngineSettings({ projectId }: AgentEngineSettingsProps) {
                   </div>
                 </div>
               )}
+              <CodexQuotaPanel />
               <section className="agent-engine-storage" aria-labelledby="projects-storage-title">
                 <header>
                   <FolderCog aria-hidden="true" size={15} strokeWidth={1.8} />

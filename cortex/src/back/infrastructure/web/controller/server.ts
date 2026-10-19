@@ -7,6 +7,8 @@ import { AgentConfigurationService } from "../../../application/service/iaServic
 import { createDefaultAgentToolRegistry } from "../../../application/service/iaService/iaTools/AgentToolRegistry.ts";
 import { McpConfigurationService } from "../../../application/service/iaService/McpConfigurationService.ts";
 import { CodexPluginService } from "../../../application/service/iaService/CodexPluginService.ts";
+import { CodexQuotaService } from "../../../application/service/iaService/CodexQuotaService.ts";
+import { readCodexRateLimits } from "../../../application/service/iaService/CodexRateLimits.ts";
 import { ClaudeAgentProvider } from "../../../application/service/iaService/providers/ClaudeAgentProvider.ts";
 import { CodexAgentProvider } from "../../../application/service/iaService/providers/CodexAgentProvider.ts";
 import { CopilotAgentProvider } from "../../../application/service/iaService/providers/CopilotAgentProvider.ts";
@@ -87,7 +89,9 @@ const agentUseCase = new AgentUseCase(
   {
     maxConcurrentInstances: readPositiveSetting("CORTEX_MAX_CONCURRENT_INSTANCES", 4),
     maxWorkflowExecutions: readPositiveSetting("CORTEX_MAX_WORKFLOW_EXECUTIONS", 100)
-  }
+  },
+  undefined,
+  new CodexQuotaService(configurationFile, () => readCodexRateLimits(workspaceDirectory))
 );
 const workflowScheduler = new WorkflowScheduler(
   projectUseCase,
