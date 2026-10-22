@@ -337,6 +337,18 @@ never be used for passwords, API keys, tokens, or other secrets.
 
 ## Workflow audit history
 
+History dates use the browser's local timezone, shown above the history, with
+the UTC offset applicable to each event (including daylight-saving changes).
+Hovering a date shows the original UTC timestamp; JSON exports retain UTC.
+
+Agent prompts include both local and UTC time for the same instant. Set
+`CORTEX_TIMEZONE=Europe/Paris` on a UTC-hosted server to give agents the intended
+local date and time. It defaults to the server's timezone and is validated at
+startup. This setting does not change cron schedules: each schedule retains its
+own explicitly selected timezone. A `04:00 UTC` schedule runs at `06:00` in Paris
+in summer and `05:00` in winter; a `04:00 Europe/Paris` schedule stays at `04:00`
+in Paris throughout the year.
+
 The **History** tab records manual and scheduled workflow runs in a local
 SQLite database. Each run includes its trigger, parameters, timestamps, status,
 and every agent thread. Agent details contain the upstream data, additional
@@ -403,6 +415,7 @@ See the [Playwright server setup](https://playwright.dev/docs/test-webserver) an
 | `CORTEX_SECURE_COOKIE` | `false` | Set to `true` when Cortex is served over HTTPS |
 | `CORTEX_PROJECTS_DIRECTORY` | `<workspace>/projects` | Directory used to store projects uploaded through the browser |
 | `CORTEX_AUDIT_DATABASE` | `<workspace>/data/audit/cortex-audit.sqlite` | SQLite file used for persistent workflow audit history |
+| `CORTEX_TIMEZONE` | server timezone | IANA timezone for local date/time context sent to agents; independent of each cron's timezone |
 | `CORTEX_AGENT_TIMEOUT_MS` | `900000` | Maximum engine execution time in milliseconds |
 | `CORTEX_MAX_CONCURRENT_INSTANCES` | `4` | Maximum concurrent instances within an agent launch |
 | `CORTEX_MAX_WORKFLOW_EXECUTIONS` | `100` | Maximum agent executions in one automatic workflow, including loop iterations |

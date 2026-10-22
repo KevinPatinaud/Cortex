@@ -46,6 +46,7 @@ export function WorkflowAuditPanel({
   onStartRun: () => void;
 }) {
   const { language, t } = useTranslation();
+  const [displayTimezone] = useState(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
   const [runs, setRuns] = useState<WorkflowAuditRunSummary[]>([]);
   const [scope, setScope] = useState<WorkflowAuditRunScope>("workflow");
   const [total, setTotal] = useState(0);
@@ -172,7 +173,7 @@ export function WorkflowAuditPanel({
 
   const formatDate = (value: string): string => new Intl.DateTimeFormat(
     language,
-    { dateStyle: "medium", timeStyle: "medium" }
+    { dateStyle: "medium", timeStyle: "long", timeZone: displayTimezone }
   ).format(new Date(value));
   const executionOccurrences = detail
     ? getExecutionOccurrences(detail.executions)
@@ -185,6 +186,7 @@ export function WorkflowAuditPanel({
           <p className="eyebrow">{t("audit.eyebrow")}</p>
           <h2>{t("audit.title")}</h2>
           <p>{t("audit.description")}</p>
+          <p className="workflow-audit__timezone">{t("audit.timezone", { timezone: displayTimezone })}</p>
         </div>
         <div className="workflow-audit__header-actions">
           {total > 0 && (
@@ -272,7 +274,7 @@ export function WorkflowAuditPanel({
                     </span>
                     {run.durationMs !== null && <small>{formatDuration(run.durationMs)}</small>}
                   </span>
-                  <strong>{formatDate(run.startedAt)}</strong>
+                  <strong><time dateTime={run.startedAt} title={run.startedAt}>{formatDate(run.startedAt)}</time></strong>
                   <span className="workflow-audit__run-meta">
                     <span>{t(`audit.trigger.${run.trigger}` as Parameters<typeof t>[0])}</span>
                     <span aria-hidden="true">•</span>
@@ -331,7 +333,7 @@ export function WorkflowAuditPanel({
                           )}
                         </span>
                       </span>
-                      <h2>{formatDate(detail.startedAt)}</h2>
+                      <h2><time dateTime={detail.startedAt} title={detail.startedAt}>{formatDate(detail.startedAt)}</time></h2>
                       <p>{t(`audit.trigger.${detail.trigger}` as Parameters<typeof t>[0])}</p>
                     </div>
                     <button
@@ -357,7 +359,7 @@ export function WorkflowAuditPanel({
                     </div>
                     <div>
                       <dt><CalendarDays aria-hidden="true" size={15} />{t("audit.finishedAt")}</dt>
-                      <dd>{detail.finishedAt ? formatDate(detail.finishedAt) : t("audit.inProgress")}</dd>
+                      <dd>{detail.finishedAt ? <time dateTime={detail.finishedAt} title={detail.finishedAt}>{formatDate(detail.finishedAt)}</time> : t("audit.inProgress")}</dd>
                     </div>
                   </dl>
 
@@ -545,7 +547,7 @@ function AuditExecution({
           {t(`audit.status.${execution.status}` as Parameters<typeof t>[0])}
         </span>
         <small className="workflow-audit__execution-time">
-          {formatDate(execution.startedAt)}
+          <time dateTime={execution.startedAt} title={execution.startedAt}>{formatDate(execution.startedAt)}</time>
           {execution.durationMs !== null && <span>{formatDuration(execution.durationMs)}</span>}
         </small>
       </header>

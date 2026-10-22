@@ -2,6 +2,7 @@ import { createWorkflowCheckpointFingerprint, readWorkflowCheckpoint } from "../
 import { cancelExecution, isExecutionCancelled, settleWithConcurrency, WorkflowExecutionPool, type WorkflowExecutionLimits } from "../service/workflowExecution/WorkflowExecution.ts";
 import { createAgentWorkflowHash } from "../service/workflowExecution/WorkflowConfiguration.ts";
 import { createAgentResponseSchema } from "../../../shared/AgentResponseSchema.ts";
+import { createAgentTimeContext, readAgentTimezone } from "../service/iaService/AgentTimeContext.ts";
 import { validateWorkflowDossierBranches, type WorkflowDossierBranch } from "../../../shared/WorkflowAutomation.ts";
 import { getDossierAgentIds, getWorkflowBranchAgentIds, type WorkflowDispatchRule } from "../../../shared/WorkflowAutomation.ts";
 import { createHash, randomInt, randomUUID } from "node:crypto";
@@ -375,6 +376,7 @@ const AGENT_WORKFLOW_RESPONSE_SCHEMA = {
 } as const;
 
 export class AgentUseCase {
+  private readonly agentTimezone = readAgentTimezone();
   private interruptedByShutdown = false;
 
   interruptAllExecutions(): void {
@@ -3601,6 +3603,7 @@ Use these instructions only to choose the correct nextAgentIds after completing 
     const dossierFormat = dossierOutput
       ? "This agent opens independent dossiers. Each items[].content must be a JSON OBJECT with key, title and payload, not a JSON-encoded string. This schema overrides older instructions requesting an encoded string; Cortex serializes the object for storage and handoffs."
       : "Each items[].content is a string.";
-    return `${prompt.trimEnd()}\n\n${AGENT_EXECUTION_BOUNDARY_INSTRUCTIONS}\n\n${projectRoutingContext}\n\n${routingContext}\n\n${AGENT_RESPONSE_FORMAT_INSTRUCTIONS}\n\n${dossierFormat}\n\nDurable waiting: current UTC time is ${new Date().toISOString()}. When this task explicitly requires waiting for an external event or a future check, return status "waiting", nextAgentIds [], and a wait object matching the schema. Return promptly: Cortex saves the state and wakes this same agent on the eventKey, wakeAfterSeconds timer, or deadlineAt. Do not sleep, poll in a loop or start background processes. Use state to record completed actions, correlation IDs, remaining work and relaunch limits. Checking and sending a reminder are separate actions: only send a reminder when the task authorizes it and its own deadline is reached. On other statuses set wait to null. Never report a pending request as success.\n\nJSON Schema:\n${JSON.stringify(responseSchema, null, 2)}`;
+    const timeContext = createAgentTimeContext(new Date(), this.agentTimezone);
+    return `${prompt.trimEnd()}\n\n${AGENT_EXECUTION_BOUNDARY_INSTRUCTIONS}\n\n${projectRoutingContext}\n\n${routingContext}\n\n${AGENT_RESPONSE_FORMAT_INSTRUCTIONS}\n\n${dossierFormat}\n\n${timeContext}\n\nDurable waiting: When this task explicitly requires waiting for an external event or a future check, return status "waiting", nextAgentIds [], and a wait object matching the schema. Return promptly: Cortex saves the state and wakes this same agent on the eventKey, wakeAfterSeconds timer, or deadlineAt. Do not sleep, poll in a loop or start background processes. Use state to record completed actions, correlation IDs, remaining work and relaunch limits. Checking and sending a reminder are separate actions: only send a reminder when the task authorizes it and its own deadline is reached. On other statuses set wait to null. Never report a pending request as success.\n\nJSON Schema:\n${JSON.stringify(responseSchema, null, 2)}`;
   }
 }

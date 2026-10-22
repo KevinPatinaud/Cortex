@@ -712,6 +712,24 @@ test("configure directement un agent unique comme fin de workflow", async () => 
   assert.equal(calls.length, 0);
 });
 
+test("transmet les heures locale et UTC au moteur, y compris lors d'une reprise de session", async () => {
+  const { useCase, calls } = createSequentialUseCase([1, 2].map(() => ({
+    answer: createAgentAnswer(["Terminé"], false, false), sessionId: "clock-session"
+  })), 1);
+  const project = await useCase.loadProject("project-id");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await useCase.runAgent("project-id", { agentId: project.agents[0].id });
+    const prompt = calls[attempt].prompt;
+    const local = prompt.match(/Current local time \([^)]+\): ([0-9T:.+Z-]+)\./)?.[1];
+    const utc = prompt.match(/Current UTC time: ([0-9T:.+Z-]+)\./)?.[1];
+    assert.ok(local);
+    assert.ok(utc);
+    assert.equal(Date.parse(local), Date.parse(utc));
+    assert.match(prompt, /Convert UTC tool timestamps.*exactly once/);
+  }
+  assert.equal(calls[1].options.sessionId, "clock-session");
+});
+
 test("réserve l'orchestration des agents suivants à Cortex", async () => {
   const { useCase, calls } = createSequentialUseCase([{
     answer: createAgentAnswer(["Sujet à transmettre"], true, true),
