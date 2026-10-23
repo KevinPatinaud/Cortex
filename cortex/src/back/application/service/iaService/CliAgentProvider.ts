@@ -7,7 +7,7 @@ export abstract class CliAgentProvider {
   protected async runCommand(
     command: string,
     args: string[],
-    timeout = 120_000,
+    timeout?: number,
     workingDirectory = this.workingDirectory,
     input?: string,
     options: Pick<AgentExecutionOptions, "signal" | "onProgress"> = {}
@@ -46,10 +46,11 @@ export abstract class CliAgentProvider {
       const onAbort = (): void => interrupt(
         new DOMException("The execution was cancelled.", "AbortError")
       );
-      const timer = setTimeout(() => interrupt(new Error(
+      // Agent runs have no deadline. Only short operational probes opt into one.
+      const timer = timeout === undefined ? undefined : setTimeout(() => interrupt(new Error(
         `The agent engine timed out after ${Math.round(timeout / 1000)} seconds.`
       )), timeout);
-      timer.unref();
+      timer?.unref();
       options.signal?.addEventListener("abort", onAbort, { once: true });
       if (options.signal?.aborted) onAbort();
       child.stdout.setEncoding("utf8");

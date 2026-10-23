@@ -7,7 +7,7 @@ import type { AgentExecutionOptions } from "./AgentProvider.ts";
 import { createCodexProgress, createTextProgress } from "./ExecutionProgress.ts";
 
 class LocalProcessProvider extends CliAgentProvider {
-  run(script: string, options: AgentExecutionOptions = {}, timeout = 5_000) {
+  run(script: string, options: AgentExecutionOptions = {}, timeout?: number) {
     return this.runCommand(process.execPath, ["-e", script], timeout, undefined, undefined, options);
   }
 }
@@ -31,7 +31,16 @@ test("does not start a process with an already cancelled signal", async () => {
   }), { name: "AbortError" });
 });
 
-test("enforces an execution timeout", async () => {
+test("keeps an agent running past the old deadline without an execution timer", async (context) => {
+  context.mock.timers.enable({ apis: ["setTimeout"] });
+  const provider = new LocalProcessProvider(process.cwd());
+  const output = await provider.run("process.stdout.write('working'); setTimeout(() => process.exit(0), 50)", {
+    onProgress() { context.mock.timers.tick(24 * 60 * 60 * 1000); }
+  });
+  assert.equal(output, "working");
+});
+
+test("retains an opt-in timeout for short operational probes", async () => {
   const provider = new LocalProcessProvider(process.cwd());
   await assert.rejects(provider.run("setInterval(() => {}, 1000)", {}, 50), /timed out/);
 });

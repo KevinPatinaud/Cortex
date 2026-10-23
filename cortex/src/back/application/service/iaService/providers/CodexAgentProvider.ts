@@ -12,8 +12,6 @@ import { CliAgentProvider } from "../CliAgentProvider.ts";
 import { createCodexProgress } from "../ExecutionProgress.ts";
 import { resolveCodexCommand } from "../CodexCommand.ts";
 
-const AGENT_EXECUTION_TIMEOUT_MS = 15 * 60 * 1000;
-
 export class CodexAgentProvider extends CliAgentProvider implements AgentProvider {
   readonly engine = "codex" as const;
   readonly label = "Codex";
@@ -98,7 +96,7 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
       const output = await this.runCommand(this.command, [
         ...this.argumentPrefix,
         ...args
-      ], options.timeoutMs ?? AGENT_EXECUTION_TIMEOUT_MS, options.workingDirectory, prompt, {
+      ], undefined, options.workingDirectory, prompt, {
         signal: options.signal,
         onProgress: createCodexProgress(options.onProgress)
       });

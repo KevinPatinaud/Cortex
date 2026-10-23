@@ -68,7 +68,7 @@ const agentService = new AgentService([
   new ClaudeAgentProvider(workspaceDirectory),
   new CopilotAgentProvider(agentToolRegistry, mcpConfigurationService)
 ], agentConfigurationService, mcpConfigurationService, codexPluginService,
-readPositiveSetting("CORTEX_AGENT_TIMEOUT_MS", 15 * 60 * 1000), new CodexModelService(workspaceDirectory));
+new CodexModelService(workspaceDirectory));
 const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(
   configurationFile,

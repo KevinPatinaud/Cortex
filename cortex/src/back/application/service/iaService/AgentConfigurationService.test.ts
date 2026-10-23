@@ -89,7 +89,6 @@ test("injecte la même configuration dans tous les providers", async () => {
     assert.deepEqual({ ...receivedOptions, signal: undefined }, {
       signal: undefined,
       model: "test-model",
-      timeoutMs: 900_000,
       configuration: { autopilot: false, allowAll: true }
     });
   });

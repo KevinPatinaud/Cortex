@@ -57,7 +57,7 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
     const output = await this.runCommand(
       "claude",
       args,
-      options.timeoutMs ?? 15 * 60 * 1000,
+      undefined,
       options.workingDirectory,
       prompt,
       { signal: options.signal, onProgress: createClaudeProgress(options.onProgress) }

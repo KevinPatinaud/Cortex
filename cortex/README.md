@@ -312,8 +312,11 @@ invalidates the checkpoint.
 
 Automatic workflows follow selected branches and loops until completion, with
 a default maximum of 100 agent executions per run. Each agent launch executes at
-most four instances concurrently. Engine executions have a default 15-minute
-timeout. These limits are configurable using the variables below.
+most four instances concurrently. Agent engine executions have no time limit and
+continue until they finish, fail, or are explicitly stopped. The concurrency and
+workflow execution-count limits are configurable using the variables below.
+`CORTEX_AGENT_TIMEOUT_MS` is no longer used. Short operational checks (engine
+discovery, connection setup and cleanup) retain their own timeouts.
 
 Independent ready agents run concurrently, sharing the workflow's instance
 concurrency limit. A convergence waits for all applicable branches before
@@ -416,7 +419,6 @@ See the [Playwright server setup](https://playwright.dev/docs/test-webserver) an
 | `CORTEX_PROJECTS_DIRECTORY` | `<workspace>/projects` | Directory used to store projects uploaded through the browser |
 | `CORTEX_AUDIT_DATABASE` | `<workspace>/data/audit/cortex-audit.sqlite` | SQLite file used for persistent workflow audit history |
 | `CORTEX_TIMEZONE` | server timezone | IANA timezone for local date/time context sent to agents; independent of each cron's timezone |
-| `CORTEX_AGENT_TIMEOUT_MS` | `900000` | Maximum engine execution time in milliseconds |
 | `CORTEX_MAX_CONCURRENT_INSTANCES` | `4` | Maximum concurrent instances within an agent launch |
 | `CORTEX_MAX_WORKFLOW_EXECUTIONS` | `100` | Maximum agent executions in one automatic workflow, including loop iterations |
 | `CORTEX_COPILOT_MCP_CONFIG` | `<COPILOT_HOME>/mcp-config.json` | Optional Copilot MCP configuration file override |

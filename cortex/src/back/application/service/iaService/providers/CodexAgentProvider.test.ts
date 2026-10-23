@@ -56,12 +56,12 @@ test("passes dynamically selected model identifiers and newer reasoning efforts 
   assert.ok(provider.capturedArgs.includes('model_reasoning_effort="ultra"'));
 });
 
-test("laisse quinze minutes aux agents qui manipulent des fichiers ou un navigateur", async () => {
+test("lance les agents sans limite de durée", async () => {
   const provider = new CapturingCodexAgentProvider(process.cwd());
 
   await provider.ask("Publie le journal", { persistSession: true });
 
-  assert.equal(provider.capturedTimeout, 15 * 60 * 1000);
+  assert.equal(provider.capturedTimeout, undefined);
 });
 
 test("transmet les prompts volumineux par stdin au lieu d'un argument", async () => {

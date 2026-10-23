@@ -103,12 +103,8 @@ export class CopilotAgentProvider implements AgentProvider {
           options.onProgress?.("");
         }
       });
-      const executionTimeout = options.timeoutMs ?? 15 * 60 * 1000;
-      const result = await this.withinTimeout(session.sendAndWait({
-        prompt,
-        agentMode: configuration.autopilot ? "autopilot" : "plan"
-      }, executionTimeout), executionTimeout, options.signal);
-      const answer = result?.data.content;
+      const answer = await this.waitForAnswer(session, prompt,
+        configuration.autopilot ? "autopilot" : "plan", options.signal);
 
       if (!answer) {
         throw new Error("Copilot did not return a response.");
@@ -125,6 +121,34 @@ export class CopilotAgentProvider implements AgentProvider {
     }
   }
 
+  private async waitForAnswer(
+    session: CopilotSession,
+    prompt: string,
+    agentMode: "autopilot" | "plan",
+    signal?: AbortSignal
+  ): Promise<string | undefined> {
+    let answer: string | undefined;
+    let finish!: (error?: Error) => void;
+    // The SDK's sendAndWait always installs a timer, even for zero/Infinity.
+    // Subscribe before sending so a fast completion cannot be missed.
+    const completed = new Promise<Error | undefined>((resolve) => { finish = resolve; });
+    const unsubscribe = session.on((event) => {
+      if (event.type === "assistant.message") answer = event.data.content;
+      else if (event.type === "session.idle") finish();
+      else if (event.type === "session.error") finish(new Error(event.data.message));
+    });
+    try {
+      return await this.withinTimeout((async () => {
+        await session.send({ prompt, agentMode });
+        const error = await completed;
+        if (error) throw error;
+        return answer;
+      })(), undefined, signal);
+    } finally {
+      unsubscribe();
+    }
+  }
+
   private async cleanup(client: CopilotClient, session?: CopilotSession): Promise<void> {
     try {
       await this.withinTimeout((async () => {
@@ -138,7 +162,7 @@ export class CopilotAgentProvider implements AgentProvider {
     }
   }
 
-  private async withinTimeout<T>(promise: Promise<T>, timeout: number, signal?: AbortSignal): Promise<T> {
+  private async withinTimeout<T>(promise: Promise<T>, timeout: number | undefined, signal?: AbortSignal): Promise<T> {
     let timer: NodeJS.Timeout | undefined;
     let onAbort: (() => void) | undefined;
     try {
@@ -146,7 +170,9 @@ export class CopilotAgentProvider implements AgentProvider {
         promise,
         new Promise<never>((_resolve, reject) => {
           onAbort = () => reject(new DOMException("The execution was cancelled.", "AbortError"));
-          timer = setTimeout(() => reject(new Error("The Copilot engine timed out.")), timeout);
+          if (timeout !== undefined) {
+            timer = setTimeout(() => reject(new Error("The Copilot engine timed out.")), timeout);
+          }
           signal?.addEventListener("abort", onAbort, { once: true });
           if (signal?.aborted) onAbort();
         })

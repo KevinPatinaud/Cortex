@@ -65,7 +65,6 @@ export class AgentService {
     private readonly configurationService: AgentConfigurationService,
     private readonly mcpConfigurationService?: McpConfigurationService,
     private readonly codexPluginService?: CodexPluginService,
-    private readonly executionTimeoutMs = 15 * 60 * 1000,
     private readonly codexModelService?: CodexModelService
   ) {}
 
@@ -201,7 +200,7 @@ export class AgentService {
         : await this.configurationService.getConfiguration();
       options.signal?.throwIfAborted();
       return provider.ask(prompt, {
-        ...options, configuration, timeoutMs: options.timeoutMs ?? this.executionTimeoutMs
+        ...options, configuration
       });
     });
   }
@@ -225,7 +224,7 @@ export class AgentService {
 
       options.signal?.throwIfAborted();
       return provider.ask(prompt, {
-        ...options, configuration, timeoutMs: options.timeoutMs ?? this.executionTimeoutMs
+        ...options, configuration
       });
     });
   }

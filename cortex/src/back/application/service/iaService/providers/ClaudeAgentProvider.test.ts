@@ -6,10 +6,12 @@ import type { AgentExecutionOptions } from "../AgentProvider.ts";
 class StreamingClaude extends ClaudeAgentProvider {
   input?: string;
   args: string[] = [];
+  timeout: number | undefined;
   fail = false;
   protected override async runCommand(_command: string, args: string[], _timeout?: number,
     _directory?: string, input?: string, options: AgentExecutionOptions = {}) {
     this.input = input;
+    this.timeout = _timeout;
     this.args = args;
     options.onProgress?.(JSON.stringify({ type: "stream_event", event: { delta: { type: "text_delta", text: "Preview" } } }) + "\n");
     return JSON.stringify({ type: "result", result: this.fail ? "Engine failed" : "Final answer", session_id: "session-1", is_error: this.fail });
@@ -25,6 +27,7 @@ test("Claude streams a preview and returns only the final answer with its sessio
   assert.equal(provider.input, "Large prompt");
   assert.equal(provider.args.includes("Large prompt"), false);
   assert.equal(provider.args.includes("--include-partial-messages"), true);
+  assert.equal(provider.timeout, undefined);
 });
 
 test("Claude refuses an error result instead of reporting success", async () => {

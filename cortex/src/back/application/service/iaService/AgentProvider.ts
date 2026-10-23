@@ -14,7 +14,6 @@ export const DEFAULT_AGENT_CONFIGURATION: AgentConfiguration = {
 export interface AgentExecutionOptions {
   signal?: AbortSignal;
   onProgress?: (progress: string) => void;
-  timeoutMs?: number;
   configuration?: AgentConfiguration;
   model?: string;
   /** Constrain the final response when the provider supports structured output. */

@@ -108,7 +108,7 @@ const simulatedProvider: AgentProvider = {
     };
   }
 };
-const agentService = new AgentService([simulatedProvider], configuration, undefined, undefined, undefined, modelService);
+const agentService = new AgentService([simulatedProvider], configuration, undefined, undefined, modelService);
 const projectService = new ProjectService(path.join(directory, "config.json"), path.join(directory, "projects"));
 const projectUseCase = new ProjectUseCase(projectService, new DirectoryPickerService(), agentService);
 const repository = new SqliteWorkflowAuditRepository(path.join(directory, "audit.sqlite"));
