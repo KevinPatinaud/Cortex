@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { AgentUseCase } from "./AgentUseCase.ts";
@@ -14,6 +14,7 @@ import { WorkflowAuditService } from "../service/workflowAudit/WorkflowAuditServ
 import { SqliteWorkflowAuditRepository } from "../../infrastructure/audit/SqliteWorkflowAuditRepository.ts";
 import type { CodexQuotaService } from "../service/iaService/CodexQuotaService.ts";
 import { CodexQuotaBlockedError } from "../error/CodexQuotaBlockedError.ts";
+import { ExecutionWorkspaceGuard } from "../service/executionWorkspace/ExecutionWorkspaceGuard.ts";
 
 const agentId = (name: string): string => `.claude/agents/${name}.md`;
 
@@ -64,7 +65,8 @@ function fixture(
   repository = new SqliteWorkflowAuditRepository(":memory:"),
   parameters: WorkflowParameterDefinition[] = [],
   inputModes: Record<string, "separate" | "aggregate"> = {},
-  quota?: CodexQuotaService
+  quota?: CodexQuotaService,
+  workspace?: ExecutionWorkspaceGuard
 ) {
   let configuration: AgentWorkflowConfiguration | null = null;
   const file = (name: string, relativePath: string, content: string) => ({
@@ -98,8 +100,47 @@ function fixture(
     }
   } as unknown as AgentService;
   return { repository, content, createUseCase: (storage = repository) =>
-    new AgentUseCase(service, project, new WorkflowAuditService(storage), limits, undefined, quota) };
+    new AgentUseCase(service, project, new WorkflowAuditService(storage), limits, undefined, quota, workspace) };
 }
+
+for (const scope of ["agent", "workflow"] as const) test(`${scope}: shared workspace checks precede audit success and failed publication is resumed with recovery instructions`, async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-publication-"));
+  const configuration = path.join(directory, "config.json");
+  await writeFile(configuration, JSON.stringify({ executionWorkspaces: [{ id: "site", directory, projectIds: ["project"] }] }));
+  let published = false;
+  const guard = new ExecutionWorkspaceGuard(configuration, path.join(directory, "journals"), async (_workspace, phase) => {
+    if (phase === "finish" && !published) throw new Error("push required");
+  });
+  const prompts: string[] = [];
+  const f = fixture({ source: [] }, async (_name, prompt) => { prompts.push(prompt); return response(["Done"], []); }, {}, undefined, [], {}, undefined, guard);
+  try {
+    const useCase = f.createUseCase();
+    await useCase.loadProject("project");
+    const run = () => scope === "agent" ? useCase.runAgent("project", { agentId: agentId("source") }) : useCase.runWorkflow("project");
+    await assert.rejects(run(), /push required/);
+    assert.equal(f.repository.listRuns("project", 10, 0).items[0].status, "failed");
+    assert.equal(await useCase.getRecoveryProjectId("project"), "project");
+    published = true;
+    await run();
+    assert.match(prompts[1], /Reprise prioritaire/);
+    assert.equal(f.repository.listRuns("project", 10, 0).items[0].status, "succeeded");
+    assert.equal(await useCase.getRecoveryProjectId("project"), undefined);
+  } finally { f.repository.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("workspace journaling stays empty when the actual quota gate rejects a workflow", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-quota-workspace-"));
+  const configuration = path.join(directory, "config.json");
+  await writeFile(configuration, JSON.stringify({ executionWorkspaces: [{ id: "site", directory, projectIds: ["project"] }] }));
+  const guard = new ExecutionWorkspaceGuard(configuration, path.join(directory, "journals"), async () => assert.fail("no preflight before quota"));
+  const quota = { assertMayStart: async () => { throw new CodexQuotaBlockedError("quota unchanged"); } } as unknown as CodexQuotaService;
+  const f = fixture({ source: [] }, async () => assert.fail("no provider call"), {}, undefined, [], {}, quota, guard);
+  try {
+    await assert.rejects(f.createUseCase().runWorkflow("project"), /quota unchanged/);
+    assert.equal(await guard.recoveryProjectId("project"), undefined);
+    assert.equal(f.repository.listRuns("project", 10, 0).total, 0);
+  } finally { f.repository.close(); await rm(directory, { recursive: true, force: true }); }
+});
 
 test("quota gate covers manual agents, scheduled workflows and resumes before changing any workflow state", async () => {
   let allowed = false, checks = 0, calls = 0;

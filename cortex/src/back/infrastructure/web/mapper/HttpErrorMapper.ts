@@ -1,3 +1,4 @@
+import { ExecutionWorkspaceBusyError } from "../../../application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
 import { NotFoundError } from "../../../application/error/NotFoundError.ts";
 import { ValidationError } from "../../../application/error/ValidationError.ts";
 
@@ -26,6 +27,8 @@ export function toHttpError(
   if (error instanceof Error && error.name === "AbortError") {
     return toExpectedError(409, "The execution was cancelled.");
   }
+
+  if (error instanceof ExecutionWorkspaceBusyError) return toExpectedError(409, error.message);
 
   if (error instanceof ValidationError) {
     return toExpectedError(400, error.message);

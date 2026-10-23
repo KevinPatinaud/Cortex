@@ -1,3 +1,4 @@
+import type { ExecutionWorkspaceGuard } from "../service/executionWorkspace/ExecutionWorkspaceGuard.ts";
 import { createWorkflowCheckpointFingerprint, readWorkflowCheckpoint } from "../service/workflowExecution/WorkflowCheckpoint.ts";
 import { cancelExecution, isExecutionCancelled, settleWithConcurrency, WorkflowExecutionPool, type WorkflowExecutionLimits } from "../service/workflowExecution/WorkflowExecution.ts";
 import { createAgentWorkflowHash } from "../service/workflowExecution/WorkflowConfiguration.ts";
@@ -385,10 +386,18 @@ export class AgentUseCase {
   }
 
   async completeRestoredWorkflowIfDone(projectId: string): Promise<boolean> {
+    return this.executionWorkspace
+      ? this.executionWorkspace.run(projectId, () => this.completeRestoredWorkflowIfDoneCore(projectId))
+      : this.completeRestoredWorkflowIfDoneCore(projectId);
+  }
+
+  private async completeRestoredWorkflowIfDoneCore(projectId: string): Promise<boolean> {
     const project = await this.loadProject(projectId, false);
     const instance = this.workflowInstances.get(projectId);
     if (!instance || this.isProjectRunning(projectId) || !this.workflowIsComplete(projectId, project)) return false;
+    if (this.executionWorkspace) await this.executionWorkspace.markStarted();
     for (const agent of project.agents) await this.dispatchHandler?.(project, agent);
+    await this.executionWorkspace?.verifyBeforeSuccess();
     instance.status = "completed";
     if (instance.runId) this.workflowAuditService?.completeRun(instance.runId, "succeeded");
     this.persistWorkflowCheckpoint(projectId);
@@ -425,7 +434,7 @@ export class AgentUseCase {
     if (!this.workflowAuditService) throw new ValidationError("Persistent workflow storage is required.");
     const runner = new AgentUseCase(this.agentService, this.projectUseCase,
       this.workflowAuditService.forInstance(instanceId), { ...this.executionLimits, maxConcurrentInstances: 1 },
-      { snapshot: structuredClone(snapshot), instanceId, payload }, this.codexQuota);
+      { snapshot: structuredClone(snapshot), instanceId, payload }, this.codexQuota, this.executionWorkspace);
     runner.dispatchHandler = this.dispatchHandler;
     runner.dispatchInstructions = this.dispatchInstructions;
     return runner;
@@ -458,7 +467,8 @@ export class AgentUseCase {
     private readonly workflowAuditService?: WorkflowAuditService,
     private readonly executionLimits: WorkflowExecutionLimits = {},
     private readonly isolated?: { snapshot: AgentProject; instanceId: string; payload: string },
-    private readonly codexQuota?: CodexQuotaService
+    private readonly codexQuota?: CodexQuotaService,
+    private readonly executionWorkspace?: ExecutionWorkspaceGuard
   ) {
     for (const limit of Object.values(executionLimits)) {
       if (!Number.isSafeInteger(limit) || limit < 1) {
@@ -707,6 +717,17 @@ export class AgentUseCase {
     workflowAuditContext?: WorkflowRunAuditContext,
     workflowExecution = false
   ): Promise<AgentRunOutput> {
+    return this.executionWorkspace
+      ? this.executionWorkspace.run(projectId.trim(), () => this.runAgentCore(projectId, {
+        ...input,
+        additionalInstructions: [typeof input.additionalInstructions === "string" ? input.additionalInstructions : "",
+          this.executionWorkspace!.recoveryInstructions()].filter(Boolean).join("\n\n")
+      }, workflowAuditContext, workflowExecution))
+      : this.runAgentCore(projectId, input, workflowAuditContext, workflowExecution);
+  }
+
+  private async runAgentCore(projectId: string, input: RunAgentInput,
+    workflowAuditContext?: WorkflowRunAuditContext, workflowExecution = false): Promise<AgentRunOutput> {
     const normalizedProjectId = projectId.trim();
     const agentId = typeof input.agentId === "string"
       ? input.agentId.trim()
@@ -888,6 +909,7 @@ export class AgentUseCase {
     this.failedThreadIds.set(executionKey, pendingThreadIds);
     this.executionControllers.set(executionKey, controller);
     try {
+      if (this.executionWorkspace) await this.executionWorkspace.markStarted();
       const workflowSignal = this.workflowControllers.get(normalizedProjectId)?.signal;
       const signal = workflowSignal
         ? AbortSignal.any([controller.signal, workflowSignal])
@@ -1124,6 +1146,7 @@ export class AgentUseCase {
         auditContext &&
         this.workflowIsComplete(normalizedProjectId, loadedProject.project)
       ) {
+        await this.executionWorkspace?.verifyBeforeSuccess();
         this.completeManualAuditRun(
           normalizedProjectId,
           auditContext.runId,
@@ -1131,6 +1154,7 @@ export class AgentUseCase {
         );
       }
 
+      if (!workflowExecution && !this.workflowIsComplete(normalizedProjectId, loadedProject.project)) this.executionWorkspace?.markWaiting();
       return {
         answer,
         ...(auditContext ? { auditRunId: auditContext.runId } : {}),
@@ -1165,6 +1189,18 @@ export class AgentUseCase {
     trigger: WorkflowAuditTrigger = "scheduled",
     options: { resume?: boolean; now?: Date; scheduledAt?: string; additionalInstructions?: string; onStart?: () => void } = {}
   ): Promise<WorkflowRunOutput> {
+    return this.executionWorkspace
+      ? this.executionWorkspace.run(projectId.trim(), () => this.runWorkflowCore(projectId, workflowParameterValues, trigger, options))
+      : this.runWorkflowCore(projectId, workflowParameterValues, trigger, options);
+  }
+
+  getRecoveryProjectId(projectId: string): Promise<string | undefined> {
+    return this.executionWorkspace?.recoveryProjectId(projectId) ?? Promise.resolve(undefined);
+  }
+
+  private async runWorkflowCore(projectId: string, workflowParameterValues: unknown,
+    trigger: WorkflowAuditTrigger,
+    options: { resume?: boolean; now?: Date; scheduledAt?: string; additionalInstructions?: string; onStart?: () => void }): Promise<WorkflowRunOutput> {
     const normalizedProjectId = projectId.trim();
 
     if (!normalizedProjectId) {
@@ -1219,6 +1255,7 @@ export class AgentUseCase {
       project.workflowParameterValues = { ...normalizedParameterValues };
       const previousInstance = this.workflowInstances.get(normalizedProjectId);
       if (previousInstance?.status === "cancelled" && previousInstance.automatic && options.resume) throw new ValidationError("This durable workflow was cancelled. Reset it to start a new request.");
+      if (this.executionWorkspace) await this.executionWorkspace.markStarted();
       auditRunId = options.resume && previousInstance?.automatic ? previousInstance.runId : undefined;
       if (auditRunId) this.workflowAuditService?.setRunActiveStatus(auditRunId, "running");
       auditRunId ??= this.workflowAuditService?.createRun({
@@ -1284,6 +1321,7 @@ export class AgentUseCase {
             if (this.hasWorkflowWaits(normalizedProjectId) && instance.executionCount < maximumExecutions &&
                 !project.agents.some((agent) => ["failed", "cancelled"].includes(agent.executionStatus))) {
               instance.status = "waiting";
+              this.executionWorkspace?.markWaiting();
               this.persistWorkflowCheckpoint(normalizedProjectId);
               if (auditRunId) this.workflowAuditService?.setRunActiveStatus(auditRunId, "waiting");
               return { status: "waiting", auditRunId, executedAgentIds, skippedAgentIds };
@@ -1313,6 +1351,7 @@ export class AgentUseCase {
           if (auditRunId) this.workflowAuditService?.addEvent(auditRunId, null, "agent.skipped", { agentId: agent.id, agentName: agent.name });
         }
       }
+      await this.executionWorkspace?.verifyBeforeSuccess();
       if (auditRunId) {
         this.workflowAuditService?.completeRun(auditRunId, "succeeded");
       }
@@ -1391,7 +1430,7 @@ export class AgentUseCase {
   }
 
   hasActiveExecutions(): boolean {
-    return this.executionControllers.size > 0 || this.workflowControllers.size > 0 || this.pendingQuotaChecks.size > 0;
+    return this.executionControllers.size > 0 || this.workflowControllers.size > 0 || this.pendingQuotaChecks.size > 0 || !!this.executionWorkspace?.hasActiveExecutions();
   }
 
   hasWorkflowWaits(projectId: string): boolean {
@@ -1536,7 +1575,8 @@ export class AgentUseCase {
   isProjectRunning(projectId: string): boolean {
     const normalizedProjectId = projectId.trim();
 
-    return this.runningWorkflows.has(normalizedProjectId) ||
+    return !!this.executionWorkspace?.isProjectHeldOutsideCurrentRun(normalizedProjectId) ||
+      this.runningWorkflows.has(normalizedProjectId) ||
       [...this.pendingQuotaChecks.keys()].some(key => key.startsWith(`${normalizedProjectId}:`)) ||
       [...this.agentExecutions.entries()].some(
       ([key, execution]) => key.startsWith(`${normalizedProjectId}:`) &&

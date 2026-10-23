@@ -1,3 +1,4 @@
+import { ExecutionWorkspaceGuard } from "../../../application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -92,7 +93,8 @@ const agentUseCase = new AgentUseCase(
     maxWorkflowExecutions: readPositiveSetting("CORTEX_MAX_WORKFLOW_EXECUTIONS", 100)
   },
   undefined,
-  new CodexQuotaService(configurationFile, () => readCodexRateLimits(workspaceDirectory))
+  new CodexQuotaService(configurationFile, () => readCodexRateLimits(workspaceDirectory)),
+  new ExecutionWorkspaceGuard(configurationFile, path.join(workspaceDirectory, "data", "execution-workspaces"))
 );
 const workflowScheduler = new WorkflowScheduler(
   projectUseCase,

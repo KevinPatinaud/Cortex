@@ -1,3 +1,4 @@
+import { ExecutionWorkspaceBusyError } from "../executionWorkspace/ExecutionWorkspaceGuard.ts";
 import { isExecutionCancelled } from "../workflowExecution/WorkflowExecution.ts";
 import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
 import type { AgentUseCase } from "../../usecase/AgentUseCase.ts";
@@ -257,19 +258,40 @@ export class WorkflowScheduler {
         return;
       }
 
+      const recoveryProjectId = await this.agentUseCase.getRecoveryProjectId?.(projectId);
+      if (recoveryProjectId && recoveryProjectId !== projectId) {
+        const reason = `Créneau utilisé pour reprendre l'intervention interrompue de ${recoveryProjectId}.`;
+        this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "skipped", reason);
+        this.workflowAuditService?.recordSkippedRun({ projectId, trigger: "scheduled", scope: "workflow",
+          parameterValues, workflowSnapshot: null }, reason);
+        runtime.lastRunStatus = "skipped";
+        runtime.lastRunError = reason;
+        // Only already-started work is recovered. Never queue or replay this slot.
+        try {
+          const schedule = await this.projectUseCase.getWorkflowScheduleConfiguration(recoveryProjectId);
+          await this.agentUseCase.runWorkflow(recoveryProjectId, schedule?.parameterValues ?? {}, "scheduled");
+        } catch (error) {
+          runtime.lastRunError = `${reason} ${error instanceof Error ? error.message : String(error)}`;
+          this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "skipped", runtime.lastRunError);
+          if (!(error instanceof CodexQuotaBlockedError || error instanceof ExecutionWorkspaceBusyError)) console.error("Workspace recovery failed:", error);
+        }
+        return;
+      }
       const result = await this.agentUseCase.runWorkflow(projectId, parameterValues, "scheduled", { scheduledAt });
       const status = result?.status === "waiting" ? "waiting" : "succeeded";
       this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, status);
       if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) runtime.lastRunStatus = status;
     } catch (error) {
-      const status = error instanceof CodexQuotaBlockedError ? "skipped" : isExecutionCancelled(error) ? "cancelled" : "failed";
+      const status = (error instanceof CodexQuotaBlockedError || error instanceof ExecutionWorkspaceBusyError) ? "skipped" : isExecutionCancelled(error) ? "cancelled" : "failed";
       const message = error instanceof Error ? error.message : "The scheduled workflow execution failed.";
       this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, status, message);
       if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) {
         runtime.lastRunStatus = status;
         runtime.lastRunError = message;
       }
-      if (!(error instanceof CodexQuotaBlockedError)) console.error(
+      if (error instanceof ExecutionWorkspaceBusyError) this.workflowAuditService?.recordSkippedRun({ projectId,
+        trigger: "scheduled", scope: "workflow", parameterValues, workflowSnapshot: null }, message);
+      if (!(error instanceof CodexQuotaBlockedError || error instanceof ExecutionWorkspaceBusyError)) console.error(
         `Scheduled workflow execution failed for project ${projectId}:`,
         error
       );

@@ -11,6 +11,54 @@ import path from "node:path";
 import { serverTimezone } from "./CronExpression.ts";
 import type { WorkflowScheduleConfiguration } from "../projectService/ProjectService.ts";
 import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
+import { ExecutionWorkspaceBusyError } from "../executionWorkspace/ExecutionWorkspaceGuard.ts";
+
+test("a slot recovers only previously started work, never launches its own new task afterwards", async () => {
+  const now = new Date("2026-10-23T20:50:00Z");
+  const calls: string[] = [];
+  const repository = new SqliteWorkflowAuditRepository(":memory:");
+  const projects = {
+    getProjects: async () => [{ id: "new" }, { id: "old" }],
+    getWorkflowScheduleConfiguration: async (id: string) => ({ cron: "50 20 * * *", timezone: "UTC", enabled: id === "new", parameterValues: {} })
+  } as unknown as ProjectUseCase;
+  const agents = {
+    isProjectRunning: () => false,
+    getRecoveryProjectId: async () => "old",
+    runWorkflow: async (id: string) => { calls.push(id); throw new CodexQuotaBlockedError("quota unchanged"); }
+  } as unknown as AgentUseCase;
+  const scheduler = new WorkflowScheduler(projects, agents, () => now, new WorkflowAuditService(repository));
+  try {
+    await scheduler.start();
+    await new Promise(setImmediate);
+    assert.deepEqual(calls, ["old"]);
+    assert.equal((await scheduler.getSchedule("new")).lastRunStatus, "skipped");
+    assert.match((await scheduler.getSchedule("new")).lastRunError!, /quota unchanged/);
+    scheduler.checkDueSchedules(now);
+    scheduler.checkDueSchedules(new Date(now.getTime() + 60_000));
+    await new Promise(setImmediate);
+    assert.deepEqual(calls, ["old"]);
+  } finally { scheduler.stop(); repository.close(); }
+});
+
+test("a busy shared checkout skips the scheduled task and records the reason without retrying", async () => {
+  const now = new Date("2026-10-23T20:50:00Z");
+  const repository = new SqliteWorkflowAuditRepository(":memory:");
+  let calls = 0;
+  const projects = {
+    getProjects: async () => [{ id: "site" }],
+    getWorkflowScheduleConfiguration: async () => ({ cron: "50 20 * * *", timezone: "UTC", enabled: true, parameterValues: {} })
+  } as unknown as ProjectUseCase;
+  const agents = { isProjectRunning: () => false, runWorkflow: async () => { calls++; throw new ExecutionWorkspaceBusyError("busy site"); } } as unknown as AgentUseCase;
+  const scheduler = new WorkflowScheduler(projects, agents, () => now, new WorkflowAuditService(repository));
+  try {
+    await scheduler.start();
+    await new Promise(setImmediate);
+    assert.equal((await scheduler.getSchedule("site")).lastRunStatus, "skipped");
+    assert.equal(repository.listRuns("site", 10, 0).items[0].status, "skipped");
+    scheduler.checkDueSchedules(new Date(now.getTime() + 60_000));
+    assert.equal(calls, 1);
+  } finally { scheduler.stop(); repository.close(); }
+});
 
 test("quota-denied cron occurrences are skipped with an explanation and the next occurrence can run", async () => {
   let blocked = true;
