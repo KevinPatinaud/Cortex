@@ -1,4 +1,4 @@
-import type { ExecutionWorkspaceGuard } from "../service/executionWorkspace/ExecutionWorkspaceGuard.ts";
+import { ExecutionWorkspaceBusyError, type ExecutionWorkspaceGuard } from "../service/executionWorkspace/ExecutionWorkspaceGuard.ts";
 import { createWorkflowCheckpointFingerprint, readWorkflowCheckpoint } from "../service/workflowExecution/WorkflowCheckpoint.ts";
 import { cancelExecution, isExecutionCancelled, settleWithConcurrency, WorkflowExecutionPool, type WorkflowExecutionLimits } from "../service/workflowExecution/WorkflowExecution.ts";
 import { createAgentWorkflowHash } from "../service/workflowExecution/WorkflowConfiguration.ts";
@@ -1154,7 +1154,11 @@ export class AgentUseCase {
         );
       }
 
-      if (!workflowExecution && !this.workflowIsComplete(normalizedProjectId, loadedProject.project)) this.executionWorkspace?.markWaiting();
+      if (!workflowExecution && !this.workflowIsComplete(normalizedProjectId, loadedProject.project)) {
+        if (this.hasWorkflowWaits(normalizedProjectId)) {
+          if (this.executionWorkspace) await this.executionWorkspace.checkpointWaiting(this.isolated ? `instance:${this.isolated.instanceId}` : normalizedProjectId);
+        } else this.executionWorkspace?.markInterrupted();
+      }
       return {
         answer,
         ...(auditContext ? { auditRunId: auditContext.runId } : {}),
@@ -1321,7 +1325,7 @@ export class AgentUseCase {
             if (this.hasWorkflowWaits(normalizedProjectId) && instance.executionCount < maximumExecutions &&
                 !project.agents.some((agent) => ["failed", "cancelled"].includes(agent.executionStatus))) {
               instance.status = "waiting";
-              this.executionWorkspace?.markWaiting();
+              if (this.executionWorkspace) await this.executionWorkspace.checkpointWaiting(this.isolated ? `instance:${this.isolated.instanceId}` : normalizedProjectId);
               this.persistWorkflowCheckpoint(normalizedProjectId);
               if (auditRunId) this.workflowAuditService?.setRunActiveStatus(auditRunId, "waiting");
               return { status: "waiting", auditRunId, executedAgentIds, skippedAgentIds };
@@ -1457,7 +1461,7 @@ export class AgentUseCase {
       try {
         await this.runWorkflow(projectId, undefined, "scheduled", { resume: true, now });
       } catch (error) {
-        if (error instanceof CodexQuotaBlockedError) return;
+        if (error instanceof CodexQuotaBlockedError || error instanceof ExecutionWorkspaceBusyError) return;
         console.error(`Unable to resume waiting workflow ${projectId}:`, error);
       }
     });

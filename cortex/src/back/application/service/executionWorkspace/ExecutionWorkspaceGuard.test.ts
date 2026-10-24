@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -9,14 +9,157 @@ import { ExecutionWorkspaceGuard, ExecutionWorkspaceBusyError, verifyWorkspace, 
 
 const execute = promisify(execFile);
 
-async function fixture(verify: ConstructorParameters<typeof ExecutionWorkspaceGuard>[2] = async () => {}) {
+async function fixture(verify: ConstructorParameters<typeof ExecutionWorkspaceGuard>[2] = async () => {},
+  readCheckpoint?: (checkpointId: string) => unknown) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-workspace-"));
   const configuration = path.join(directory, "config.json");
   const journals = path.join(directory, "journals");
-  await writeFile(configuration, JSON.stringify({ executionWorkspaces: [{ id: "site", directory, projectIds: ["a", "b"] }] }));
-  return { directory, journals, guard: () => new ExecutionWorkspaceGuard(configuration, journals, verify),
+  await writeFile(configuration, JSON.stringify({ projects: [{ id: "a" }, { id: "b" }],
+    executionWorkspaces: [{ id: "site", directory, projectIds: ["a", "b"], git: { branch: "main", remote: "origin" } }] }));
+  return { directory, configuration, journals, guard: () => new ExecutionWorkspaceGuard(configuration, journals, verify, readCheckpoint),
     close: () => rm(directory, { recursive: true, force: true }) };
 }
+
+function waitingCheckpoint() {
+  const now = "2026-10-24T05:00:00.000Z";
+  return { instance: { id: "request", status: "waiting", startedAt: now, executionCount: 1, consumedEventIds: [] },
+    parameterValues: {}, agents: [{ id: "agent", execution: { status: "waiting" }, failedThreadIds: [], threads: [{
+      id: "thread", sessionId: "session", conversation: [], upstreamItems: [], wait: { id: "wait", createdAt: now,
+        wakeAt: null, reason: "pending reply", eventKey: "reply", wakeAfterSeconds: null,
+        deadlineAt: "2026-10-25T05:00:00.000Z", state: "request sent once" }
+    }] }] };
+}
+
+test("a published WAIT relinquishes the resource while its business checkpoint remains waiting", async () => {
+  const checkpoint = waitingCheckpoint();
+  const f = await fixture(async () => {}, () => checkpoint);
+  try {
+    const guard = f.guard();
+    await guard.run("a", async () => { await guard.markStarted(); await guard.checkpointWaiting("instance:request"); });
+    assert.equal(checkpoint.instance.status, "waiting");
+    assert.equal(await guard.recoveryProjectId("b"), undefined);
+    await guard.run("b", async () => { await guard.markStarted(); });
+  } finally { await f.close(); }
+});
+
+test("manual intermediate work is recoverable and never becomes an unwakeable WAIT", async () => {
+  const f = await fixture();
+  try {
+    const guard = f.guard();
+    await guard.run("a", async () => { await guard.markStarted(); guard.markInterrupted(); });
+    assert.equal(await guard.recoveryProjectId("b"), "a");
+    await guard.run("a", async () => { await guard.markStarted(); });
+    await guard.run("b", async () => { await guard.markStarted(); });
+  } finally { await f.close(); }
+});
+
+for (const ended of ["cancelled", "reset"] as const) test(`${ended} legacy WAIT cannot strand a dirty workspace; recovery only closes existing effects`, async () => {
+  let checkpoint: ReturnType<typeof waitingCheckpoint> | null = waitingCheckpoint();
+  let dirty = true;
+  const f = await fixture(async (_workspace, phase) => { if (phase === "finish" && dirty) throw new Error("unpublished source"); },
+    key => { assert.equal(key, "instance:request"); return checkpoint; });
+  try {
+    const guard = f.guard();
+    await guard.run("a", async () => { await guard.markStarted(); await guard.checkpointWaiting("instance:request"); });
+    assert.equal(await guard.recoveryProjectId("b"), undefined, "A legitimate dirty WAIT keeps its owner until wake or cancellation");
+    if (ended === "reset") checkpoint = null;
+    else checkpoint!.instance.status = "cancelled";
+    const restarted = f.guard();
+    assert.equal(await restarted.recoveryProjectId("b"), "a");
+    await restarted.run("a", async () => {
+      assert.match(restarted.recoveryInstructions(), /sans poursuivre l'objectif annulé/);
+      await restarted.markStarted();
+      dirty = false;
+    });
+    await restarted.run("b", async () => { await restarted.markStarted(); });
+  } finally { await f.close(); }
+});
+
+test("a clean orphan WAIT is released after reset without starting a recovery task", async () => {
+  const f = await fixture(async () => {}, () => null);
+  try {
+    const guard = f.guard();
+    await guard.run("a", async () => { await guard.markStarted(); guard.markWaiting(); });
+    assert.equal(await guard.recoveryProjectId("b"), undefined);
+    await guard.run("b", async () => { await guard.markStarted(); });
+  } finally { await f.close(); }
+});
+
+for (const removal of ["project", "mapping"] as const) test(`deleted ${removal} owner transfers cleanup responsibility without redirecting to a missing project`, async () => {
+  const f = await fixture();
+  try {
+    const guard = f.guard();
+    await assert.rejects(guard.run("a", async () => { await guard.markStarted(); throw new Error("unpublished changes"); }));
+    const config = JSON.parse(await readFile(f.configuration, "utf8"));
+    if (removal === "project") config.projects = [{ id: "b" }];
+    else config.executionWorkspaces[0].projectIds = ["b"];
+    await writeFile(f.configuration, JSON.stringify(config));
+    const restarted = f.guard();
+    assert.equal(await restarted.recoveryProjectId("b"), "b");
+    await restarted.run("b", async () => {
+      assert.match(restarted.recoveryInstructions(), /Projet d'origine : a/);
+      assert.match(restarted.recoveryInstructions(), /sans poursuivre l'objectif annulé/);
+      await restarted.markStarted();
+    });
+    assert.equal(await restarted.recoveryProjectId("b"), undefined);
+  } finally { await f.close(); }
+});
+
+test("journal I/O errors release the in-memory lease and cannot poison subsequent runs", async () => {
+  const f = await fixture();
+  try {
+    await writeFile(f.journals, "not a directory");
+    const guard = f.guard();
+    await assert.rejects(guard.run("a", async () => { await guard.markStarted(); }));
+    assert.equal(guard.hasActiveExecutions(), false);
+    await rm(f.journals);
+    await guard.run("b", async () => { await guard.markStarted(); });
+  } finally { await f.close(); }
+});
+
+test("a deleted waiting owner cannot leave a permanent reservation for a project that will never wake", async () => {
+  const checkpoint = waitingCheckpoint();
+  let dirty = true;
+  const f = await fixture(async (_workspace, phase) => { if (phase === "finish" && dirty) throw new Error("unpublished source"); }, () => checkpoint);
+  try {
+    const guard = f.guard();
+    await guard.run("a", async () => { await guard.markStarted(); await guard.checkpointWaiting("a"); });
+    const config = JSON.parse(await readFile(f.configuration, "utf8"));
+    config.projects = [{ id: "b" }];
+    await writeFile(f.configuration, JSON.stringify(config));
+    assert.equal(await guard.recoveryProjectId("b"), "b");
+    await guard.run("b", async () => {
+      assert.match(guard.recoveryInstructions(), /sans poursuivre l'objectif annulé/);
+      await guard.markStarted();
+      dirty = false;
+    });
+    assert.equal(await guard.recoveryProjectId("b"), undefined);
+  } finally { await f.close(); }
+});
+
+test("opposing nested resource acquisitions fail immediately rather than forming a wait cycle", { timeout: 10_000 }, async () => {
+  const f = await fixture();
+  try {
+    const second = path.join(f.directory, "second");
+    await mkdir(second);
+    await writeFile(f.configuration, JSON.stringify({ executionWorkspaces: [
+      { id: "first", directory: f.directory, projectIds: ["a"] },
+      { id: "second", directory: second, projectIds: ["b"] }
+    ] }));
+    const guard = f.guard();
+    let entered = 0, attempted = 0, ready!: () => void, done!: () => void;
+    const bothReady = new Promise<void>(resolve => { ready = resolve; });
+    const bothDone = new Promise<void>(resolve => { done = resolve; });
+    await Promise.all(["a", "b"].map(owner => guard.run(owner, async () => {
+      if (++entered === 2) ready();
+      await bothReady;
+      await assert.rejects(guard.run(owner === "a" ? "b" : "a", async () => assert.fail("acquired conflicting resource")), ExecutionWorkspaceBusyError);
+      if (++attempted === 2) done();
+      await bothDone;
+    })));
+    assert.equal(guard.hasActiveExecutions(), false);
+  } finally { await f.close(); }
+});
 
 test("shared checkout is exclusive across projects and reentrant for nested agents; unrelated projects run", async () => {
   const f = await fixture();

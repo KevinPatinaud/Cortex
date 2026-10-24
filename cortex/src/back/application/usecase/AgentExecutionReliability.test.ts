@@ -142,6 +142,72 @@ test("workspace journaling stays empty when the actual quota gate rejects a work
   } finally { f.repository.close(); await rm(directory, { recursive: true, force: true }); }
 });
 
+test("manual multi-agent progress retains recoverable ownership instead of a phantom durable WAIT", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-manual-workspace-"));
+  const configuration = path.join(directory, "config.json");
+  await writeFile(configuration, JSON.stringify({ executionWorkspaces: [{ id: "site", directory, projectIds: ["project", "other"] }] }));
+  const guard = new ExecutionWorkspaceGuard(configuration, path.join(directory, "journals"), async () => {});
+  const f = fixture({ source: ["next"], next: [] }, async () => response(["Done"], ["next"]), {}, undefined, [], {}, undefined, guard);
+  try {
+    const useCase = f.createUseCase();
+    await useCase.loadProject("project");
+    await useCase.runAgent("project", { agentId: agentId("source") });
+    assert.equal(useCase.hasWorkflowWaits("project"), false);
+    assert.equal(await useCase.getRecoveryProjectId("other"), "project");
+  } finally { f.repository.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+for (const scope of ["agent", "workflow"] as const) test(`${scope}: actual durable WAIT keeps its SQLite checkpoint while releasing a verified published checkout`, async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-wait-workspace-"));
+  const configuration = path.join(directory, "config.json");
+  await writeFile(configuration, JSON.stringify({ executionWorkspaces: [{ id: "site", directory, projectIds: ["project", "other"], git: { branch: "main", remote: "origin" } }] }));
+  let repository: SqliteWorkflowAuditRepository;
+  const guard = new ExecutionWorkspaceGuard(configuration, path.join(directory, "journals"), async () => {}, key => repository.getCheckpoint(key)?.state);
+  const f = fixture({ source: [] }, async () => waitingResponse("2027-01-01T00:00:00Z"), {}, undefined, [], {}, undefined, guard);
+  repository = f.repository;
+  try {
+    const useCase = f.createUseCase();
+    await useCase.loadProject("project");
+    if (scope === "workflow") await useCase.runWorkflow("project");
+    else await useCase.runAgent("project", { agentId: agentId("source") });
+    assert.equal(useCase.hasWorkflowWaits("project"), true);
+    assert.equal(repository.listRuns("project", 10, 0).items[0].status, "waiting");
+    await guard.run("other", async () => { await guard.markStarted(); });
+    assert.equal(useCase.cancelProjectExecution("project"), true);
+    assert.equal(useCase.hasWorkflowWaits("project"), false);
+    assert.equal(await useCase.getRecoveryProjectId("other"), undefined);
+    assert.equal(guard.hasActiveExecutions(), false);
+  } finally { f.repository.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
+test("cancelling an active guarded provider releases the live lease and retains only recoverable ownership", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-cancel-workspace-"));
+  const configuration = path.join(directory, "config.json");
+  await writeFile(configuration, JSON.stringify({ executionWorkspaces: [{ id: "site", directory, projectIds: ["project", "other"] }] }));
+  const guard = new ExecutionWorkspaceGuard(configuration, path.join(directory, "journals"), async () => {});
+  let started!: () => void, cancel = true;
+  const ready = new Promise<void>(resolve => { started = resolve; });
+  const f = fixture({ source: [] }, async (_name, _prompt, options) => {
+    if (!cancel) return response(["Existing effects reconciled"], []);
+    started();
+    return new Promise((_resolve, reject) => options.signal!.addEventListener("abort", () => reject(options.signal!.reason), { once: true }));
+  }, {}, undefined, [], {}, undefined, guard);
+  try {
+    const useCase = f.createUseCase();
+    const running = useCase.runWorkflow("project");
+    await ready;
+    assert.equal(guard.hasActiveExecutions(), true);
+    useCase.cancelProjectExecution("project");
+    await assert.rejects(running, { name: "AbortError" });
+    assert.equal(guard.hasActiveExecutions(), false);
+    assert.equal(await useCase.getRecoveryProjectId("other"), "project");
+    cancel = false;
+    await useCase.runWorkflow("project");
+    await guard.run("other", async () => { await guard.markStarted(); });
+    assert.equal(guard.hasActiveExecutions(), false);
+  } finally { f.repository.close(); await rm(directory, { recursive: true, force: true }); }
+});
+
 test("quota gate covers manual agents, scheduled workflows and resumes before changing any workflow state", async () => {
   let allowed = false, checks = 0, calls = 0;
   const quota = { assertMayStart: async () => {

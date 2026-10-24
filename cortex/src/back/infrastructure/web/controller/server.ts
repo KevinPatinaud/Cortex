@@ -94,7 +94,8 @@ const agentUseCase = new AgentUseCase(
   },
   undefined,
   new CodexQuotaService(configurationFile, () => readCodexRateLimits(workspaceDirectory)),
-  new ExecutionWorkspaceGuard(configurationFile, path.join(workspaceDirectory, "data", "execution-workspaces"))
+  new ExecutionWorkspaceGuard(configurationFile, path.join(workspaceDirectory, "data", "execution-workspaces"),
+    undefined, checkpointId => workflowAuditRepository.getCheckpoint(checkpointId)?.state)
 );
 const workflowScheduler = new WorkflowScheduler(
   projectUseCase,
