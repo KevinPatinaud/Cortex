@@ -38,12 +38,21 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     prompt: string,
     options: AgentExecutionOptions = {}
   ): Promise<AgentExecutionResult> {
-    const configuration = options.configuration ?? DEFAULT_AGENT_CONFIGURATION;
+    const interpretation = options.purpose === "interpretation";
+    if (interpretation && options.sessionId) throw new Error("An interpretation must use its own session.");
+    const configuration = interpretation ? { autopilot: false, allowAll: false } : options.configuration ?? DEFAULT_AGENT_CONFIGURATION;
     // Cortex orchestrates workflow instances itself. Disabling Codex's
     // internal multi-agent mode prevents a business instruction that asks to
     // launch the next step from consuming Codex collaboration threads.
-    const args = ["exec", options.delegation === "bounded" ? "--enable" : "--disable", "multi_agent"];
-    if (options.delegation === "bounded") args.push("--config", "agents.max_threads=2");
+    const args = ["exec", !interpretation && options.delegation === "bounded" ? "--enable" : "--disable", "multi_agent"];
+    if (!interpretation && options.delegation === "bounded") args.push("--config", "agents.max_threads=2");
+    if (interpretation) {
+      args.push("--skip-git-repo-check", "--disable", "apps", "--disable", "plugins", "--disable", "hooks", "--disable", "multi_agent_v2",
+        "--config", "features.shell_tool=false", "--config", 'web_search="disabled"',
+        "--config", "apps._default.enabled=false", "--config", 'approval_policy="never"');
+      for (const name of options.profile?.declaredMcpServers ?? []) args.push("--config", `mcp_servers.${JSON.stringify(name)}.enabled=false`);
+      for (const name of options.profile?.declaredApps ?? []) args.push("--config", `apps.${JSON.stringify(name)}.enabled=false`);
+    }
 
     if (!configuration.autopilot) {
       args.push("--config", "sandbox_mode=\"read-only\"");

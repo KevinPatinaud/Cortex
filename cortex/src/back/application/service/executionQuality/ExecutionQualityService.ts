@@ -38,6 +38,13 @@ export class ExecutionQualityService {
       return v[key].trim();
     };
     const workspaceDirectory = text("workspaceDirectory");
+    const resultMode = v.resultMode ?? "separate";
+    const interpretationModel = v.interpretationModel ?? "";
+    const interpretationReasoningEffort = v.interpretationReasoningEffort ?? "low";
+    if (!["separate", "integrated"].includes(String(resultMode)) || typeof interpretationModel !== "string" || interpretationModel.length > 200 ||
+      typeof interpretationReasoningEffort !== "string" || !interpretationReasoningEffort.trim() || interpretationReasoningEffort.length > 50) {
+      throw new ValidationError("Paramètres d'interprétation invalides.");
+    }
     if (workspaceDirectory && (!path.isAbsolute(workspaceDirectory) || !(await stat(workspaceDirectory).catch(() => null))?.isDirectory())) {
       throw new ValidationError("Le dépôt de travail doit être un répertoire absolu existant sur le serveur.");
     }
@@ -51,7 +58,9 @@ export class ExecutionQualityService {
         Array.isArray(c.args) && c.args.length <= 40 && c.args.every((a: unknown) => typeof a === "string" && a.length <= 2000)))) {
       throw new ValidationError("Critères, contrôles ou délégation invalides.");
     }
-    const policy: ExecutionPolicy = { workspaceDirectory, defaultModel: text("defaultModel", 200),
+    const policy: ExecutionPolicy = { resultMode: resultMode as ExecutionPolicy["resultMode"],
+      interpretationModel: interpretationModel.trim(), interpretationReasoningEffort: interpretationReasoningEffort.trim(),
+      workspaceDirectory, defaultModel: text("defaultModel", 200),
       defaultReasoningEffort: text("defaultReasoningEffort", 50), delegation: v.delegation as ExecutionPolicy["delegation"],
       resumeUnfinished: v.resumeUnfinished, acceptanceCriteria: [...v.acceptanceCriteria] as string[],
       preflightChecks: (v.preflightChecks as ExecutionPolicy["checks"]).map(c => ({ label: c.label, command: c.command, args: [...c.args] })),

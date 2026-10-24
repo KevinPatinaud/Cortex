@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { access, readFile } from "node:fs/promises";
 import { CodexAgentProvider } from "./CodexAgentProvider.ts";
+import type { ExecutionProfile } from "../../../../../shared/ExecutionQuality.ts";
 
 class CapturingCodexAgentProvider extends CodexAgentProvider {
   capturedArgs: string[] = [];
@@ -56,6 +57,19 @@ test("enables bounded research/review only on explicit project policy", async ()
   assert.ok(provider.capturedArgs.includes("agents.max_threads=2"));
   assert.ok(!provider.capturedArgs.includes("--disable"));
   assert.equal(provider.capturedTimeout, undefined);
+});
+
+test("interpretation forces an ephemeral read-only session and disables shell, web, apps, MCP and delegation", async () => {
+  const provider = new CapturingCodexAgentProvider(process.cwd());
+  await provider.ask("Interpret only", { purpose: "interpretation", delegation: "bounded",
+    configuration: { autopilot: true, allowAll: true }, profile: { declaredMcpServers: ["mail-server"], declaredApps: ["app-mail"] } as ExecutionProfile });
+  const args = provider.capturedArgs;
+  for (const required of ["--ephemeral", "--skip-git-repo-check", 'sandbox_mode="read-only"', "features.shell_tool=false",
+    'web_search="disabled"', "apps._default.enabled=false", 'mcp_servers."mail-server".enabled=false', 'apps."app-mail".enabled=false']) assert.ok(args.includes(required), required);
+  assert.ok(!args.includes("--dangerously-bypass-approvals-and-sandbox")); assert.ok(!args.includes("--enable"));
+  for (const name of ["apps", "plugins", "hooks", "multi_agent_v2"]) assert.ok(args.some((arg, i) => arg === "--disable" && args[i + 1] === name));
+  assert.equal(provider.capturedTimeout, undefined);
+  await assert.rejects(provider.ask("Interpret", { purpose: "interpretation", sessionId: "business" }), /own session/);
 });
 
 test("passes dynamically selected model identifiers and newer reasoning efforts directly to the deployed CLI", async () => {

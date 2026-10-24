@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
 import type { ExecutionProfile } from "../../../shared/ExecutionQuality.ts";
+import type { ExecutionProcessing } from "../../../shared/ResultProcessing.ts";
 import type { WorkflowEvent } from "../../../shared/WorkflowWait.ts";
 import type {
   WorkflowAuditAgentExecution,
@@ -38,6 +39,7 @@ interface RunRow {
 }
 
 interface ExecutionRow {
+  processing_json: string | null;
   profile_json: string | null;
   id: string;
   run_id: string;
@@ -90,6 +92,9 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
   setExecutionProfile(executionId: string, profile: ExecutionProfile): void {
     this.database.prepare("UPDATE agent_executions SET profile_json = ?, model = COALESCE(?, model), reasoning_effort = COALESCE(?, reasoning_effort) WHERE id = ?")
       .run(JSON.stringify(profile), profile.model, profile.reasoningEffort, executionId);
+  }
+  setExecutionProcessing(executionId: string, processing: ExecutionProcessing): void {
+    this.database.prepare("UPDATE agent_executions SET processing_json = ? WHERE id = ?").run(JSON.stringify(processing), executionId);
   }
 
   createRun(input: CreateWorkflowAuditRunInput): string {
@@ -529,6 +534,7 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
 
     const executionColumns = this.database.prepare("PRAGMA table_info(agent_executions)").all() as Array<{ name: string }>;
     if (!executionColumns.some(column => column.name === "profile_json")) this.database.exec("ALTER TABLE agent_executions ADD COLUMN profile_json TEXT;");
+    if (!executionColumns.some(column => column.name === "processing_json")) this.database.exec("ALTER TABLE agent_executions ADD COLUMN processing_json TEXT;");
     const runColumns = this.database.prepare(
       "PRAGMA table_info(workflow_runs)"
     ).all() as Array<{ name: string }>;
@@ -626,6 +632,7 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
       model: row.model,
       reasoningEffort: row.reasoning_effort,
       ...(row.profile_json ? { profile: JSON.parse(row.profile_json) } : {}),
+      ...(row.processing_json ? { processing: JSON.parse(row.processing_json) } : {}),
       startedAt: row.started_at,
       finishedAt: row.finished_at,
       durationMs: row.duration_ms,

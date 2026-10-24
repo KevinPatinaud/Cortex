@@ -60,17 +60,19 @@ export async function readCodexModelCatalog(session: CodexAppServerSession): Pro
   // The configured default can differ from the catalog's recommended default.
   let configuredModel: string | null = null;
   let configuredReasoningEffort: string | null = null;
-  let declaredMcpServers: string[] = [];
+  let declaredMcpServers: string[] | undefined;
+  let declaredApps: string[] | undefined;
   try {
     const configuration = record(record(await session.request("config/read", { includeLayers: false })).config);
     configuredModel = string(configuration.model);
     configuredReasoningEffort = string(configuration.model_reasoning_effort);
     declaredMcpServers = Object.keys(record(configuration.mcp_servers));
+    declaredApps = Object.keys(record(configuration.apps)).filter(key => key !== "_default");
   }
   catch { /* Older CLIs can still expose their picker catalog without config/read. */ }
   const initialization = record(session.initialization);
   const cliVersion = string(record(initialization.serverInfo).version) ?? string(initialization.userAgent)?.match(/^[^/]+\/(\d[^\s]*)/)?.[1] ?? null;
-  return { available: true, cliVersion, configuredReasoningEffort, declaredMcpServers,
+  return { available: true, cliVersion, configuredReasoningEffort, declaredMcpServers, declaredApps,
     defaultModel: configuredModel ?? [...models.values()].find(model => model.isDefault)?.model ?? null,
     models: [...models.values()], checkedAt: new Date().toISOString(), error: null };
 }

@@ -13,6 +13,7 @@ export const DEFAULT_AGENT_CONFIGURATION: AgentConfiguration = {
 };
 
 export interface AgentExecutionOptions {
+  purpose?: "mission" | "interpretation";
   delegation?: "none" | "bounded";
   onProfile?: (profile: ExecutionProfile) => void;
   profile?: ExecutionProfile;

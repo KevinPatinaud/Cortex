@@ -1,5 +1,6 @@
 import { isWorkflowInstanceState, isWorkflowWaitState, type WorkflowInstanceState, type WorkflowWaitState } from "../../../../shared/WorkflowWait.ts";
 import { isAgentContinuity, type AgentContinuity } from "../../../../shared/ExecutionQuality.ts";
+import { isExecutionProcessing, type ExecutionProcessing } from "../../../../shared/ResultProcessing.ts";
 export interface WorkflowCheckpointState {
   instance?: WorkflowInstanceState;
   parameterValues: Record<string, string>;
@@ -17,6 +18,8 @@ export interface WorkflowCheckpointState {
       id: string;
       sessionId: string;
       workingDirectory?: string;
+      responseMode?: "separate" | "integrated";
+      pendingInterpretation?: ExecutionProcessing;
       wait?: WorkflowWaitState;
       conversation: Array<{ role: "user" | "agent" | "event"; content: string }>;
       upstreamItems: Array<{ agentId: string; agentName: string; content: string; continuity?: AgentContinuity }>;
@@ -50,6 +53,8 @@ export function readWorkflowCheckpoint(value: unknown): WorkflowCheckpointState 
       if (!isRecord(thread) || typeof thread.id !== "string" || threadIds.has(thread.id) ||
           typeof thread.sessionId !== "string" || !thread.sessionId ||
           (thread.workingDirectory !== undefined && typeof thread.workingDirectory !== "string") ||
+          (thread.responseMode !== undefined && !["separate", "integrated"].includes(String(thread.responseMode))) ||
+          (thread.pendingInterpretation !== undefined && !isExecutionProcessing(thread.pendingInterpretation)) ||
           (thread.wait !== undefined && !isWorkflowWaitState(thread.wait)) ||
           !Array.isArray(thread.conversation) || !thread.conversation.every((message) =>
             isRecord(message) && (message.role === "user" || message.role === "agent" || message.role === "event") && typeof message.content === "string") ||

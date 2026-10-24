@@ -1,4 +1,7 @@
 export interface ExecutionPolicy {
+  resultMode?: "separate" | "integrated";
+  interpretationModel?: string;
+  interpretationReasoningEffort?: string;
   workspaceDirectory: string;
   defaultModel: string;
   defaultReasoningEffort: string;
@@ -10,6 +13,7 @@ export interface ExecutionPolicy {
 }
 
 export const DEFAULT_EXECUTION_POLICY: ExecutionPolicy = {
+  resultMode: "separate", interpretationModel: "", interpretationReasoningEffort: "low",
   workspaceDirectory: "", defaultModel: "", defaultReasoningEffort: "",
   delegation: "none", resumeUnfinished: true, acceptanceCriteria: [], preflightChecks: [], checks: []
 };
@@ -30,6 +34,7 @@ export interface ExecutionAssessment {
 }
 
 export interface ExecutionProfile {
+  declaredApps?: string[];
   availableSkills?: string[];
   declaredMcpServers?: string[];
   model: string | null;

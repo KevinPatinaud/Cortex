@@ -648,6 +648,17 @@ function AuditExecution({
         )}
         <AuditJsonBlock title={t("audit.inputs")} value={execution.input} />
         <AuditTextBlock title={t("audit.prompt")} value={execution.prompt} />
+        {execution.processing && <>
+          <AuditTextBlock title={t("quality.missionResult")} value={execution.processing.mission.response} />
+          <AuditJsonBlock title={t("quality.interpretationDetails")} value={{
+            status: execution.processing.interpretation.status,
+            sessionId: execution.processing.interpretation.sessionId,
+            profile: execution.processing.interpretation.profile,
+            error: execution.processing.interpretation.error
+          }} />
+          {execution.processing.interpretation.prompt && <AuditTextBlock title={t("quality.interpretationPrompt")} value={execution.processing.interpretation.prompt} />}
+          {execution.processing.interpretation.response && <AuditTextBlock title={t("quality.interpretationResult")} value={execution.processing.interpretation.response} />}
+        </>}
         <AuditTextBlock
           title={t("audit.response")}
           value={execution.response ?? t("audit.noResponse")}

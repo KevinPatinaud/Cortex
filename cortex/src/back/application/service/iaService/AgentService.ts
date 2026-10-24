@@ -201,7 +201,7 @@ export class AgentService {
         ? { autopilot: false, allowAll: false }
         : await this.configurationService.getConfiguration();
       options.signal?.throwIfAborted();
-      const resolved = engine === "codex" && options.persistSession
+      const resolved = engine === "codex" && (options.persistSession || options.purpose === "interpretation")
         ? await this.resolveExecutionProfile(options) : options;
       if (resolved.profile) options.onProfile?.(resolved.profile);
       const result = await provider.ask(prompt, { ...resolved, configuration });
@@ -212,6 +212,9 @@ export class AgentService {
 
   async resolveExecutionProfile(options: AgentExecutionOptions): Promise<AgentExecutionOptions> {
     const catalog = await this.getCodexModels(options.workingDirectory);
+    if (options.purpose === "interpretation" && (!catalog.available || !catalog.declaredMcpServers || !catalog.declaredApps)) {
+      throw new Error("Impossible de lire la configuration Codex pour isoler l’interprétation. Le résultat de la mission est conservé pour reprise.");
+    }
     const model = options.model || catalog.defaultModel || undefined;
     const selected = catalog.models.find(entry => entry.model === model);
     const reasoningEffort = options.reasoningEffort || catalog.configuredReasoningEffort || selected?.defaultReasoningEffort || undefined;
@@ -219,6 +222,7 @@ export class AgentService {
       throw new ValidationError(`Effort ${reasoningEffort} indisponible pour ${model}. Choisissez un effort proposé par le serveur.`);
     }
     const profile: ExecutionProfile = { model: model ?? null, reasoningEffort: reasoningEffort ?? null,
+      ...(catalog.declaredApps ? { declaredApps: catalog.declaredApps } : {}),
       ...(catalog.availableSkills ? { availableSkills: catalog.availableSkills } : {}),
       ...(catalog.declaredMcpServers ? { declaredMcpServers: catalog.declaredMcpServers } : {}),
       cliVersion: catalog.cliVersion, workingDirectory: options.workingDirectory ?? process.cwd(),

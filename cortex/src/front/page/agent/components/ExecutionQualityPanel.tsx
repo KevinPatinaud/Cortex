@@ -45,6 +45,7 @@ export function ExecutionQualityPanel({ projectId }: { projectId: string }) {
     finally { setSaving(false); }
   }
   const selectedModel = settings?.catalog?.models.find(m => m.model === (draft.defaultModel || settings.catalog?.defaultModel));
+  const interpretationModel = settings?.catalog?.models.find(m => m.model === (draft.interpretationModel || draft.defaultModel || settings.catalog?.defaultModel));
   return <details className="execution-quality">
     <summary><strong>{t("quality.title")}</strong></summary>
     <p>{t("quality.description")}</p>
@@ -62,6 +63,20 @@ export function ExecutionQualityPanel({ projectId }: { projectId: string }) {
           <option value="">{t("quality.inherit")}</option>
           {[...new Set([...(draft.defaultReasoningEffort ? [draft.defaultReasoningEffort] : []), ...(selectedModel?.reasoningEfforts ?? [])])].map(effort => <option key={effort} value={effort}>{effort}</option>)}
         </select></label>
+        <label>{t("quality.resultMode")}<select value={draft.resultMode ?? "separate"} onChange={e => change({ resultMode: e.target.value as ExecutionPolicy["resultMode"] })}>
+          <option value="separate">{t("quality.separate")}</option><option value="integrated">{t("quality.integrated")}</option>
+        </select></label>
+        {draft.resultMode !== "integrated" && <>
+          <p>{t("quality.interpretationHelp")}</p>
+          <label>{t("quality.interpretationModel")}<select value={draft.interpretationModel ?? ""} onChange={e => change({ interpretationModel: e.target.value })}>
+            <option value="">{t("quality.sameModel")}</option>
+            {draft.interpretationModel && !settings.catalog?.models.some(m => m.model === draft.interpretationModel) && <option value={draft.interpretationModel}>{draft.interpretationModel}</option>}
+            {settings.catalog?.models.map(model => <option key={model.model} value={model.model}>{model.displayName}</option>)}
+          </select></label>
+          <label>{t("quality.interpretationReasoning")}<select value={draft.interpretationReasoningEffort ?? "low"} onChange={e => change({ interpretationReasoningEffort: e.target.value })}>
+            {[...new Set([draft.interpretationReasoningEffort || "low", ...(interpretationModel?.reasoningEfforts ?? [])])].map(effort => <option key={effort} value={effort}>{effort}</option>)}
+          </select></label>
+        </>}
         <label>{t("quality.delegation")}<select value={draft.delegation} onChange={e => change({ delegation: e.target.value as ExecutionPolicy["delegation"] })}>
           <option value="none">{t("quality.none")}</option><option value="bounded">{t("quality.bounded")}</option>
         </select></label>

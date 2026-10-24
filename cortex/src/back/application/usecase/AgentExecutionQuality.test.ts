@@ -16,6 +16,7 @@ import { WorkflowAuditService } from "../service/workflowAudit/WorkflowAuditServ
 import { SqliteWorkflowAuditRepository } from "../../infrastructure/audit/SqliteWorkflowAuditRepository.ts";
 import { DEFAULT_EXECUTION_POLICY } from "../../../shared/ExecutionQuality.ts";
 import { parseAgentResponse } from "../../../shared/AgentResponse.ts";
+import { CodexQuotaService } from "../service/iaService/CodexQuotaService.ts";
 
 function result(options: AgentExecutionOptions, remainingWork: string[] = []): AgentExecutionResult {
   const next = ((options.outputSchema?.properties as Record<string, any>)?.nextAgentIds?.items?.enum ?? []) as string[];
@@ -28,10 +29,11 @@ async function fixture(t: test.TestContext, ask: (prompt: string, options: Agent
   const configurationFile = path.join(directory, "config.json");
   const catalog = new CodexModelService(directory, async () => ({ available: true, cliVersion: "0.163-test",
     defaultModel: "server-model", configuredReasoningEffort: "xhigh", checkedAt: new Date().toISOString(), error: null,
-    models: [{ model: "server-model", displayName: "Model", isDefault: true, reasoningEfforts: ["medium", "high", "xhigh"], defaultReasoningEffort: "medium" }] }));
+    declaredMcpServers: [], declaredApps: [],
+    models: [{ model: "server-model", displayName: "Model", isDefault: true, reasoningEfforts: ["low", "medium", "high", "xhigh"], defaultReasoningEffort: "medium" }] }));
   const service = new AgentService([{ engine: "codex", label: "Codex", isAvailable: async () => true,
     ask: async (prompt, options = {}) => {
-      if (!options.persistSession) {
+      if (!options.persistSession && options.purpose !== "interpretation") {
         const context = JSON.parse(prompt.split("Context to analyze:\n")[1]);
         return { answer: JSON.stringify({ agents: context.agents.map((agent: { id: string }, i: number) => ({
           id: agent.id, nextAgentIds: context.agents[i + 1] ? [context.agents[i + 1].id] : [], inputMode: "separate" })), parameters: [] }) };
@@ -43,17 +45,18 @@ async function fixture(t: test.TestContext, ask: (prompt: string, options: Agent
     agents: Array.from({ length: count }, (_, i) => ({ name: `Worker ${i}`, description: `Role ${i}`, prompt: `TASK_${i}` })) });
   const storage = new SqliteWorkflowAuditRepository(path.join(directory, "audit.sqlite"));
   t.after(async () => { storage.close(); await rm(directory, { recursive: true, force: true }); });
-  const quality = new ExecutionQualityService(configurationFile, path.join(directory, "quality"));
-  const useCase = new AgentUseCase(service, new ProjectUseCase(projects, new DirectoryPickerService(), service),
-    new WorkflowAuditService(storage), {}, undefined, undefined, undefined, quality);
-  return { directory, project, quality, storage, useCase, service };
+  const quality = new ExecutionQualityService(configurationFile, path.join(directory, ".quality-state"));
+  const restart = (quota?: CodexQuotaService) => new AgentUseCase(service, new ProjectUseCase(projects, new DirectoryPickerService(), service),
+    new WorkflowAuditService(storage), {}, undefined, quota, undefined, quality);
+  return { directory, project, quality, storage, useCase: restart(), service, restart, configurationFile };
 }
 
 test("pins inherited runtime settings, persists the actual profile and deduplicates native AGENTS instructions", async t => {
   const f = await fixture(t, async (prompt, options) => {
     assert.equal(options.model, "server-model"); assert.equal(options.reasoningEffort, "xhigh");
     assert.equal(options.workingDirectory, f.project.directoryPath);
-    assert.ok(!prompt.includes("UNIQUE_SHARED_RULE")); assert.match(prompt, /already loaded from AGENTS.md/);
+    assert.ok(!prompt.includes("UNIQUE_SHARED_RULE")); assert.match(prompt, /TASK_0/);
+    assert.ok(!prompt.includes("JSON Schema:")); assert.equal(options.outputSchema, undefined);
     return result(options);
   });
   await f.useCase.runWorkflow(f.project.id);
@@ -122,9 +125,114 @@ test("switching the working repository starts a fresh native session and carries
 
 test("hands evidence and decisions to successors while preserving source verification", async t => {
   const prompts: string[] = [];
-  const f = await fixture(t, async (prompt, options) => { prompts.push(prompt); return result(options); }, 2);
+  const f = await fixture(t, async (prompt, options) => {
+    if (options.purpose === "interpretation") return result(options);
+    prompts.push(prompt);
+    // Natural mission output is deliberately independent of Cortex routing.
+    return { sessionId: "native-session", answer: "EVIDENCE_MARKER report.md:4. Preserve the original." };
+  }, 2);
   await f.useCase.runWorkflow(f.project.id);
   assert.equal(prompts.length, 2);
   assert.match(prompts[1], /EVIDENCE_MARKER/); assert.match(prompts[1], /Preserve the original/);
   assert.match(prompts[1], /Verify their evidence against the relevant sources/);
+});
+
+test("a natural mission runs without the Cortex contract; an isolated low-effort pass adds metadata without rewriting the deliverable", async t => {
+  const calls: AgentExecutionOptions[] = [];
+  const original = "Article intégral.\n\nDeuxième paragraphe avec sa source https://example.com/source.";
+  const f = await fixture(t, async (prompt, options) => {
+    calls.push(options);
+    if (options.purpose === "mission") {
+      assert.match(prompt, /TASK_0/); assert.ok(!prompt.includes("nextAgentIds"));
+      assert.equal(options.outputSchema, undefined);
+      return { sessionId: "business-session", answer: original };
+    }
+    assert.equal(options.purpose, "interpretation"); assert.equal(options.reasoningEffort, "low");
+    assert.equal(options.readOnly, true); assert.equal(options.persistSession, false);
+    assert.equal(options.delegation, "none"); assert.equal(options.sessionId, undefined);
+    assert.notEqual(options.workingDirectory, f.project.directoryPath); assert.match(prompt, /Article intégral/);
+    return { ...result(options), sessionId: "formatter-session" };
+  });
+  await f.useCase.runWorkflow(f.project.id);
+  assert.equal(calls.length, 2);
+  const run = f.storage.listRuns(f.project.id, 10, 0).items[0];
+  const execution = f.storage.getRun(f.project.id, run.id)!.executions[0];
+  assert.equal(execution.sessionId, "business-session");
+  assert.equal(execution.processing?.mission.response, original);
+  assert.equal(execution.processing?.interpretation.sessionId, "formatter-session");
+  assert.equal(execution.processing?.interpretation.profile?.reasoningEffort, "low");
+  assert.equal(parseAgentResponse(execution.response!)?.items[0].content, original);
+});
+
+test("a failed formatter survives restart and a normal run retries only interpretation", async t => {
+  let missionCalls = 0, formatterCalls = 0;
+  const f = await fixture(t, async (_prompt, options) => {
+    if (options.purpose === "mission") { missionCalls++; return { sessionId: "business", answer: "Publication déjà effectuée." }; }
+    if (++formatterCalls === 1) throw new Error("Formatting failed");
+    return result(options);
+  });
+  await assert.rejects(f.useCase.runWorkflow(f.project.id), /Formatting failed/);
+  const failedRun = f.storage.listRuns(f.project.id, 10, 0).items[0];
+  assert.equal(f.storage.getRun(f.project.id, failedRun.id)!.executions[0].processing?.interpretation.status, "failed");
+  const restarted = f.restart();
+  await restarted.runWorkflow(f.project.id);
+  assert.equal(missionCalls, 1); assert.equal(formatterCalls, 2);
+});
+
+test("quota exhaustion between passes checkpoints the delivery and never repeats its actions", async t => {
+  let missionCalls = 0, formatterCalls = 0, denied = false;
+  const f = await fixture(t, async (_prompt, options) => {
+    if (options.purpose === "mission") { missionCalls++; denied = true; return { sessionId: "business", answer: "Mail déjà envoyé." }; }
+    formatterCalls++; return result(options);
+  });
+  const quota = new CodexQuotaService(f.configurationFile, async () => ({ rateLimitsByLimitId: { codex: {
+    primary: { usedPercent: denied ? 90 : 0, windowDurationMins: 300 }, secondary: { usedPercent: 0, windowDurationMins: 10080 }
+  } } }));
+  await quota.saveConfiguration({ enabled: true, minimumFiveHourRemainingPercent: 50, minimumWeeklyRemainingPercent: 0 });
+  await assert.rejects(f.restart(quota).runWorkflow(f.project.id), /minimum 50/);
+  assert.equal(missionCalls, 1); assert.equal(formatterCalls, 0);
+  denied = false; await quota.getStatus();
+  await f.restart(quota).runWorkflow(f.project.id);
+  assert.equal(missionCalls, 1); assert.equal(formatterCalls, 1);
+});
+
+test("the integrated opt-out retains the existing native output schema in one pass", async t => {
+  let calls = 0;
+  const f = await fixture(t, async (prompt, options) => {
+    calls++; assert.equal(options.purpose, undefined); assert.ok(options.outputSchema); assert.match(prompt, /native JSON schema/);
+    return result(options);
+  });
+  await f.quality.savePolicy(f.project.id, { ...DEFAULT_EXECUTION_POLICY, resultMode: "integrated" });
+  await f.useCase.runWorkflow(f.project.id); assert.equal(calls, 1);
+});
+
+test("manual stop interrupts interpretation and a later resume keeps the completed mission", async t => {
+  let missionCalls = 0, formatterCalls = 0;
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const f = await fixture(t, async (_prompt, options) => {
+    if (options.purpose === "mission") { missionCalls++; return { sessionId: "business", answer: "Delivery already made" }; }
+    if (++formatterCalls === 1) {
+      entered();
+      await new Promise<void>((_resolve, reject) => options.signal!.addEventListener("abort", () => reject(options.signal!.reason), { once: true }));
+    }
+    return result(options);
+  });
+  const running = f.useCase.runWorkflow(f.project.id);
+  await started; assert.equal(f.useCase.cancelProjectExecution(f.project.id), true);
+  await assert.rejects(running);
+  await f.restart().runWorkflow(f.project.id);
+  assert.equal(missionCalls, 1); assert.equal(formatterCalls, 2);
+});
+
+test("a pending interpretation cannot silently switch repositories or rerun its business task", async t => {
+  let calls = 0;
+  const f = await fixture(t, async (_prompt, options) => {
+    if (options.purpose === "mission") { calls++; return { sessionId: "business", answer: "Published in original repository" }; }
+    throw new Error("Formatter unavailable");
+  });
+  await assert.rejects(f.useCase.runWorkflow(f.project.id), /Formatter unavailable/);
+  await f.quality.savePolicy(f.project.id, { ...DEFAULT_EXECUTION_POLICY, workspaceDirectory: f.directory });
+  await assert.rejects(f.restart().runWorkflow(f.project.id), /dépôt initial/);
+  assert.equal(calls, 1);
 });

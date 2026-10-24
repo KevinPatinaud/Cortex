@@ -13,6 +13,49 @@ Le catalogue reste celui du serveur ; aucun modèle de remplacement n’est choi
 silencieusement. Les versions et paramètres historiques restent consultables
 dans **Historique → Afficher le détail technique**.
 
+## Mission puis interprétation
+
+Codex utilise par défaut deux passes. La mission reçoit son prompt métier,
+ses entrées, le contexte du dépôt et ses critères de réussite. Les consignes
+techniques de format JSON, de routage et de mémoire Cortex ne sont plus ajoutées
+à cette passe. Les règles natives du moteur et les instructions AGENTS.md du
+dépôt continuent de s’appliquer.
+
+Une seconde session éphémère interprète le résultat final, avec le même modèle
+et l’effort `low` par défaut. Dans le profil du projet, **Traitement du résultat
+Codex** permet de choisir cette séparation ou l’ancien mode intégré ; le
+modèle et l’effort d’interprétation sont configurables à partir du catalogue
+du serveur. L’effort choisi doit être disponible pour ce modèle. Les autres
+moteurs conservent le mode intégré.
+
+L’interprète reçoit uniquement la mission, le résultat final, les critères et
+les successeurs autorisés. Il travaille dans un dossier temporaire vide en
+lecture seule, sans session métier, shell, recherche web, applications, MCP
+configurés ni délégation. Si la configuration du moteur ne peut pas être lue
+pour désactiver ces outils, l’interprétation reste en échec avec le résultat
+métier conservé. Il ne vérifie pas lui-même une publication et ne termine pas
+le travail manquant. Les contrôles indépendants Cortex restent applicables.
+
+Le résultat brut est enregistré avant cette seconde passe, avec les consignes,
+profils et identifiants des deux sessions dans l’historique technique. Un
+livrable unique est transmis sans réécriture. Un résultat structuré existant
+conserve ses éléments, sa sélection et ses blocages ou attentes explicites.
+Un résultat déjà conforme au contrat courant et au routage autorisé évite
+complètement le second appel.
+
+Un quota insuffisant, un arrêt manuel ou un échec de l’interprète laisse un
+checkpoint reprenable. Une relance normale reprend l’interprétation seule :
+elle ne renvoie pas un mail et ne répète pas une publication déjà effectuée.
+Le dépôt et la mission ne peuvent pas être changés silencieusement pendant
+cette reprise. Une réinitialisation explicite permet de recommencer la mission.
+Le contrôle de quota s’applique aux deux appels ; aucune limite de durée métier
+n’est ajoutée et l’arrêt manuel reste disponible.
+
+La deuxième passe ajoute du temps et des tokens, même avec un effort réduit.
+La séparation allège les consignes de la mission ; elle ne démontre pas à elle
+seule un gain de qualité. Comparer les livrables et la consommation totale des
+deux passes sur des tâches représentatives.
+
 ## Contexte et reprise
 
 Les instructions AGENTS.md du dossier de lancement Codex sont chargées par le
@@ -119,8 +162,8 @@ distincts, les mêmes fichiers initiaux et les mêmes modèle/effort. L’ordre 
 routes alterne. Elle conserve les artefacts, le temps et la consommation
 annoncée par le CLI ; des vérifications indépendantes évaluent le code et la
 fidélité aux sources. Elle respecte le contrôle de quotas existant et ne lance
-aucun workflow enregistré. Le contrat JSON de continuité constitue une
-différence volontaire de la route Cortex.
+aucun workflow enregistré. La route Cortex utilise le profil courant et son
+interprétation séparée ; les consommations de tous ses appels sont conservées.
 
 `--task code` ou `--task evidence` permet de répéter un scénario isolément.
 Le contrat d’entrée du scénario de code précise le champ booléen `cancelled`
