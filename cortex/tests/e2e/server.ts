@@ -88,7 +88,7 @@ const simulatedProvider: AgentProvider = {
         nextAgentIds: [], isMultiSelectionAllowed: true, isMultiSelectionThreaded: false, notes: null }) };
     }
     if (prompt.includes("E2E_AUTOMATION_NEGOTIATE") || (prompt.includes("E2E_BLOCKED") && prompt.includes("Demander les informations sans offre"))) {
-      const wake = prompt.includes("Cortex durable workflow wake");
+      const wake = prompt.includes("Cortex durable workflow wake") || prompt.includes("Événement reçu :");
       const next = (options.outputSchema?.properties as any)?.nextAgentIds.items.enum ?? [];
       return { sessionId: options.sessionId ?? randomUUID(), answer: JSON.stringify({ status: wake ? "success" : "waiting",
         items: [{ content: wake ? (prompt.includes("CONFIRMED") ? "Accord confirmé." : "Négociation terminée sans accord.") : "Premier mail envoyé. Attente de la réponse." }],
@@ -96,7 +96,7 @@ const simulatedProvider: AgentProvider = {
         ...(!wake ? { wait: { reason: "Réponse de l’agence immobilière", eventKey: "agency-reply", wakeAfterSeconds: null,
           deadlineAt: new Date(Date.now() + 7200000).toISOString(), state: "Premier mail déjà envoyé. Ne pas le renvoyer." } } : {}) }) };
     }
-    if (prompt.includes("E2E_DURABLE_WAIT") && !prompt.includes("Cortex durable workflow wake")) {
+    if (prompt.includes("E2E_DURABLE_WAIT") && !prompt.includes("Cortex durable workflow wake") && !prompt.includes("Événement reçu :")) {
       return { sessionId: options.sessionId ?? randomUUID(), answer: JSON.stringify({ status: "waiting",
         items: [{ content: "Demande envoyée à l’hôtel. Confirmation attendue." }], nextAgentIds: [],
         isMultiSelectionAllowed: null, isMultiSelectionThreaded: null, notes: null,

@@ -11,6 +11,7 @@ import { ValidationError } from "../../error/ValidationError.ts";
 
 const execute = promisify(execFile);
 export interface ContinuityRecord {
+  missionPromptVersion?: 2;
   epoch?: number;
   fingerprint: string; sessionId: string; status: string; updatedAt: string;
   auditRunId?: string; continuity: AgentContinuity;
@@ -111,7 +112,8 @@ export class ExecutionQualityService {
   async readMemory(projectId: string, agentId: string): Promise<ContinuityRecord | null> {
     const epoch = await this.epoch(projectId);
     const value = await this.memory(projectId, agentId).read<Partial<ContinuityRecord>>();
-    return (value.epoch ?? 0) === epoch && typeof value.fingerprint === "string" && typeof value.sessionId === "string" &&
+    return (value.missionPromptVersion === undefined || value.missionPromptVersion === 2) &&
+      (value.epoch ?? 0) === epoch && typeof value.fingerprint === "string" && typeof value.sessionId === "string" &&
       typeof value.updatedAt === "string" && typeof value.status === "string" && isAgentContinuity(value.continuity)
       ? value as ContinuityRecord : null;
   }

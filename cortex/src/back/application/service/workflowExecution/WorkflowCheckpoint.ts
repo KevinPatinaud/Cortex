@@ -19,6 +19,7 @@ export interface WorkflowCheckpointState {
       sessionId: string;
       workingDirectory?: string;
       responseMode?: "separate" | "integrated";
+      missionPromptVersion?: 2;
       pendingInterpretation?: ExecutionProcessing;
       wait?: WorkflowWaitState;
       conversation: Array<{ role: "user" | "agent" | "event"; content: string }>;
@@ -54,6 +55,7 @@ export function readWorkflowCheckpoint(value: unknown): WorkflowCheckpointState 
           typeof thread.sessionId !== "string" || !thread.sessionId ||
           (thread.workingDirectory !== undefined && typeof thread.workingDirectory !== "string") ||
           (thread.responseMode !== undefined && !["separate", "integrated"].includes(String(thread.responseMode))) ||
+          (thread.missionPromptVersion !== undefined && thread.missionPromptVersion !== 2) ||
           (thread.pendingInterpretation !== undefined && !isExecutionProcessing(thread.pendingInterpretation)) ||
           (thread.wait !== undefined && !isWorkflowWaitState(thread.wait)) ||
           !Array.isArray(thread.conversation) || !thread.conversation.every((message) =>

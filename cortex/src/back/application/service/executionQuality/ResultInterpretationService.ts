@@ -10,6 +10,7 @@ export interface InterpretationInput {
   mission: string;
   result: string;
   completedAt: string;
+  timeContext?: string;
   routingInstructions: string;
   nextAgents: Array<{ id: string; name: string; description: string }>;
   criteria: string[];

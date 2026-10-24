@@ -15,11 +15,14 @@ dans **Historique → Afficher le détail technique**.
 
 ## Mission puis interprétation
 
-Codex utilise par défaut deux passes. La mission reçoit son prompt métier,
-ses entrées, le contexte du dépôt et ses critères de réussite. Les consignes
-techniques de format JSON, de routage et de mémoire Cortex ne sont plus ajoutées
-à cette passe. Les règles natives du moteur et les instructions AGENTS.md du
-dépôt continuent de s’appliquer.
+Codex utilise par défaut deux passes. La mission reçoit uniquement les consignes
+rédigées dans le projet et les données utiles : paramètres, précisions utilisateur,
+résultats précédents, dossier ou événement reçu. Sans contexte supplémentaire,
+le texte transmis est exactement le prompt de l’agent, espaces compris. Cortex
+n’ajoute aucune consigne de formatage, routage, mémoire, sélection aléatoire,
+critères d’acceptation, délégation, attente ou fuseau horaire à cette passe.
+Les règles natives du moteur et les instructions AGENTS.md du dépôt restent
+applicables ; les contraintes ne sont pas déplacées dans une instruction cachée.
 
 Une seconde session éphémère interprète le résultat final, avec le même modèle
 et l’effort `low` par défaut. Dans le profil du projet, **Traitement du résultat
@@ -28,8 +31,8 @@ modèle et l’effort d’interprétation sont configurables à partir du catalo
 du serveur. L’effort choisi doit être disponible pour ce modèle. Les autres
 moteurs conservent le mode intégré.
 
-L’interprète reçoit uniquement la mission, le résultat final, les critères et
-les successeurs autorisés. Il travaille dans un dossier temporaire vide en
+L’interprète reçoit la mission, le résultat final, les critères, le contexte
+horaire technique et les successeurs autorisés. Il travaille dans un dossier temporaire vide en
 lecture seule, sans session métier, shell, recherche web, applications, MCP
 configurés ni délégation. Si la configuration du moteur ne peut pas être lue
 pour désactiver ces outils, l’interprétation reste en échec avec le résultat
@@ -50,6 +53,12 @@ Le dépôt et la mission ne peuvent pas être changés silencieusement pendant
 cette reprise. Une réinitialisation explicite permet de recommencer la mission.
 Le contrôle de quota s’applique aux deux appels ; aucune limite de durée métier
 n’est ajoutée et l’arrêt manuel reste disponible.
+
+Les sessions natives antérieures à ce nettoyage ne sont pas réutilisées pour
+une nouvelle mission, pour éviter de réintroduire leurs anciennes consignes.
+Leurs résultats sont transmis comme données historiques. Une interprétation
+déjà en attente reprend son résultat enregistré sans réexécuter la mission.
+L’audit historique conserve fidèlement les prompts effectivement envoyés.
 
 La deuxième passe ajoute du temps et des tokens, même avec un effort réduit.
 La séparation allège les consignes de la mission ; elle ne démontre pas à elle
@@ -129,11 +138,11 @@ coordonne un processus serveur Cortex ; il ne remplace pas les verrous de
 déploiement pour des interventions extérieures.
 
 La délégation reste désactivée par défaut. L’option bornée active le mécanisme
-natif Codex avec deux sous-agents simultanés maximum. Les consignes limitent
-leur rôle à la recherche et la revue, sans écriture, publication, contact
-externe ou nouvelle délégation. La concurrence est bornée par le moteur ; les
-restrictions de rôle sont des consignes, pas un sandbox distinct garanti pour
-chaque sous-agent. Cortex garde la maîtrise des étapes métier suivantes.
+natif Codex avec deux sous-agents simultanés maximum. En mode séparé, Cortex
+n’ajoute pas de consignes de rôle aux assistants : leur mission dépend des
+instructions rédigées par l’utilisateur. Le mode intégré historique conserve
+ses consignes de recherche et revue. La concurrence est bornée par le moteur,
+sans sandbox distinct garanti pour chaque sous-agent.
 
 L’audit distingue les compétences déclarées par le moteur, les serveurs MCP
 déclarés et les capacités observées dans ses événements. L’absence d’un nom

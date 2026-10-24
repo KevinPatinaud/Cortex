@@ -17,6 +17,7 @@ import { SqliteWorkflowAuditRepository } from "../../infrastructure/audit/Sqlite
 import { DEFAULT_EXECUTION_POLICY } from "../../../shared/ExecutionQuality.ts";
 import { parseAgentResponse } from "../../../shared/AgentResponse.ts";
 import { CodexQuotaService } from "../service/iaService/CodexQuotaService.ts";
+import type { WorkflowCheckpointState } from "../service/workflowExecution/WorkflowCheckpoint.ts";
 
 function result(options: AgentExecutionOptions, remainingWork: string[] = []): AgentExecutionResult {
   const next = ((options.outputSchema?.properties as Record<string, any>)?.nextAgentIds?.items?.enum ?? []) as string[];
@@ -24,7 +25,7 @@ function result(options: AgentExecutionOptions, remainingWork: string[] = []): A
     nextAgentIds: next, isMultiSelectionAllowed: false, isMultiSelectionThreaded: false, wait: null, notes: null,
     continuity: { summary: "Decision retained", decisions: ["Preserve the original"], evidence: ["EVIDENCE_MARKER report.md:4"], remainingWork }, acceptance: [] }) };
 }
-async function fixture(t: test.TestContext, ask: (prompt: string, options: AgentExecutionOptions) => Promise<AgentExecutionResult>, count = 1) {
+async function fixture(t: test.TestContext, ask: (prompt: string, options: AgentExecutionOptions) => Promise<AgentExecutionResult>, count = 1, authoredPrompt?: string) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-execution-quality-"));
   const configurationFile = path.join(directory, "config.json");
   const catalog = new CodexModelService(directory, async () => ({ available: true, cliVersion: "0.163-test",
@@ -42,7 +43,7 @@ async function fixture(t: test.TestContext, ask: (prompt: string, options: Agent
     } }], new AgentConfigurationService(configurationFile), undefined, undefined, catalog);
   const projects = new ProjectService(configurationFile, path.join(directory, "projects"));
   const { project } = await projects.createProject({ parentDirectory: directory, name: "Quality", engine: "codex", instructions: "UNIQUE_SHARED_RULE",
-    agents: Array.from({ length: count }, (_, i) => ({ name: `Worker ${i}`, description: `Role ${i}`, prompt: `TASK_${i}` })) });
+    agents: Array.from({ length: count }, (_, i) => ({ name: `Worker ${i}`, description: `Role ${i}`, prompt: authoredPrompt ?? `TASK_${i}` })) });
   const storage = new SqliteWorkflowAuditRepository(path.join(directory, "audit.sqlite"));
   t.after(async () => { storage.close(); await rm(directory, { recursive: true, force: true }); });
   const quality = new ExecutionQualityService(configurationFile, path.join(directory, ".quality-state"));
@@ -55,7 +56,7 @@ test("pins inherited runtime settings, persists the actual profile and deduplica
   const f = await fixture(t, async (prompt, options) => {
     assert.equal(options.model, "server-model"); assert.equal(options.reasoningEffort, "xhigh");
     assert.equal(options.workingDirectory, f.project.directoryPath);
-    assert.ok(!prompt.includes("UNIQUE_SHARED_RULE")); assert.match(prompt, /TASK_0/);
+    assert.equal(prompt, "TASK_0");
     assert.ok(!prompt.includes("JSON Schema:")); assert.equal(options.outputSchema, undefined);
     return result(options);
   });
@@ -110,8 +111,8 @@ test("switching the working repository starts a fresh native session and carries
     if (calls++) {
       assert.equal(options.sessionId, undefined);
       assert.equal(options.workingDirectory, f.directory);
-      assert.match(prompt, /different working directory/);
-      assert.match(prompt, /Decision retained/);
+      assert.match(prompt, /Résultat précédent/);
+      assert.match(prompt, /Useful delivery/);
       assert.equal(prompt.split("UNIQUE_SHARED_RULE").length - 1, 1);
     }
     return result(options, ["Finish current task"]);
@@ -123,7 +124,7 @@ test("switching the working repository starts a fresh native session and carries
   assert.equal(calls, 2);
 });
 
-test("hands evidence and decisions to successors while preserving source verification", async t => {
+test("hands evidence and decisions to successors as data without adding Cortex directives", async t => {
   const prompts: string[] = [];
   const f = await fixture(t, async (prompt, options) => {
     if (options.purpose === "interpretation") return result(options);
@@ -134,7 +135,8 @@ test("hands evidence and decisions to successors while preserving source verific
   await f.useCase.runWorkflow(f.project.id);
   assert.equal(prompts.length, 2);
   assert.match(prompts[1], /EVIDENCE_MARKER/); assert.match(prompts[1], /Preserve the original/);
-  assert.match(prompts[1], /Verify their evidence against the relevant sources/);
+  assert.ok(!prompts[1].includes("Verify their evidence against the relevant sources"));
+  assert.ok(!prompts[1].includes("Cortex time context"));
 });
 
 test("a natural mission runs without the Cortex contract; an isolated low-effort pass adds metadata without rewriting the deliverable", async t => {
@@ -143,7 +145,7 @@ test("a natural mission runs without the Cortex contract; an isolated low-effort
   const f = await fixture(t, async (prompt, options) => {
     calls.push(options);
     if (options.purpose === "mission") {
-      assert.match(prompt, /TASK_0/); assert.ok(!prompt.includes("nextAgentIds"));
+      assert.equal(prompt, "TASK_0");
       assert.equal(options.outputSchema, undefined);
       return { sessionId: "business-session", answer: original };
     }
@@ -162,6 +164,47 @@ test("a natural mission runs without the Cortex contract; an isolated low-effort
   assert.equal(execution.processing?.interpretation.sessionId, "formatter-session");
   assert.equal(execution.processing?.interpretation.profile?.reasoningEffort, "low");
   assert.equal(parseAgentResponse(execution.response!)?.items[0].content, original);
+});
+
+test("the mission prompt is byte-for-byte authored text despite Cortex criteria, delegation and random-choice settings", async t => {
+  const authored = "Choisis au hasard un sujet puis réalise la mission.\nRespecte ma formulation.";
+  const f = await fixture(t, async (prompt, options) => {
+    assert.equal(prompt, authored);
+    assert.equal(options.purpose, "mission"); assert.equal(options.delegation, "bounded");
+    assert.equal(options.outputSchema, undefined);
+    return result(options);
+  }, 1, authored);
+  await f.quality.savePolicy(f.project.id, { ...DEFAULT_EXECUTION_POLICY, delegation: "bounded", acceptanceCriteria: ["CORTEX_CRITERION_ONLY"] });
+  await f.useCase.runWorkflow(f.project.id);
+  const run = f.storage.listRuns(f.project.id, 10, 0).items[0];
+  const execution = f.storage.getRun(f.project.id, run.id)!.executions[0];
+  assert.equal(execution.prompt, authored); assert.equal(execution.processing?.mission.prompt, authored);
+});
+
+for (const scope of ["agent", "workflow"] as const) test(`${scope}: old native sessions are replaced without losing their result data`, async t => {
+  let calls = 0;
+  const f = await fixture(t, async (prompt, options) => {
+    if (++calls === 2) {
+      assert.equal(options.sessionId, undefined);
+      assert.match(prompt, /Useful delivery|Decision retained/);
+      assert.ok(!prompt.includes("Cortex time context")); assert.ok(!prompt.includes("Execution boundary"));
+    }
+    return result(options, ["Finish current task"]);
+  });
+  const agent = (await f.useCase.loadProject(f.project.id)).agents[0];
+  await f.useCase.runAgent(f.project.id, { agentId: agent.id });
+  const checkpoint = f.storage.getCheckpoint(f.project.id)!;
+  const state = checkpoint.state as WorkflowCheckpointState;
+  for (const saved of state.agents) for (const thread of saved.threads) delete thread.missionPromptVersion;
+  f.storage.saveCheckpoint(f.project.id, checkpoint.fingerprint, state);
+  const memory = (await f.quality.readMemory(f.project.id, agent.id))!;
+  delete memory.missionPromptVersion;
+  await f.quality.saveMemory(f.project.id, agent.id, memory);
+  const restarted = f.restart();
+  await restarted.loadProject(f.project.id);
+  if (scope === "agent") await restarted.runAgent(f.project.id, { agentId: agent.id });
+  else await restarted.runWorkflow(f.project.id);
+  assert.equal(calls, 2);
 });
 
 test("a failed formatter survives restart and a normal run retries only interpretation", async t => {

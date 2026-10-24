@@ -39,10 +39,15 @@ test("separate execution shows the untouched mission, its interpreter and both p
   const content = await (await request.get(base)).json();
   expect((await request.put(base, { data: { name, engine: "codex", instructions: content.instructions.content,
     agents: content.agents.map((a: any) => ({ ...a, prompt: "E2E_TWO_PASS" })) } })).ok()).toBe(true);
+  const settings = await (await request.get(`${base}/execution-policy`)).json();
+  expect((await request.put(`${base}/execution-policy`, { data: { ...settings.policy, delegation: "bounded", acceptanceCriteria: ["INTERPRETER_ONLY_CRITERION"] } })).ok()).toBe(true);
   expect((await request.post(`${base}/workflow/run`, { data: {} })).ok()).toBe(true);
   const runs = await (await request.get(`${base}/audit/runs?scope=workflow`)).json();
   const detail = await (await request.get(`${base}/audit/runs/${runs.items[0].id}`)).json();
-  expect(detail.executions[0].prompt).not.toContain("nextAgentIds");
+  expect(detail.executions[0].prompt).toBe("E2E_TWO_PASS");
+  expect(detail.executions[0].processing.mission.prompt).toBe("E2E_TWO_PASS");
+  expect(detail.executions[0].processing.interpretation.prompt).toContain("INTERPRETER_ONLY_CRITERION");
+  expect(detail.executions[0].processing.interpretation.prompt).toContain("Cortex time context");
   expect(detail.executions[0].processing.interpretation).toMatchObject({ status: "succeeded", profile: { reasoningEffort: "low", delegation: "none" } });
   expect(detail.executions[0].sessionId).not.toBe(detail.executions[0].processing.interpretation.sessionId);
   await page.goto(`/?project=${project.id}&view=audit`);
