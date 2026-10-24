@@ -16,6 +16,7 @@ export interface WorkflowCheckpointState {
     threads: Array<{
       id: string;
       sessionId: string;
+      workingDirectory?: string;
       wait?: WorkflowWaitState;
       conversation: Array<{ role: "user" | "agent" | "event"; content: string }>;
       upstreamItems: Array<{ agentId: string; agentName: string; content: string; continuity?: AgentContinuity }>;
@@ -48,6 +49,7 @@ export function readWorkflowCheckpoint(value: unknown): WorkflowCheckpointState 
     for (const thread of agent.threads) {
       if (!isRecord(thread) || typeof thread.id !== "string" || threadIds.has(thread.id) ||
           typeof thread.sessionId !== "string" || !thread.sessionId ||
+          (thread.workingDirectory !== undefined && typeof thread.workingDirectory !== "string") ||
           (thread.wait !== undefined && !isWorkflowWaitState(thread.wait)) ||
           !Array.isArray(thread.conversation) || !thread.conversation.every((message) =>
             isRecord(message) && (message.role === "user" || message.role === "agent" || message.role === "event") && typeof message.content === "string") ||

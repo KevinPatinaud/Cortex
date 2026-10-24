@@ -101,6 +101,25 @@ test("a missing prerequisite prevents inference and the failed attempt remains i
   assert.equal(calls, 0); assert.equal(f.storage.listRuns(f.project.id, 10, 0).items[0].status, "failed");
 });
 
+test("switching the working repository starts a fresh native session and carries forward the unfinished task", async t => {
+  let calls = 0;
+  const f = await fixture(t, async (prompt, options) => {
+    if (calls++) {
+      assert.equal(options.sessionId, undefined);
+      assert.equal(options.workingDirectory, f.directory);
+      assert.match(prompt, /different working directory/);
+      assert.match(prompt, /Decision retained/);
+      assert.equal(prompt.split("UNIQUE_SHARED_RULE").length - 1, 1);
+    }
+    return result(options, ["Finish current task"]);
+  });
+  const project = await f.useCase.loadProject(f.project.id);
+  await f.useCase.runAgent(f.project.id, { agentId: project.agents[0].id });
+  await f.quality.savePolicy(f.project.id, { ...DEFAULT_EXECUTION_POLICY, workspaceDirectory: f.directory });
+  await f.useCase.runAgent(f.project.id, { agentId: project.agents[0].id });
+  assert.equal(calls, 2);
+});
+
 test("hands evidence and decisions to successors while preserving source verification", async t => {
   const prompts: string[] = [];
   const f = await fixture(t, async (prompt, options) => { prompts.push(prompt); return result(options); }, 2);

@@ -37,6 +37,10 @@ invalide la continuité avant tout nouveau passage. Les états natifs de workflo
 restent repris par le mécanisme de checkpoint existant. Les dossiers isolés
 n’utilisent ni ne modifient cette mémoire commune.
 
+Un changement de dépôt ouvre une nouvelle session native et transmet le dernier
+résultat comme contexte historique. Une session liée à l’ancien dossier n’est
+pas présentée comme travaillant dans le nouveau dépôt.
+
 La continuité est de la donnée privée du projet, pas une mémoire globale entre
 clients ou dossiers. Elle ne remplace pas les rapports détaillés et leurs
 sources. Les limites de taille sont validées avant stockage et dans le schéma
