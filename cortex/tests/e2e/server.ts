@@ -4,6 +4,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import { AgentService } from "../../src/back/application/service/iaService/AgentService.ts";
+import { ExecutionQualityService } from "../../src/back/application/service/executionQuality/ExecutionQualityService.ts";
 import { AgentConfigurationService } from "../../src/back/application/service/iaService/AgentConfigurationService.ts";
 import { CodexQuotaService } from "../../src/back/application/service/iaService/CodexQuotaService.ts";
 import { CodexModelService } from "../../src/back/application/service/iaService/CodexModelService.ts";
@@ -98,13 +99,17 @@ const simulatedProvider: AgentProvider = {
     options.onProgress?.("Analyse des informations en cours…");
     await delay(prompt.includes("E2E_SLOW") ? 8_000 : 150, undefined, { signal: options.signal });
     const responseSchema = prompt.split("JSON Schema:\n").at(-1);
-    const nextAgentIds: string[] = responseSchema && responseSchema !== prompt
+    const nextAgentIds: string[] = options.outputSchema
+      ? (options.outputSchema.properties as any).nextAgentIds.items.enum ?? []
+      : responseSchema && responseSchema !== prompt
       ? JSON.parse(responseSchema).properties.nextAgentIds.items.enum ?? []
       : [];
     return {
       sessionId: options.sessionId ?? randomUUID(),
       answer: JSON.stringify({ status: "success", items: [{ content: "Résultat vérifié du moteur simulé." }],
-        isMultiSelectionAllowed: false, isMultiSelectionThreaded: null, nextAgentIds, notes: null })
+        isMultiSelectionAllowed: false, isMultiSelectionThreaded: null, nextAgentIds, notes: null,
+        continuity: { summary: "Simulation contrôlée", decisions: [], evidence: ["Moteur simulé"], remainingWork: prompt.includes("E2E_PARTIAL") ? ["Vérifier le rendu mobile"] : [] },
+        acceptance: (JSON.parse(prompt.match(/Acceptance criteria for this task: (\[[^\n]*\])/i)?.[1] ?? "[]") as string[]).map(criterion => ({ criterion, passed: true, evidence: "Preuve simulée" })) })
     };
   }
 };
@@ -122,7 +127,8 @@ const codexQuota = new CodexQuotaService(path.join(directory, "config.json"), as
     secondary: { usedPercent: quotaUsed.weekly, windowDurationMins: 10080 }
   } } };
 });
-const agentUseCase = new AgentUseCase(agentService, projectUseCase, audit, {}, undefined, codexQuota);
+const agentUseCase = new AgentUseCase(agentService, projectUseCase, audit, {}, undefined, codexQuota, undefined,
+  new ExecutionQualityService(path.join(directory, "config.json"), path.join(directory, "quality")));
 const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => new Date(), audit);
 const waitScheduler = new WorkflowWaitScheduler(agentUseCase, 100);
 const automationStore = new SqliteWorkflowAutomationRepository(path.join(directory, "automation.sqlite"));

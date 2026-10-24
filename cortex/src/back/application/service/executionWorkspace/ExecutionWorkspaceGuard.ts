@@ -66,11 +66,26 @@ export class ExecutionWorkspaceGuard {
   }
 
   private async workspace(projectId: string): Promise<ExecutionWorkspace | undefined> {
-    const configuration = await this.configuration.read<{ executionWorkspaces?: ExecutionWorkspace[] }>();
+    const configuration = await this.configuration.read<{ executionWorkspaces?: ExecutionWorkspace[];
+      executionPolicies?: Record<string, { workspaceDirectory?: string }> }>();
     const matches = (configuration.executionWorkspaces ?? []).filter((item) => item.projectIds.includes(projectId));
     if (matches.length > 1) throw new Error(`Multiple execution workspaces configured for ${projectId}.`);
-    if (!matches[0]) return undefined;
-    return { ...matches[0], directory: await realpath(matches[0].directory) };
+    const selected = configuration.executionPolicies?.[projectId]?.workspaceDirectory;
+    if (matches[0]) {
+      const directory = await realpath(matches[0].directory);
+      if (selected && this.key({ ...matches[0], directory: await realpath(selected) }) !== this.key({ ...matches[0], directory })) {
+        throw new Error("Le dépôt du profil doit correspondre au dépôt partagé configuré pour ce projet.");
+      }
+      return { ...matches[0], directory };
+    }
+    if (!selected) return undefined;
+    const directory = await realpath(selected);
+    const projectIds = (await Promise.all(Object.entries(configuration.executionPolicies ?? {}).map(async ([id, policy]) => {
+      if (!policy.workspaceDirectory) return [];
+      const canonical = await realpath(policy.workspaceDirectory).catch(() => null);
+      return canonical && this.key({ directory: canonical } as ExecutionWorkspace) === this.key({ directory } as ExecutionWorkspace) ? [id] : [];
+    }))).flat();
+    return { id: `profile-${createHash("sha256").update(directory).digest("hex").slice(0, 12)}`, directory, projectIds };
   }
 
   private key(workspace: ExecutionWorkspace): string {

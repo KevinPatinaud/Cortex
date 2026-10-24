@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Bot, ChevronDown, Clock3, GitBranch, LoaderCircle, Play, RotateCcw, Send } from "lucide-react";
 import { runAgent, type AgentConversationMessage, type AgentConversationThread, type AgentDefinition, type UpstreamAgentResult, type WorkflowParameterValues } from "../../../services/agentApi.ts";
 import { parseAgentResponse, type AgentResponsePayload } from "../../../../shared/AgentResponse.ts";
+import { ExecutionAssessmentView } from "./ExecutionAssessmentView.tsx";
 import { useTranslation } from "../../../i18n.tsx";
 import { findLastAgentResponses, getAgentConversationThreads } from "./workflowState.ts";
 import { HandoffToggle } from "./HandoffToggle.tsx";
@@ -77,6 +78,7 @@ function ConversationMessageContent({
 
   return (
     <div className="agent-card__conversation-response-content">
+      <ExecutionAssessmentView assessment={response.assessment} />
       {response.items.length === 1 ? (
         <div className="agent-card__conversation-response">
           <AgentResultContent content={response.items[0].content} />

@@ -1,4 +1,5 @@
 import { isWorkflowInstanceState, isWorkflowWaitState, type WorkflowInstanceState, type WorkflowWaitState } from "../../../../shared/WorkflowWait.ts";
+import { isAgentContinuity, type AgentContinuity } from "../../../../shared/ExecutionQuality.ts";
 export interface WorkflowCheckpointState {
   instance?: WorkflowInstanceState;
   parameterValues: Record<string, string>;
@@ -17,7 +18,7 @@ export interface WorkflowCheckpointState {
       sessionId: string;
       wait?: WorkflowWaitState;
       conversation: Array<{ role: "user" | "agent" | "event"; content: string }>;
-      upstreamItems: Array<{ agentId: string; agentName: string; content: string }>;
+      upstreamItems: Array<{ agentId: string; agentName: string; content: string; continuity?: AgentContinuity }>;
     }>;
   }>;
 }
@@ -51,7 +52,8 @@ export function readWorkflowCheckpoint(value: unknown): WorkflowCheckpointState 
           !Array.isArray(thread.conversation) || !thread.conversation.every((message) =>
             isRecord(message) && (message.role === "user" || message.role === "agent" || message.role === "event") && typeof message.content === "string") ||
           !Array.isArray(thread.upstreamItems) || !thread.upstreamItems.every((item) =>
-            isRecord(item) && typeof item.agentId === "string" && typeof item.agentName === "string" && typeof item.content === "string")) return null;
+            isRecord(item) && typeof item.agentId === "string" && typeof item.agentName === "string" && typeof item.content === "string" &&
+            (item.continuity === undefined || isAgentContinuity(item.continuity)))) return null;
       threadIds.add(thread.id);
     }
   }

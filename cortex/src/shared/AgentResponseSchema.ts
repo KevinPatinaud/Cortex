@@ -1,5 +1,5 @@
 /** The prompt and the provider must use the same wire format. */
-export function createAgentResponseSchema(nextAgentIds: readonly string[], dossierOutput = false): Record<string, unknown> {
+export function createAgentResponseSchema(nextAgentIds: readonly string[], dossierOutput = false, qualityContract = false): Record<string, unknown> {
   const content = dossierOutput
     ? {
       type: "object", additionalProperties: false, required: ["key", "title", "payload"],
@@ -12,8 +12,20 @@ export function createAgentResponseSchema(nextAgentIds: readonly string[], dossi
     : { type: "string" };
   return {
     type: "object", additionalProperties: false,
-    required: ["status", "items", "isMultiSelectionAllowed", "isMultiSelectionThreaded", "nextAgentIds", "wait", "notes"],
+    required: ["status", "items", "isMultiSelectionAllowed", "isMultiSelectionThreaded", "nextAgentIds", "wait", "notes", ...(qualityContract ? ["continuity", "acceptance"] : [])],
     properties: {
+      ...(qualityContract ? {
+        continuity: { type: "object", additionalProperties: false,
+          required: ["summary", "decisions", "evidence", "remainingWork"], properties: {
+            summary: { type: "string", maxLength: 2000 },
+            ...Object.fromEntries(["decisions", "evidence", "remainingWork"].map(key => [key,
+              { type: "array", maxItems: 12, items: { type: "string", maxLength: 1000 } }]))
+          } },
+        acceptance: { type: "array", maxItems: 30, items: { type: "object", additionalProperties: false,
+          required: ["criterion", "passed", "evidence"], properties: {
+            criterion: { type: "string", maxLength: 1000 }, passed: { type: "boolean" }, evidence: { type: "string", maxLength: 2000 }
+          } } }
+      } : {}),
       status: { type: "string", enum: ["success", "partial", "blocked", "error", "waiting"] },
       items: { type: "array", items: {
         type: "object", additionalProperties: false, required: ["content"], properties: { content }

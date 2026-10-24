@@ -30,6 +30,31 @@ function waitingCheckpoint() {
     }] }] };
 }
 
+test("projects selecting the same execution repository share a lease even without an explicit workspace mapping", async () => {
+  const f = await fixture();
+  try {
+    await writeFile(f.configuration, JSON.stringify({ projects: [{ id: "a" }, { id: "b" }], executionPolicies: {
+      a: { workspaceDirectory: f.directory }, b: { workspaceDirectory: f.directory }
+    } }));
+    const guard = f.guard();
+    await guard.run("a", async () => {
+      await guard.markStarted();
+      await assert.rejects(guard.run("b", async () => assert.fail("concurrent writer")), ExecutionWorkspaceBusyError);
+    });
+    await guard.run("b", async () => { await guard.markStarted(); });
+  } finally { await f.close(); }
+});
+
+test("a profile cannot bypass an existing shared repository's checks by selecting another directory", async () => {
+  const f = await fixture();
+  try {
+    const c = JSON.parse(await readFile(f.configuration, "utf8"));
+    c.executionPolicies = { a: { workspaceDirectory: path.dirname(f.directory) } };
+    await writeFile(f.configuration, JSON.stringify(c));
+    await assert.rejects(f.guard().run("a", async () => assert.fail("wrong checkout")), /doit correspondre/);
+  } finally { await f.close(); }
+});
+
 test("a published WAIT relinquishes the resource while its business checkpoint remains waiting", async () => {
   const checkpoint = waitingCheckpoint();
   const f = await fixture(async () => {}, () => checkpoint);

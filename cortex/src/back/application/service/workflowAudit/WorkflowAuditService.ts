@@ -9,6 +9,7 @@ import type {
 } from "../../../../shared/WorkflowAudit.ts";
 import type { AgentEngine } from "../iaService/AgentProvider.ts";
 import type { WorkflowEvent } from "../../../../shared/WorkflowWait.ts";
+import type { ExecutionProfile } from "../../../../shared/ExecutionQuality.ts";
 
 export interface WorkflowAuditSnapshot {
   engine: AgentEngine;
@@ -46,6 +47,7 @@ export interface StartWorkflowAuditExecutionInput {
 }
 
 export interface CompleteWorkflowAuditExecutionInput {
+  profile?: ExecutionProfile;
   response: string;
   nextAgentIds: string[] | null;
   sessionId?: string;
@@ -63,6 +65,7 @@ export interface WorkflowCheckpointRecord {
 }
 
 export interface WorkflowAuditRepository {
+  setExecutionProfile?(executionId: string, profile: ExecutionProfile): void;
   listCheckpointProjectIds(): string[];
   receiveWorkflowEvent(instanceId: string, event: WorkflowEvent): boolean;
   listWorkflowEvents(instanceId: string): WorkflowEvent[];
@@ -104,6 +107,7 @@ export interface WorkflowAuditRepository {
 
 export class WorkflowAuditService {
   constructor(private readonly repository: WorkflowAuditRepository, private readonly checkpointScope?: string) {}
+  setExecutionProfile(executionId: string, profile: ExecutionProfile): void { this.repository.setExecutionProfile?.(executionId, profile); }
 
   forInstance(instanceId: string): WorkflowAuditService {
     return new WorkflowAuditService(this.repository, `instance:${instanceId}`);

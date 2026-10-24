@@ -1,4 +1,5 @@
 
+import type { ExecutionProfile } from "../../../../shared/ExecutionQuality.ts";
 export type AgentEngine = "codex" | "claude" | "copilot";
 
 export interface AgentConfiguration {
@@ -12,6 +13,9 @@ export const DEFAULT_AGENT_CONFIGURATION: AgentConfiguration = {
 };
 
 export interface AgentExecutionOptions {
+  delegation?: "none" | "bounded";
+  onProfile?: (profile: ExecutionProfile) => void;
+  profile?: ExecutionProfile;
   signal?: AbortSignal;
   onProgress?: (progress: string) => void;
   configuration?: AgentConfiguration;
@@ -27,6 +31,7 @@ export interface AgentExecutionOptions {
 }
 
 export interface AgentExecutionResult {
+  profile?: ExecutionProfile;
   answer: string;
   sessionId?: string;
 }

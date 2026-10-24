@@ -49,6 +49,15 @@ test("désactive le multi-agent interne quand Cortex lance Codex", async () => {
   assert.equal(provider.capturedArgs[disableIndex + 1], "multi_agent");
 });
 
+test("enables bounded research/review only on explicit project policy", async () => {
+  const provider = new CapturingCodexAgentProvider(process.cwd());
+  await provider.ask("Review this task", { persistSession: true, delegation: "bounded" });
+  assert.equal(provider.capturedArgs[provider.capturedArgs.indexOf("--enable") + 1], "multi_agent");
+  assert.ok(provider.capturedArgs.includes("agents.max_threads=2"));
+  assert.ok(!provider.capturedArgs.includes("--disable"));
+  assert.equal(provider.capturedTimeout, undefined);
+});
+
 test("passes dynamically selected model identifiers and newer reasoning efforts directly to the deployed CLI", async () => {
   const provider = new CapturingCodexAgentProvider(process.cwd());
   await provider.ask("Execute", { model: "server-discovered-model", reasoningEffort: "ultra" });

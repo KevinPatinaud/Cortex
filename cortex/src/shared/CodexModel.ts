@@ -7,6 +7,9 @@ export interface CodexModel {
 }
 
 export interface CodexModelCatalog {
+  configuredReasoningEffort?: string | null;
+  availableSkills?: string[];
+  declaredMcpServers?: string[];
   available: boolean;
   cliVersion: string | null;
   defaultModel: string | null;

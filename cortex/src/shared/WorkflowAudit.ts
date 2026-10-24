@@ -1,3 +1,4 @@
+import type { ExecutionProfile } from "./ExecutionQuality.ts";
 export type WorkflowAuditTrigger = "manual" | "scheduled";
 export type WorkflowAuditRunScope = "workflow" | "agent";
 
@@ -42,6 +43,7 @@ export interface WorkflowAuditExecutionInput {
 }
 
 export interface WorkflowAuditAgentExecution {
+  profile?: ExecutionProfile;
   id: string;
   runId: string;
   agentId: string;

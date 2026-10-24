@@ -42,7 +42,8 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     // Cortex orchestrates workflow instances itself. Disabling Codex's
     // internal multi-agent mode prevents a business instruction that asks to
     // launch the next step from consuming Codex collaboration threads.
-    const args = ["exec", "--disable", "multi_agent"];
+    const args = ["exec", options.delegation === "bounded" ? "--enable" : "--disable", "multi_agent"];
+    if (options.delegation === "bounded") args.push("--config", "agents.max_threads=2");
 
     if (!configuration.autopilot) {
       args.push("--config", "sandbox_mode=\"read-only\"");
@@ -101,6 +102,7 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
         onProgress: createCodexProgress(options.onProgress)
       });
       const result = parseCodexJsonOutput(output, options.sessionId);
+      if (options.profile) result.profile = { ...options.profile, observedCapabilities: observedCapabilities(output) };
 
       if (!result.answer) {
         throw new Error("Codex did not return a response.");
@@ -115,6 +117,20 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
       if (schemaDirectory) await rm(schemaDirectory, { recursive: true, force: true });
     }
   }
+}
+
+function observedCapabilities(output: string): string[] {
+  const capabilities = new Set<string>();
+  for (const line of output.split(/\r?\n/)) {
+    try {
+      const event = JSON.parse(line);
+      const item = event.item;
+      if (event.type === "item.completed" && item && ["command_execution", "web_search", "mcp_tool_call", "file_change", "collab_tool_call"].includes(item.type)) {
+        capabilities.add(item.type);
+      }
+    } catch { /* Non-JSON diagnostics are not capabilities. */ }
+  }
+  return [...capabilities].sort();
 }
 
 function parseCodexJsonOutput(

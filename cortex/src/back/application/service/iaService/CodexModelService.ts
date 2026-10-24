@@ -5,7 +5,20 @@ export class CodexModelService {
   private readonly pending = new Map<string, Promise<CodexModelCatalog>>();
 
   constructor(private readonly workingDirectory: string,
-    private readonly read: (directory: string) => Promise<CodexModelCatalog> = directory => withCodexAppServer(directory, readCodexModelCatalog)) {}
+    private readonly read: (directory: string) => Promise<CodexModelCatalog> = directory => withCodexAppServer(directory, async session => {
+      const catalog = await readCodexModelCatalog(session);
+      try {
+        const result = record(await session.request("skills/list", { cwds: [directory], forceReload: false }));
+        if (Array.isArray(result.data)) catalog.availableSkills = [...new Set(result.data.flatMap(entry => {
+          const skills = record(entry).skills;
+          return Array.isArray(skills) ? skills.flatMap(value => {
+            const skill = record(value), name = string(skill.name);
+            return name && skill.enabled !== false ? [name] : [];
+          }) : [];
+        }))].sort();
+      } catch { /* Discovery is optional on older CLIs; absence is not proof that tools are unavailable. */ }
+      return catalog;
+    })) {}
 
   async getCatalog(directory = this.workingDirectory): Promise<CodexModelCatalog> {
     let request = this.pending.get(directory);
@@ -46,11 +59,18 @@ export async function readCodexModelCatalog(session: CodexAppServerSession): Pro
   if (!models.size) throw new Error("Codex returned no selectable models.");
   // The configured default can differ from the catalog's recommended default.
   let configuredModel: string | null = null;
-  try { configuredModel = string(record(record(await session.request("config/read", { includeLayers: false })).config).model); }
+  let configuredReasoningEffort: string | null = null;
+  let declaredMcpServers: string[] = [];
+  try {
+    const configuration = record(record(await session.request("config/read", { includeLayers: false })).config);
+    configuredModel = string(configuration.model);
+    configuredReasoningEffort = string(configuration.model_reasoning_effort);
+    declaredMcpServers = Object.keys(record(configuration.mcp_servers));
+  }
   catch { /* Older CLIs can still expose their picker catalog without config/read. */ }
   const initialization = record(session.initialization);
   const cliVersion = string(record(initialization.serverInfo).version) ?? string(initialization.userAgent)?.match(/^[^/]+\/(\d[^\s]*)/)?.[1] ?? null;
-  return { available: true, cliVersion,
+  return { available: true, cliVersion, configuredReasoningEffort, declaredMcpServers,
     defaultModel: configuredModel ?? [...models.values()].find(model => model.isDefault)?.model ?? null,
     models: [...models.values()], checkedAt: new Date().toISOString(), error: null };
 }

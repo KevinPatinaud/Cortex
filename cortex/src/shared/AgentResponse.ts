@@ -1,8 +1,12 @@
 import { isWorkflowWaitRequest, type WorkflowWaitRequest } from "./WorkflowWait.ts";
 import { parseWorkflowDispatchItem } from "./WorkflowAutomation.ts";
+import { isAcceptanceEvidence, isAgentContinuity, isExecutionAssessment, type AgentContinuity, type AcceptanceEvidence, type ExecutionAssessment } from "./ExecutionQuality.ts";
 export type AgentResponseStatus = "success" | "partial" | "blocked" | "error" | "waiting";
 
 export interface AgentResponsePayload {
+  continuity?: AgentContinuity;
+  acceptance?: AcceptanceEvidence[];
+  assessment?: ExecutionAssessment;
   status: AgentResponseStatus;
   items: Array<{ content: string }>;
   isMultiSelectionAllowed: boolean | null;
@@ -21,6 +25,8 @@ export function parseAgentResponse(
 
     if (
       !isRecord(parsedContent) ||
+      (parsedContent.continuity !== undefined && !isAgentContinuity(parsedContent.continuity)) ||
+      (parsedContent.acceptance !== undefined && !isAcceptanceEvidence(parsedContent.acceptance)) ||
       !isAgentResponseStatus(parsedContent.status) ||
       (parsedContent.wait !== undefined && parsedContent.wait !== null && !isWorkflowWaitRequest(parsedContent.wait)) ||
       (parsedContent.status === "waiting" && (!isWorkflowWaitRequest(parsedContent.wait) || !Array.isArray(parsedContent.nextAgentIds) || parsedContent.nextAgentIds.length > 0)) ||
@@ -59,6 +65,9 @@ export function parseAgentResponse(
     }
 
     return {
+      ...(parsedContent.continuity ? { continuity: parsedContent.continuity as AgentContinuity } : {}),
+      ...(parsedContent.acceptance ? { acceptance: parsedContent.acceptance as AcceptanceEvidence[] } : {}),
+      ...(isExecutionAssessment(parsedContent.assessment) ? { assessment: parsedContent.assessment } : {}),
       status: parsedContent.status,
       // Native structured output avoids manually escaping dossier JSON inside
       // a string. Keep the existing conversation and handoff contract intact.

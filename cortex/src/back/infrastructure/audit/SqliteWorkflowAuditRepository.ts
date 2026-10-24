@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import Database from "better-sqlite3";
+import type { ExecutionProfile } from "../../../shared/ExecutionQuality.ts";
 import type { WorkflowEvent } from "../../../shared/WorkflowWait.ts";
 import type {
   WorkflowAuditAgentExecution,
@@ -37,6 +38,7 @@ interface RunRow {
 }
 
 interface ExecutionRow {
+  profile_json: string | null;
   id: string;
   run_id: string;
   agent_id: string;
@@ -85,6 +87,10 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
   close(): void {
     this.database.close();
   }
+  setExecutionProfile(executionId: string, profile: ExecutionProfile): void {
+    this.database.prepare("UPDATE agent_executions SET profile_json = ?, model = COALESCE(?, model), reasoning_effort = COALESCE(?, reasoning_effort) WHERE id = ?")
+      .run(JSON.stringify(profile), profile.model, profile.reasoningEffort, executionId);
+  }
 
   createRun(input: CreateWorkflowAuditRunInput): string {
     const runId = randomUUID();
@@ -121,6 +127,12 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
     status: WorkflowAuditRunStatus,
     error?: string
   ): void {
+    if (status === "succeeded") {
+      const partial = this.database.prepare(`SELECT COUNT(*) count FROM agent_executions e WHERE run_id = ?
+        AND sequence = (SELECT MAX(last.sequence) FROM agent_executions last WHERE last.run_id = e.run_id AND last.agent_id = e.agent_id AND last.thread_id = e.thread_id)
+        AND json_extract(CASE WHEN json_valid(response) THEN response ELSE '{}' END, '$.status') = 'partial'`).get(runId) as CountRow;
+      if (partial.count) status = "partial";
+    }
     const finishedAt = this.now().toISOString();
     const transaction = this.database.transaction(() => {
       this.database.prepare(`
@@ -215,6 +227,9 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
             response = ?,
             next_agent_ids_json = ?,
             session_id = ?,
+            profile_json = ?,
+            model = COALESCE(?, model),
+            reasoning_effort = COALESCE(?, reasoning_effort),
             error = NULL
         WHERE id = ?
       `).run(
@@ -223,6 +238,9 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
         input.response,
         input.nextAgentIds === null ? null : JSON.stringify(input.nextAgentIds),
         input.sessionId ?? null,
+        input.profile ? JSON.stringify(input.profile) : null,
+        input.profile?.model ?? null,
+        input.profile?.reasoningEffort ?? null,
         executionId
       );
 
@@ -509,6 +527,8 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
       );
     `);
 
+    const executionColumns = this.database.prepare("PRAGMA table_info(agent_executions)").all() as Array<{ name: string }>;
+    if (!executionColumns.some(column => column.name === "profile_json")) this.database.exec("ALTER TABLE agent_executions ADD COLUMN profile_json TEXT;");
     const runColumns = this.database.prepare(
       "PRAGMA table_info(workflow_runs)"
     ).all() as Array<{ name: string }>;
@@ -605,6 +625,7 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
       engine: row.engine,
       model: row.model,
       reasoningEffort: row.reasoning_effort,
+      ...(row.profile_json ? { profile: JSON.parse(row.profile_json) } : {}),
       startedAt: row.started_at,
       finishedAt: row.finished_at,
       durationMs: row.duration_ms,

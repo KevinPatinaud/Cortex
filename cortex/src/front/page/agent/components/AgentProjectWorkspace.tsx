@@ -65,6 +65,7 @@ import { updateBrowserUrl } from "../../shared/browserNavigation.ts";
 
 const WorkflowScheduleDialog = lazy(() => import("./WorkflowScheduleDialog.tsx")
   .then((module) => ({ default: module.WorkflowScheduleDialog })));
+const ExecutionQualityPanel = lazy(() => import("./ExecutionQualityPanel.tsx").then(module => ({ default: module.ExecutionQualityPanel })));
 const WorkflowAuditPanel = lazy(() => import("./WorkflowAuditPanel.tsx")
   .then((module) => ({ default: module.WorkflowAuditPanel })));
 
@@ -1150,6 +1151,7 @@ export function AgentProjectWorkspace({
             <span>{t("workspace.instructionsFile")}</span>
             <h2>{content.instructions.fileName}</h2>
           </header>
+          <Suspense fallback={<p role="status">{t("common.loading")}</p>}><ExecutionQualityPanel key={projectId} projectId={projectId} /></Suspense>
           {content.instructions.content !== null ? (
             <pre>{content.instructions.content || t("workspace.emptyFile")}</pre>
           ) : (

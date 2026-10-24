@@ -9672,3 +9672,20 @@ button:disabled {
   .workflow-dossier-drawer__body { padding: 1rem; }
   .workflow-dossiers .workflow-dossier-drawer .automation-panel__close { min-width: 44px; min-height: 44px; }
 }
+
+.execution-quality { margin: 1rem 0; padding: 1rem; border: 1px solid var(--border, #d4dbe5); border-radius: 12px; min-width: 0; }
+.execution-quality > summary, .execution-quality details > summary { cursor: pointer; min-height: 36px; padding: .3rem 0; }
+.execution-quality fieldset { border: 0; padding: 0; display: grid; gap: .9rem; min-width: 0; }
+.execution-quality label { display: grid; gap: .4rem; font-size: .9rem; }
+.execution-quality input:not([type="checkbox"]), .execution-quality select, .execution-quality textarea { width: 100%; max-width: 100%; min-width: 0; padding: .65rem; border: 1px solid #a9b7c9; border-radius: 7px; background: var(--surface, #fff); color: var(--text, #18283d); font: inherit; box-sizing: border-box; }
+.execution-quality textarea { resize: vertical; }
+.execution-quality .execution-quality__checkbox { display: flex; align-items: center; gap: .6rem; }
+.execution-quality__profile { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr); gap: .4rem .8rem; padding: .75rem 0; border-top: 1px solid #d4dbe5; }
+.execution-quality dd { margin: 0; overflow-wrap: anywhere; }
+.execution-quality pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.execution-quality button { min-height: 44px; padding: .65rem 1rem; justify-self: start; }
+.execution-assessment { margin: .8rem 0; border-left: 3px solid #607c9c; padding: .7rem 1rem; background: #f0f4f9; color: #1c314a; overflow-wrap: anywhere; }
+.execution-assessment--partial, .execution-assessment--failed { border-color: #9b5b00; background: #fff4dc; color: #674000; }
+.execution-assessment--verified { border-color: #20794e; background: #edf9f1; color: #195436; }
+.execution-assessment ul { margin: .5rem 0 0; padding-left: 1.2rem; }
+@media (max-width: 700px) { .execution-quality__profile { grid-template-columns: 1fr; } .execution-quality { padding: .8rem; } }

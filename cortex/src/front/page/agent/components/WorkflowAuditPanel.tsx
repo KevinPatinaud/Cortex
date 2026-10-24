@@ -24,6 +24,7 @@ import {
   UsersRound
 } from "lucide-react";
 import { parseAgentResponse } from "../../../../shared/AgentResponse.ts";
+import { ExecutionAssessmentView } from "./ExecutionAssessmentView.tsx";
 import {
   exportWorkflowAuditRun,
   getWorkflowAuditRun,
@@ -620,6 +621,7 @@ function AuditExecution({
         </div>
       )}
 
+      <ExecutionAssessmentView assessment={parsedResponse?.assessment} />
       <details className="workflow-audit__technical" open={execution.status === "failed"}>
         <summary>
           <span>{t("audit.technicalDetails")}</span>
@@ -630,6 +632,11 @@ function AuditExecution({
           <div><dt>{t("audit.engine")}</dt><dd>{execution.engine}</dd></div>
           <div><dt>{t("audit.model")}</dt><dd>{execution.model ?? t("audit.default")}</dd></div>
           <div><dt>{t("audit.reasoning")}</dt><dd>{execution.reasoningEffort ?? t("audit.default")}</dd></div>
+          {execution.profile && <><div><dt>{t("quality.cli")}</dt><dd>{execution.profile.cliVersion ?? "—"}</dd></div>
+            <div><dt>{t("quality.workspace")}</dt><dd>{execution.profile.workingDirectory}</dd></div>
+            <div><dt>{t("quality.observed")}</dt><dd>{execution.profile.observedCapabilities.join(", ") || "—"}</dd></div>
+            {execution.profile.availableSkills && <div><dt>{t("quality.skills")}</dt><dd>{execution.profile.availableSkills.join(", ") || "—"}</dd></div>}
+            <div><dt>{t("quality.delegation")}</dt><dd>{t(execution.profile.delegation === "bounded" ? "quality.bounded" : "quality.none")}</dd></div></>}
           <div><dt>{t("audit.attempt")}</dt><dd>{execution.attempt}</dd></div>
           <div><dt>{t("audit.session")}</dt><dd>{execution.sessionId ?? "—"}</dd></div>
           <div><dt>{t("audit.nextAgents")}</dt><dd>{selectedNextAgentNames.join(", ") || "—"}</dd></div>

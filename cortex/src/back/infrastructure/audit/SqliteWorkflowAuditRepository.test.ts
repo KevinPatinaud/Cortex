@@ -6,6 +6,21 @@ import test from "node:test";
 import Database from "better-sqlite3";
 import { SqliteWorkflowAuditRepository } from "./SqliteWorkflowAuditRepository.ts";
 
+test("partial attempts affect run outcome until that same thread is actually completed", () => {
+  const repository = new SqliteWorkflowAuditRepository(":memory:");
+  try {
+    const runId = repository.createRun({ projectId: "p", trigger: "manual", scope: "workflow", parameterValues: {}, workflowSnapshot: null });
+    const attempt = () => repository.startExecution({ runId, agentId: "a", agentName: "a", threadId: "same-thread", engine: "codex",
+      input: { workflowParameterValues: {}, additionalInstructions: "", upstreamItems: [] }, prompt: "task" });
+    repository.completeExecution(attempt(), { response: JSON.stringify({ status: "partial" }), nextAgentIds: [] });
+    repository.completeRun(runId, "succeeded");
+    assert.equal(repository.getRun("p", runId)?.status, "partial");
+    repository.completeExecution(attempt(), { response: JSON.stringify({ status: "success" }), nextAgentIds: [] });
+    repository.completeRun(runId, "succeeded");
+    assert.equal(repository.getRun("p", runId)?.status, "succeeded");
+  } finally { repository.close(); }
+});
+
 test("persists a complete workflow audit with its exact prompt", async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-audit-"));
   let now = new Date("2026-08-29T10:00:00.000Z");

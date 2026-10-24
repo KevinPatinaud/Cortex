@@ -744,7 +744,7 @@ test("réserve l'orchestration des agents suivants à Cortex", async () => {
   assert.match(calls[0].prompt, /return the elements to pass to them/);
   assert.match(
     calls[0].prompt,
-    /Project workflow instructions for routing decisions/
+    /Shared project instructions for execution, quality and routing/
   );
   assert.match(calls[0].prompt, /Toujours analyser avant d'implémenter/);
   assert.match(calls[0].prompt, /logically consistent with the facts/);

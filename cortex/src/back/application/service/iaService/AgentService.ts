@@ -12,6 +12,8 @@ import type { CodexPluginService } from "./CodexPluginService.ts";
 import type { CodexModelService } from "./CodexModelService.ts";
 import type { CodexModelCatalog } from "../../../../shared/CodexModel.ts";
 import type { CodexPluginCatalog } from "../../../../shared/CodexPlugin.ts";
+import type { ExecutionProfile } from "../../../../shared/ExecutionQuality.ts";
+import { ValidationError } from "../../error/ValidationError.ts";
 import type {
   McpConnectionEngine,
   McpConnectionSummary,
@@ -199,10 +201,29 @@ export class AgentService {
         ? { autopilot: false, allowAll: false }
         : await this.configurationService.getConfiguration();
       options.signal?.throwIfAborted();
-      return provider.ask(prompt, {
-        ...options, configuration
-      });
+      const resolved = engine === "codex" && options.persistSession
+        ? await this.resolveExecutionProfile(options) : options;
+      if (resolved.profile) options.onProfile?.(resolved.profile);
+      const result = await provider.ask(prompt, { ...resolved, configuration });
+      return { ...result, ...(resolved.profile ? { profile: { ...resolved.profile,
+        observedCapabilities: result.profile?.observedCapabilities ?? [] } } : {}) };
     });
+  }
+
+  async resolveExecutionProfile(options: AgentExecutionOptions): Promise<AgentExecutionOptions> {
+    const catalog = await this.getCodexModels(options.workingDirectory);
+    const model = options.model || catalog.defaultModel || undefined;
+    const selected = catalog.models.find(entry => entry.model === model);
+    const reasoningEffort = options.reasoningEffort || catalog.configuredReasoningEffort || selected?.defaultReasoningEffort || undefined;
+    if (selected && reasoningEffort && selected.reasoningEfforts.length && !selected.reasoningEfforts.includes(reasoningEffort)) {
+      throw new ValidationError(`Effort ${reasoningEffort} indisponible pour ${model}. Choisissez un effort proposé par le serveur.`);
+    }
+    const profile: ExecutionProfile = { model: model ?? null, reasoningEffort: reasoningEffort ?? null,
+      ...(catalog.availableSkills ? { availableSkills: catalog.availableSkills } : {}),
+      ...(catalog.declaredMcpServers ? { declaredMcpServers: catalog.declaredMcpServers } : {}),
+      cliVersion: catalog.cliVersion, workingDirectory: options.workingDirectory ?? process.cwd(),
+      delegation: options.delegation ?? "none", observedCapabilities: [], resolution: model && reasoningEffort ? "pinned" : "unavailable" };
+    return { ...options, ...(model ? { model } : {}), ...(reasoningEffort ? { reasoningEffort } : {}), profile };
   }
 
   async executeActive(

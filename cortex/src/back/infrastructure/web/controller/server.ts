@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { setTimeout as delay } from "node:timers/promises";
 import { AgentService } from "../../../application/service/iaService/AgentService.ts";
+import { ExecutionQualityService } from "../../../application/service/executionQuality/ExecutionQualityService.ts";
 import { AgentConfigurationService } from "../../../application/service/iaService/AgentConfigurationService.ts";
 import { createDefaultAgentToolRegistry } from "../../../application/service/iaService/iaTools/AgentToolRegistry.ts";
 import { McpConfigurationService } from "../../../application/service/iaService/McpConfigurationService.ts";
@@ -95,7 +96,8 @@ const agentUseCase = new AgentUseCase(
   undefined,
   new CodexQuotaService(configurationFile, () => readCodexRateLimits(workspaceDirectory)),
   new ExecutionWorkspaceGuard(configurationFile, path.join(workspaceDirectory, "data", "execution-workspaces"),
-    undefined, checkpointId => workflowAuditRepository.getCheckpoint(checkpointId)?.state)
+    undefined, checkpointId => workflowAuditRepository.getCheckpoint(checkpointId)?.state),
+  new ExecutionQualityService(configurationFile, path.join(workspaceDirectory, "data", "execution-quality"))
 );
 const workflowScheduler = new WorkflowScheduler(
   projectUseCase,

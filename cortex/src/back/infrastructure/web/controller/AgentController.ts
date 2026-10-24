@@ -30,6 +30,13 @@ export function createAgentController(
 ): Router {
   const router = Router();
 
+  router.get("/projects/:projectId/execution-policy", asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+    response.json(await agentUseCase.getExecutionPolicy(request.params.projectId));
+  }, agentErrorMappings.loadProject));
+  router.put("/projects/:projectId/execution-policy", asyncRoute<unknown, { projectId: string }>(async (request, response) => {
+    response.json(await agentUseCase.saveExecutionPolicy(request.params.projectId, request.body));
+  }, agentErrorMappings.saveProject));
+
   router.get("/projects/actual", (_request, response) => {
     const project = agentUseCase.getActualLoadedProject();
     response.json(project ? toAgentProjectResponse(project) : null);
