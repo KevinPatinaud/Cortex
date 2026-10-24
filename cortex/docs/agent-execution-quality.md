@@ -122,6 +122,11 @@ fidélité aux sources. Elle respecte le contrôle de quotas existant et ne lanc
 aucun workflow enregistré. Le contrat JSON de continuité constitue une
 différence volontaire de la route Cortex.
 
+`--task code` ou `--task evidence` permet de répéter un scénario isolément.
+Le contrat d’entrée du scénario de code précise le champ booléen `cancelled`
+et fournit un exemple : une ambiguïté de données ne doit pas être interprétée
+comme une différence de qualité entre les routes.
+
 Cet échantillon fonctionnel réduit ne démontre ni un gain statistique général,
 ni une supériorité artistique. Pour une décision visuelle, compléter par des
 comparaisons avant/après sur les parcours concernés et une appréciation humaine.

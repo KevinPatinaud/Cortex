@@ -27,6 +27,8 @@ const app = process.cwd();
 const option = (name: string, fallback: string) => process.argv.includes(name) ? process.argv[process.argv.indexOf(name) + 1] : fallback;
 const repeats = Number(option("--repeats", "2"));
 if (!Number.isSafeInteger(repeats) || repeats < 1 || repeats > 5) throw new Error("--repeats must be between 1 and 5");
+const selection = option("--task", "all");
+if (!["all", "code", "evidence"].includes(selection)) throw new Error("--task must be all, code or evidence");
 const root = await mkdtemp(path.join(os.tmpdir(), "cortex-quality-benchmark-"));
 const output = path.resolve(option("--output", path.join(root, "results.json")));
 const catalog = new CodexModelService(app);
@@ -39,8 +41,9 @@ const boundary = "Benchmark fixture only. Work exclusively in this repository. N
 
 type Task = { id: string; files: Record<string, string>; prompt: string; verify: (directory: string) => Promise<void> };
 const tasks: Task[] = [
-  { id: "code", files: { "orders.mjs": "export function summarizeOrders(orders) { return { count: orders.length, totalCents: 0, meanCents: 0, ids: [] }; }\n" },
-    prompt: "Fix summarizeOrders(orders) in orders.mjs. Ignore cancelled orders before deduplication. For active orders, id must be a non-empty string and amountCents a non-negative integer; invalid active orders throw TypeError. Deduplicate by exact id, keeping the first active record. Return {count,totalCents,meanCents,ids}; ids retains input order, meanCents is Math.round(totalCents/count), or 0 when empty. Do not mutate any inputs. Export the function and verify edge cases.",
+  { id: "code", files: { "orders.mjs": "export function summarizeOrders(orders) { return { count: orders.length, totalCents: 0, meanCents: 0, ids: [] }; }\n",
+      "orders.example.json": JSON.stringify([{ id: "ignored", amountCents: -1, cancelled: true }, { id: "zero", amountCents: 0 }]) },
+    prompt: "Fix summarizeOrders(orders) in orders.mjs. Orders are objects {id:string, amountCents:number, cancelled?:boolean}; see orders.example.json. Ignore records whose cancelled field is exactly true BEFORE validation and deduplication. A status string is not the cancellation field. For active orders, id must be a non-empty string and amountCents a non-negative integer; invalid active orders throw TypeError. Deduplicate by exact id, keeping the first active record. Return {count,totalCents,meanCents,ids}; ids retains input order, meanCents is Math.round(totalCents/count), or 0 when empty. Do not mutate any inputs. Export the function and verify edge cases.",
     verify: async directory => {
       const { summarizeOrders: fn } = await import(pathToFileURL(path.join(directory, "orders.mjs")).href);
       assert.deepEqual(fn([]), { count: 0, totalCents: 0, meanCents: 0, ids: [] });
@@ -61,7 +64,9 @@ const tasks: Task[] = [
       const r = JSON.parse(await readFile(path.join(directory, "decision.json"), "utf8"));
       assert.equal(r.release, "r2"); assert.equal(r.commit, "abc222"); assert.equal(r.ready, false);
       assert.deepEqual(r.missingChecks, ["mobile"]); assert.ok(r.sources.includes("release.json"));
-      assert.deepEqual(JSON.parse(await readFile(path.join(directory, "release.json"), "utf8")).active, { id: "r2", commit: "abc222" });
+      assert.deepEqual(JSON.parse(await readFile(path.join(directory, "release.json"), "utf8")), {
+        active: { id: "r2", commit: "abc222" }, checks: { desktop: "passed", mobile: "not_run" } });
+      assert.equal(await readFile(path.join(directory, "old-report.md"), "utf8"), "Release r1 at commit abc111 was fully verified last week. This is historical and does not establish checks on r2.\n");
     } }
 ];
 
@@ -79,11 +84,11 @@ class MeasuredProvider extends CodexAgentProvider {
 const results: Array<Record<string, unknown>> = [];
 const report = async () => {
   await mkdir(path.dirname(output), { recursive: true });
-  await writeFile(output, JSON.stringify({ version: 1, createdAt: new Date().toISOString(), model, effort,
+  await writeFile(output, JSON.stringify({ version: 2, taskSpecificationVersion: 2, selection, createdAt: new Date().toISOString(), model, effort,
     cliVersion: available.cliVersion, repeats, fixtureRoot: root,
     limitations: "Small deterministic sample; functional correctness only, no visual or statistical quality claim. Both routes use identical fixture inputs, model and effort. Cortex adds its structured quality/continuity contract. Quota policy is preserved.", results }, null, 2), { mode: 0o600 });
 };
-for (let repetition = 0; repetition < repeats; repetition++) for (const task of tasks) {
+for (let repetition = 0; repetition < repeats; repetition++) for (const task of tasks.filter(t => selection === "all" || t.id === selection)) {
   // Alternate route order to reduce a consistent ordering advantage.
   for (const route of repetition % 2 ? ["cortex", "direct"] : ["direct", "cortex"]) {
     await quota.assertMayStart();
