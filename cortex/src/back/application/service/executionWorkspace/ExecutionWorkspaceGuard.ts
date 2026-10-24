@@ -259,16 +259,50 @@ async function git(directory: string, args: string[]): Promise<string> {
   return result.stdout.trim();
 }
 
+async function isAncestor(directory: string, ancestor: string, descendant: string): Promise<boolean> {
+  try {
+    await git(directory, ["merge-base", "--is-ancestor", ancestor, descendant]);
+    return true;
+  } catch (error) {
+    if ((error as { code?: unknown }).code === 1) return false;
+    throw error;
+  }
+}
+
+async function requireCleanBranch(workspace: ExecutionWorkspace): Promise<void> {
+  if (await git(workspace.directory, ["branch", "--show-current"]) !== workspace.git!.branch) throw new Error(`Le dépôt doit être sur ${workspace.git!.branch}.`);
+  if (await git(workspace.directory, ["status", "--porcelain", "--untracked-files=no"])) throw new Error("Le dépôt contient des modifications suivies non publiées. Vérifier et terminer l'intervention avant de poursuivre.");
+}
+
 export async function verifyWorkspace(workspace: ExecutionWorkspace, phase: "start" | "finish", recovery: boolean): Promise<void> {
   if (workspace.git) {
     const { branch, remote } = workspace.git;
     if (await git(workspace.directory, ["branch", "--show-current"]) !== branch) throw new Error(`Le dépôt doit être sur ${branch}.`);
     await git(workspace.directory, ["var", "GIT_AUTHOR_IDENT"]);
     if (phase === "finish" || !recovery) {
-      if (await git(workspace.directory, ["status", "--porcelain", "--untracked-files=no"])) throw new Error("Le dépôt contient des modifications suivies non publiées. Vérifier et terminer l'intervention avant de poursuivre.");
-      const head = await git(workspace.directory, ["rev-parse", "HEAD"]);
-      const published = (await git(workspace.directory, ["ls-remote", "--exit-code", remote, `refs/heads/${branch}`])).split(/\s+/)[0];
-      if (head !== published) throw new Error(`Le commit local ne correspond pas à ${remote}/${branch}. Le push et sa vérification sont obligatoires.`);
+      await requireCleanBranch(workspace);
+      let head = await git(workspace.directory, ["rev-parse", "HEAD"]);
+      let published = (await git(workspace.directory, ["ls-remote", "--exit-code", remote, `refs/heads/${branch}`])).split(/\s+/)[0];
+      if (phase === "start" && head !== published) {
+        // The lease and quota gate are already held. Fetch the real branch,
+        // rather than trusting a possibly stale remote-tracking ref. Only
+        // fast-forward a clean checkout; never push, stash or discard work.
+        await git(workspace.directory, ["fetch", "--no-tags", remote, `refs/heads/${branch}`]);
+        const fetched = await git(workspace.directory, ["rev-parse", "FETCH_HEAD"]);
+        await requireCleanBranch(workspace);
+        head = await git(workspace.directory, ["rev-parse", "HEAD"]);
+        if (!await isAncestor(workspace.directory, head, fetched)) {
+          if (await isAncestor(workspace.directory, fetched, head)) throw new Error(`Le dépôt contient des commits locaux absents de ${remote}/${branch}. Vérifier le travail puis effectuer le push et sa vérification.`);
+          throw new Error(`Les historiques local et ${remote}/${branch} ont divergé. Réconcilier le travail existant avant de poursuivre.`);
+        }
+        await git(workspace.directory, ["merge", "--ff-only", "--no-edit", "--no-autostash", "--no-overwrite-ignore", fetched]);
+        await requireCleanBranch(workspace);
+        head = await git(workspace.directory, ["rev-parse", "HEAD"]);
+        published = (await git(workspace.directory, ["ls-remote", "--exit-code", remote, `refs/heads/${branch}`])).split(/\s+/)[0];
+      }
+      if (head !== published) throw new Error(phase === "start"
+        ? `La branche ${remote}/${branch} a changé pendant la synchronisation. Relancer le contrôle avant de poursuivre.`
+        : `Le commit local ne correspond pas à ${remote}/${branch}. Le push et sa vérification sont obligatoires.`);
     }
   }
   if (phase === "finish") for (const url of workspace.healthChecks ?? []) {

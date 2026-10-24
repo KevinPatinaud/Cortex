@@ -293,3 +293,92 @@ test("actual Git checks accept an unchanged published checkout, reject dirt, an 
     await assert.rejects(verifyWorkspace(workspace, "finish", false), /main/);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
+
+test("a clean stale checkout fast-forwards under its lease; unsafe histories and untracked collisions preserve existing work", async (t) => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-git-sync-"));
+  const remote = path.join(directory, "remote.git");
+  const repository = path.join(directory, "site");
+  const writer = path.join(directory, "writer");
+  const configuration = path.join(directory, "config.json");
+  const git = async (cwd: string, ...args: string[]) => (await execute("git", ["-C", cwd, ...args], { windowsHide: true })).stdout.trim();
+  const workspace: ExecutionWorkspace = { id: "site", directory: repository, projectIds: ["a", "b"], git: { branch: "main", remote: "origin" } };
+  try {
+    await git(directory, "init", "--bare", remote);
+    await git(directory, "init", "-b", "main", repository);
+    await git(repository, "config", "user.name", "Test Agent");
+    await git(repository, "config", "user.email", "test@example.invalid");
+    await writeFile(path.join(repository, "page.txt"), "initial");
+    await git(repository, "add", "page.txt");
+    await git(repository, "commit", "-m", "initial");
+    await git(repository, "remote", "add", "origin", remote);
+    await git(repository, "push", "origin", "main");
+    await git(directory, "clone", "--branch", "main", remote, writer);
+    await git(writer, "config", "user.name", "External Author");
+    await git(writer, "config", "user.email", "external@example.invalid");
+    const publish = async (file: string, content: string) => {
+      await writeFile(path.join(writer, file), content);
+      await git(writer, "add", file);
+      await git(writer, "commit", "-m", `external ${file}`);
+      await git(writer, "push", "origin", "main");
+      return git(writer, "rev-parse", "HEAD");
+    };
+    const initial = await git(repository, "rev-parse", "HEAD");
+    const first = await publish("external.txt", "new on GitHub");
+    await writeFile(path.join(repository, "AGENTS.md"), "private local instructions");
+    await writeFile(configuration, JSON.stringify({ executionWorkspaces: [workspace] }));
+    const guard = new ExecutionWorkspaceGuard(configuration, path.join(directory, "journals"));
+    await t.test("stale tracking refs cannot hide remote changes; finish never pulls", async () => {
+      assert.equal(await git(repository, "rev-parse", "origin/main"), initial);
+      await assert.rejects(verifyWorkspace(workspace, "finish", false), /push/);
+      assert.equal(await git(repository, "rev-parse", "HEAD"), initial);
+      await guard.run("a", async () => {
+        await guard.markStarted();
+        assert.equal(await git(repository, "rev-parse", "HEAD"), first, "the mission starts on the published revision");
+        assert.equal(await readFile(path.join(repository, "external.txt"), "utf8"), "new on GitHub");
+      });
+      assert.equal(await guard.recoveryProjectId("b"), undefined);
+      assert.equal(await readFile(path.join(repository, "AGENTS.md"), "utf8"), "private local instructions");
+    });
+    const second = await publish("external.txt", "second update");
+    await t.test("dirty work and recovery are never pulled over", async () => {
+      await writeFile(path.join(repository, "page.txt"), "unfinished local work");
+      await assert.rejects(verifyWorkspace(workspace, "start", false), /modifications/);
+      await verifyWorkspace(workspace, "start", true);
+      assert.equal(await git(repository, "rev-parse", "HEAD"), first);
+      assert.equal(await readFile(path.join(repository, "page.txt"), "utf8"), "unfinished local work");
+      await writeFile(path.join(repository, "page.txt"), "initial");
+      await verifyWorkspace(workspace, "start", true);
+      assert.equal(await git(repository, "rev-parse", "HEAD"), first, "recovery retains its original source revision");
+      await verifyWorkspace(workspace, "start", false);
+      assert.equal(await git(repository, "rev-parse", "HEAD"), second);
+    });
+    for (const name of ["collision.txt", "ignored-collision.txt"]) await t.test(`a newly tracked path never overwrites existing local data: ${name}`, async () => {
+      await writeFile(path.join(repository, ".git", "info", "exclude"), "ignored-collision.txt\n");
+      const before = await git(repository, "rev-parse", "HEAD");
+      await writeFile(path.join(repository, name), "keep local data");
+      await publish(name, "remote data");
+      await assert.rejects(verifyWorkspace(workspace, "start", false));
+      assert.equal(await git(repository, "rev-parse", "HEAD"), before);
+      assert.equal(await readFile(path.join(repository, name), "utf8"), "keep local data");
+      await rm(path.join(repository, name));
+      await verifyWorkspace(workspace, "start", false);
+    });
+    await t.test("local-only and diverged commits are neither pushed nor rewritten", async () => {
+      await writeFile(path.join(repository, "page.txt"), "committed local work");
+      await git(repository, "commit", "-am", "local work");
+      const local = await git(repository, "rev-parse", "HEAD");
+      const before = await git(writer, "rev-parse", "HEAD");
+      await assert.rejects(verifyWorkspace(workspace, "start", false), /commits locaux.*push/);
+      assert.equal(await git(repository, "rev-parse", "HEAD"), local);
+      assert.equal((await git(repository, "ls-remote", "origin", "refs/heads/main")).split(/\s+/)[0], before);
+      const divergent = await publish("external.txt", "divergent update");
+      await assert.rejects(verifyWorkspace(workspace, "start", false), /ont divergé/);
+      assert.equal(await git(repository, "rev-parse", "HEAD"), local);
+      assert.equal((await git(repository, "ls-remote", "origin", "refs/heads/main")).split(/\s+/)[0], divergent);
+      assert.equal(await readFile(path.join(repository, "page.txt"), "utf8"), "committed local work");
+      await git(repository, "remote", "set-url", "origin", path.join(directory, "missing.git"));
+      await assert.rejects(verifyWorkspace(workspace, "start", false));
+      assert.equal(await git(repository, "rev-parse", "HEAD"), local);
+    });
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
