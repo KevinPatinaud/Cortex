@@ -262,7 +262,7 @@ export class WorkflowScheduler {
       if (recoveryProjectId && recoveryProjectId !== projectId) {
         const reason = `Créneau utilisé pour reprendre l'intervention interrompue de ${recoveryProjectId}.`;
         this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "skipped", reason);
-        this.workflowAuditService?.recordSkippedRun({ projectId, trigger: "scheduled", scope: "workflow",
+        const skippedRunId = this.workflowAuditService?.recordSkippedRun({ projectId, trigger: "scheduled", scope: "workflow",
           parameterValues, workflowSnapshot: null }, reason);
         runtime.lastRunStatus = "skipped";
         runtime.lastRunError = reason;
@@ -273,6 +273,7 @@ export class WorkflowScheduler {
         } catch (error) {
           runtime.lastRunError = `${reason} ${error instanceof Error ? error.message : String(error)}`;
           this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "skipped", runtime.lastRunError);
+          if (skippedRunId) this.workflowAuditService?.completeRun(skippedRunId, "skipped", runtime.lastRunError);
           if (!(error instanceof CodexQuotaBlockedError || error instanceof ExecutionWorkspaceBusyError)) console.error("Workspace recovery failed:", error);
         }
         return;

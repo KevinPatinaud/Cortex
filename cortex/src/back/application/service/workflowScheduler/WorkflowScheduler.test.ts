@@ -33,6 +33,7 @@ test("a slot recovers only previously started work, never launches its own new t
     assert.deepEqual(calls, ["old"]);
     assert.equal((await scheduler.getSchedule("new")).lastRunStatus, "skipped");
     assert.match((await scheduler.getSchedule("new")).lastRunError!, /quota unchanged/);
+    assert.match(repository.listRuns("new", 10, 0).items[0].error!, /quota unchanged/);
     scheduler.checkDueSchedules(now);
     scheduler.checkDueSchedules(new Date(now.getTime() + 60_000));
     await new Promise(setImmediate);

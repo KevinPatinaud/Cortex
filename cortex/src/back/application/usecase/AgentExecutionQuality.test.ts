@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { AgentUseCase } from "./AgentUseCase.ts";
@@ -18,6 +18,7 @@ import { DEFAULT_EXECUTION_POLICY } from "../../../shared/ExecutionQuality.ts";
 import { parseAgentResponse } from "../../../shared/AgentResponse.ts";
 import { CodexQuotaService } from "../service/iaService/CodexQuotaService.ts";
 import type { WorkflowCheckpointState } from "../service/workflowExecution/WorkflowCheckpoint.ts";
+import { ExecutionWorkspaceGuard } from "../service/executionWorkspace/ExecutionWorkspaceGuard.ts";
 
 function result(options: AgentExecutionOptions, remainingWork: string[] = []): AgentExecutionResult {
   const next = ((options.outputSchema?.properties as Record<string, any>)?.nextAgentIds?.items?.enum ?? []) as string[];
@@ -47,10 +48,122 @@ async function fixture(t: test.TestContext, ask: (prompt: string, options: Agent
   const storage = new SqliteWorkflowAuditRepository(path.join(directory, "audit.sqlite"));
   t.after(async () => { storage.close(); await rm(directory, { recursive: true, force: true }); });
   const quality = new ExecutionQualityService(configurationFile, path.join(directory, ".quality-state"));
-  const restart = (quota?: CodexQuotaService) => new AgentUseCase(service, new ProjectUseCase(projects, new DirectoryPickerService(), service),
-    new WorkflowAuditService(storage), {}, undefined, quota, undefined, quality);
+  const restart = (quota?: CodexQuotaService, guard?: ExecutionWorkspaceGuard) => new AgentUseCase(service, new ProjectUseCase(projects, new DirectoryPickerService(), service),
+    new WorkflowAuditService(storage), {}, undefined, quota, guard, quality);
   return { directory, project, quality, storage, useCase: restart(), service, restart, configurationFile };
 }
+
+async function sharedWorkspace(f: Awaited<ReturnType<typeof fixture>>, verify: ConstructorParameters<typeof ExecutionWorkspaceGuard>[2] = async () => {}) {
+  const configuration = JSON.parse(await readFile(f.configurationFile, "utf8"));
+  configuration.executionWorkspaces = [{ id: "shared", directory: f.project.directoryPath, projectIds: [f.project.id, "other"], git: { branch: "main", remote: "origin" } }];
+  await writeFile(f.configurationFile, JSON.stringify(configuration));
+  return () => new ExecutionWorkspaceGuard(f.configurationFile, path.join(f.directory, "journals"), verify,
+    id => f.storage.getCheckpoint(id)?.state);
+}
+
+for (const scope of ["agent", "workflow"] as const) test(`${scope}: workspace recovery resumes interpretation without adding a new mission or repeating delivery`, async t => {
+  let missionCalls = 0, formatterCalls = 0;
+  let published = false;
+  const f = await fixture(t, async (_prompt, options) => {
+    if (options.purpose === "mission") { missionCalls++; return { sessionId: "business", answer: "Delivery already performed" }; }
+    if (++formatterCalls === 1) throw new Error("Interpreter temporarily unavailable");
+    published = true;
+    return result(options);
+  });
+  const guard = await sharedWorkspace(f, async (_workspace, phase) => {
+    if (phase === "finish" && !published) throw new Error("Publication still requires verification");
+  });
+  await assert.rejects(f.restart(undefined, guard()).runWorkflow(f.project.id), /temporarily unavailable/);
+  assert.equal(await guard().recoveryProjectId("other"), f.project.id);
+  const restarted = f.restart(undefined, guard());
+  if (scope === "agent") {
+    const project = await restarted.loadProject(f.project.id);
+    await assert.rejects(restarted.runAgent(f.project.id, { agentId: project.agents[0].id, additionalInstructions: "Start an unrelated new mission" }), /Terminez l’interprétation/);
+    await restarted.runAgent(f.project.id, { agentId: project.agents[0].id });
+  } else await restarted.runWorkflow(f.project.id);
+  assert.equal(missionCalls, 1);
+  assert.equal(formatterCalls, 2);
+  assert.equal(await guard().recoveryProjectId("other"), undefined);
+});
+
+test("published work awaiting interpretation releases the shared checkout and recovers in the background after quota reset", async t => {
+  let missionCalls = 0, formatterCalls = 0, denied = false;
+  const f = await fixture(t, async (_prompt, options) => {
+    if (options.purpose === "mission") { missionCalls++; denied = true; return { sessionId: "business", answer: "Published once" }; }
+    formatterCalls++; return result(options);
+  });
+  const quota = new CodexQuotaService(f.configurationFile, async () => ({ rateLimitsByLimitId: { codex: {
+    primary: { usedPercent: denied ? 90 : 0, windowDurationMins: 300 }, secondary: { usedPercent: 0, windowDurationMins: 10080 }
+  } } }));
+  await quota.saveConfiguration({ enabled: true, minimumFiveHourRemainingPercent: 50, minimumWeeklyRemainingPercent: 0 });
+  const guard = await sharedWorkspace(f);
+  await assert.rejects(f.restart(quota, guard()).runWorkflow(f.project.id), /minimum 50/);
+  assert.equal(await guard().recoveryProjectId("other"), undefined);
+  await guard().run("other", async () => {});
+  const now = new Date();
+  await f.restart(quota, guard()).wakeWaitingWorkflows(now);
+  const first = f.storage.getCheckpoint(f.project.id)!.state as WorkflowCheckpointState;
+  assert.equal(first.interpretationRecovery?.attempts, 1);
+  const restarted = f.restart(quota, guard());
+  await restarted.wakeWaitingWorkflows(new Date(now.getTime() + 240_000));
+  assert.equal((f.storage.getCheckpoint(f.project.id)!.state as WorkflowCheckpointState).interpretationRecovery?.attempts, 1);
+  await restarted.wakeWaitingWorkflows(new Date(now.getTime() + 301_000));
+  assert.equal((f.storage.getCheckpoint(f.project.id)!.state as WorkflowCheckpointState).interpretationRecovery?.attempts, 2);
+  await f.restart(quota, guard()).wakeWaitingWorkflows(new Date(now.getTime() + 601_000));
+  assert.equal((f.storage.getCheckpoint(f.project.id)!.state as WorkflowCheckpointState).interpretationRecovery?.attempts, 2);
+  denied = false; await quota.getStatus();
+  await Promise.all([restarted.wakeWaitingWorkflows(new Date(now.getTime() + 902_000)), restarted.wakeWaitingWorkflows(new Date(now.getTime() + 902_000))]);
+  assert.equal(missionCalls, 1); assert.equal(formatterCalls, 1);
+  const completed = f.storage.getCheckpoint(f.project.id)!.state as WorkflowCheckpointState;
+  assert.equal(completed.instance?.status, "completed");
+  assert.equal(completed.interpretationRecovery, undefined);
+});
+
+test("a pending result never releases an active interpreter's lease", async t => {
+  let release!: () => void, entered!: () => void;
+  const blocked = new Promise<void>(resolve => { release = resolve; });
+  const interpreting = new Promise<void>(resolve => { entered = resolve; });
+  const f = await fixture(t, async (_prompt, options) => {
+    if (options.purpose === "mission") return { sessionId: "business", answer: "Published once" };
+    entered(); await blocked; return result(options);
+  });
+  const factory = await sharedWorkspace(f);
+  const guard = factory();
+  const running = f.restart(undefined, guard).runWorkflow(f.project.id);
+  try {
+    await interpreting;
+    await assert.rejects(guard.run("other", async () => assert.fail("Concurrent writer acquired the checkout")), /utilisé/);
+  } finally { release(); await running; }
+  assert.equal(await guard.recoveryProjectId("other"), undefined);
+});
+
+test("a legacy failed reservation with a saved delivery is reconciled without stealing another project's slot", async t => {
+  const f = await fixture(t, async (_prompt, options) => {
+    if (options.purpose === "mission") return { sessionId: "business", answer: "Published once" };
+    throw new Error("Interpreter unavailable");
+  });
+  let published = false;
+  const guard = await sharedWorkspace(f, async (_workspace, phase) => {
+    if (phase === "finish" && !published) throw new Error("Unpublished effects");
+  });
+  await assert.rejects(f.restart(undefined, guard()).runWorkflow(f.project.id), /Interpreter unavailable/);
+  assert.equal(await guard().recoveryProjectId("other"), f.project.id);
+  published = true;
+  assert.equal(await guard().recoveryProjectId("other"), undefined);
+});
+
+test("cancelling a saved interpretation before loading its project survives restart and prevents automatic recovery", async t => {
+  let missionCalls = 0, formatterCalls = 0;
+  const f = await fixture(t, async (_prompt, options) => {
+    if (options.purpose === "mission") { missionCalls++; return { sessionId: "business", answer: "Published once" }; }
+    formatterCalls++; throw new Error("Interpreter unavailable");
+  });
+  await assert.rejects(f.useCase.runWorkflow(f.project.id), /Interpreter unavailable/);
+  assert.equal(f.restart().cancelProjectExecution(f.project.id), true);
+  await f.restart().wakeWaitingWorkflows(new Date(Date.now() + 3_600_000));
+  assert.equal(missionCalls, 1); assert.equal(formatterCalls, 1);
+  assert.equal((f.storage.getCheckpoint(f.project.id)!.state as WorkflowCheckpointState).instance?.status, "cancelled");
+});
 
 test("pins inherited runtime settings, persists the actual profile and deduplicates native AGENTS instructions", async t => {
   const f = await fixture(t, async (prompt, options) => {

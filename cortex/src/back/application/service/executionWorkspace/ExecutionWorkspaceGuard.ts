@@ -5,7 +5,7 @@ import { mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { JsonConfigurationRepository } from "../configuration/JsonConfigurationRepository.ts";
-import { readWorkflowCheckpoint } from "../workflowExecution/WorkflowCheckpoint.ts";
+import { hasRecoverableInterpretation, readWorkflowCheckpoint } from "../workflowExecution/WorkflowCheckpoint.ts";
 
 const execute = promisify(execFile);
 
@@ -145,7 +145,14 @@ export class ExecutionWorkspaceGuard {
           }
           return result;
         } catch (error) {
-          if (lease.started) await this.save(lease, { ...lease.started, status: "failed", error: error instanceof Error ? error.message : String(error) });
+          if (lease.started) {
+            await this.save(lease, { ...lease.started, status: "failed",
+              ...(lease.checkpointId ? { checkpointId: lease.checkpointId } : {}),
+              error: error instanceof Error ? error.message : String(error) });
+            // The provider has settled. A published mission awaiting only its
+            // read-only interpretation must not reserve every project's slot.
+            await this.readJournal(lease);
+          }
           throw error;
         }
       });
@@ -155,13 +162,16 @@ export class ExecutionWorkspaceGuard {
   }
 
   /** Called only after the quota gate and input validation have passed. */
-  async markStarted(): Promise<void> {
+  async markStarted(checkpointId?: string): Promise<void> {
     const lease = this.context.getStore();
-    if (!lease?.active || lease.started) return;
+    if (!lease?.active) return;
+    if (checkpointId) lease.checkpointId = checkpointId;
+    if (lease.started) return;
     await this.verify(lease.workspace, "start", !!lease.previous);
     const now = new Date().toISOString();
     const journal: Journal = { projectId: lease.projectId, status: "running", startedAt: lease.previous?.startedAt ?? now,
       updatedAt: now, attempts: (lease.previous?.attempts ?? 0) + 1,
+      ...(lease.checkpointId ? { checkpointId: lease.checkpointId } : {}),
       ...(lease.previous?.cleanupOnly ? { cleanupOnly: true } : {}) };
     await this.save(lease, journal);
     lease.started = journal;
@@ -229,8 +239,10 @@ export class ExecutionWorkspaceGuard {
 
   private async readJournal(lease: Lease): Promise<Partial<Journal>> {
     const journal = await lease.journal.read<Partial<Journal>>();
-    if (!journal.projectId || journal.status !== "waiting" || !this.readCheckpoint) return journal;
+    if (!journal.projectId || this.isReleased(journal) || !this.readCheckpoint) return journal;
     const checkpoint = readWorkflowCheckpoint(this.readCheckpoint(journal.checkpointId ?? journal.projectId));
+    const interpreting = hasRecoverableInterpretation(checkpoint);
+    if (journal.status !== "waiting" && !interpreting) return journal;
     const waiting = checkpoint?.instance?.status === "waiting" && checkpoint.agents.some(agent => agent.threads.some(thread => thread.wait));
     // A legacy WAIT may retain a reservation after cancel/reset, or while the
     // checkout is already safely published. Reconcile only while owning a lease.
@@ -246,6 +258,7 @@ export class ExecutionWorkspaceGuard {
       await this.save(lease, released);
       return released;
     }
+    if (interpreting && journal.status !== "waiting") return journal;
     if (waiting && await this.ownerAvailable(journal.projectId, lease.workspace)) return journal;
     const failed = { ...journal, status: "failed" as const, cleanupOnly: true,
       error: `Attente terminée, annulée, réinitialisée ou sans propriétaire ; clore les effets existants. ${failure instanceof Error ? failure.message : String(failure)}` } as Journal;

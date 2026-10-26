@@ -3,6 +3,7 @@ import { isAgentContinuity, type AgentContinuity } from "../../../../shared/Exec
 import { isExecutionProcessing, type ExecutionProcessing } from "../../../../shared/ResultProcessing.ts";
 export interface WorkflowCheckpointState {
   instance?: WorkflowInstanceState;
+  interpretationRecovery?: { attempts: number; nextAttemptAt: string };
   parameterValues: Record<string, string>;
   agents: Array<{
     id: string;
@@ -35,6 +36,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /** A malformed checkpoint must never partially restore a workflow. */
 export function readWorkflowCheckpoint(value: unknown): WorkflowCheckpointState | null {
   if (!isRecord(value) || (value.instance !== undefined && !isWorkflowInstanceState(value.instance)) || !isRecord(value.parameterValues) ||
+      (value.interpretationRecovery !== undefined && (!isRecord(value.interpretationRecovery) ||
+        !Number.isSafeInteger(value.interpretationRecovery.attempts) || Number(value.interpretationRecovery.attempts) < 1 ||
+        typeof value.interpretationRecovery.nextAttemptAt !== "string" || !Number.isFinite(Date.parse(value.interpretationRecovery.nextAttemptAt)))) ||
       !Object.values(value.parameterValues).every((parameter) => typeof parameter === "string") ||
       !Array.isArray(value.agents)) return null;
 
@@ -67,6 +71,18 @@ export function readWorkflowCheckpoint(value: unknown): WorkflowCheckpointState 
     }
   }
   return value as unknown as WorkflowCheckpointState;
+}
+
+/** Only completed mission results may be retried automatically. An ambiguous
+ * failed branch must keep its explicit recovery requirement. */
+export function hasRecoverableInterpretation(state: WorkflowCheckpointState | null): boolean {
+  if (!state?.agents.some(agent => agent.threads.some(thread => thread.pendingInterpretation))) return false;
+  return state.agents.every(agent => {
+    const failed = ["running", "failed", "cancelled"].includes(agent.execution.status);
+    const ids = agent.failedThreadIds.length ? agent.failedThreadIds : failed ? agent.threads.map(thread => thread.id) : [];
+    return (!failed || ids.length > 0) && ids.every(id =>
+      agent.threads.some(thread => thread.id === id && thread.pendingInterpretation));
+  });
 }
 import { createHash } from "node:crypto";
 
