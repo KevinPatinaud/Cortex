@@ -26,6 +26,7 @@ import { ConfirmationDialog } from "./ConfirmationDialog.tsx";
 import { removeProjectDraft } from "../../agent/components/projectDraft.ts";
 
 interface ProjectDirectoryManagerProps {
+  onOpenWorkForce?: () => void;
   activeProject: Project | null;
   deletedProject: { id: string } | null;
   isEditing: boolean;
@@ -70,6 +71,7 @@ function updateProjectUrl(
 }
 
 export function ProjectDirectoryManager({
+  onOpenWorkForce,
   activeProject,
   deletedProject,
   isEditing,
@@ -543,6 +545,7 @@ export function ProjectDirectoryManager({
         aria-label={t("sidebar.aria")}
       >
         <header className="project-sidebar__header">
+          {onOpenWorkForce && <button className="work-force-mode-link" type="button" onClick={onOpenWorkForce}>Work Force<Plus size={16} aria-hidden="true" /></button>}
           <p className="project-sidebar__eyebrow">{t("sidebar.workspace")}</p>
           <div className="project-sidebar__title-row">
             <h2>{t("sidebar.projects")}</h2>

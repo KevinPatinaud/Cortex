@@ -1,3 +1,5 @@
+import type { WorkForceService } from "../../../application/service/workForce/WorkForceService.ts";
+import { createWorkForceController } from "./WorkForceController.ts";
 import express from "express";
 import path from "node:path";
 import type { AgentUseCase } from "../../../application/usecase/AgentUseCase.ts";
@@ -19,6 +21,7 @@ export function createCortexApplication(options: {
   workflowScheduler: WorkflowScheduler;
   authentication: PasswordAuthentication | null;
   clientDirectory: string;
+  workForce?: WorkForceService;
   gmail?: GmailService;
   automations?: WorkflowAutomationService;
 }) {
@@ -43,6 +46,7 @@ export function createCortexApplication(options: {
   app.use("/api/auth", createAuthenticationRouter(options.authentication));
   app.get("/api/health", (_request, response) => { response.json({ status: "ok" }); });
   if (options.authentication) app.use("/api", requireAuthentication(options.authentication));
+  if (options.workForce) app.use("/api/work-force", createWorkForceController(options.workForce));
   if (options.gmail) app.use("/api/gmail", createGmailController(options.gmail));
   if (options.automations) app.use("/api/automations", createWorkflowAutomationController(options.automations));
   app.use("/api/projects", createProjectController(options.projectUseCase, options.automations));

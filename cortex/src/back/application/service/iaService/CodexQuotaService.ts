@@ -99,7 +99,7 @@ export function parseCodexQuota(input: unknown, now = Date.now()): CodexQuotaSta
     error: fiveHour && weekly ? null : "Les deux quotas Codex (5 h et semaine) n’ont pas pu être vérifiés." };
 }
 
-function quotaDenial(configuration: CodexQuotaConfiguration, status: CodexQuotaStatus): string | null {
+export function quotaDenial(configuration: CodexQuotaConfiguration, status: CodexQuotaStatus): string | null {
   if (!status.available || !status.fiveHour || !status.weekly) return `Lancement bloqué : ${status.error}`;
   const missing: string[] = [];
   if (status.fiveHour.remainingPercent < configuration.minimumFiveHourRemainingPercent) {

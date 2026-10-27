@@ -1,3 +1,5 @@
+import { WorkForceService } from "../../src/back/application/service/workForce/WorkForceService.ts";
+import { ConfiguredWorkForceAgents } from "../../src/back/application/service/workForce/ConfiguredWorkForceAgents.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -111,7 +113,7 @@ const simulatedProvider: AgentProvider = {
     }) };
     options.signal?.throwIfAborted();
     options.onProgress?.("Analyse des informations en cours…");
-    await delay(prompt.includes("E2E_SLOW") ? 8_000 : 150, undefined, { signal: options.signal });
+    await delay(prompt.includes("E2E_SLOW") ? 8_000 : prompt.includes("E2E_WORK_FORCE_SLOW") ? 1500 : 150, undefined, { signal: options.signal });
     const responseSchema = prompt.split("JSON Schema:\n").at(-1);
     const nextAgentIds: string[] = options.outputSchema
       ? (options.outputSchema.properties as any).nextAgentIds.items.enum ?? []
@@ -167,9 +169,19 @@ const gmail = new GmailService(path.join(directory, "gmail.sqlite"), "http://127
   })) });
   throw new Error("Unexpected fake Gmail URL");
 }) as typeof fetch);
+let workForceTime: number | null = null;
+const workForce = new WorkForceService(path.join(directory, "config.json"), new ConfiguredWorkForceAgents(projectUseCase, agentUseCase),
+  codexQuota, () => workForceTime ?? Date.now(), 100);
 const app = createCortexApplication({ projectUseCase, agentUseCase, workflowScheduler,
-  authentication: null, clientDirectory: path.resolve("dist"), gmail, automations });
+  authentication: null, clientDirectory: path.resolve("dist"), gmail, automations, workForce });
 // Test-only endpoint outside /api, never registered by production.
+app.post("/__test/work-force-clock", async (request, response) => {
+  const next = request.body.at == null ? null : Date.parse(request.body.at);
+  if (next !== null && !Number.isFinite(next)) { response.status(400).json({ error: "Invalid test clock" }); return; }
+  workForceTime = next;
+  void workForce.tick();
+  response.json({ ok: true });
+});
 app.post("/__test/codex-models", (request, response) => {
   modelCatalogUnavailable = request.body.unavailable === true;
   fixtureModelName = request.body.model ?? "gpt-server-sol";
@@ -189,6 +201,7 @@ app.post("/__test/scheduled-scan", (request, response) => {
 app.post("/__test/automation-reset-scan", (_request, response) => { automationScan = 0; response.json({ ok: true }); });
 app.post("/__test/fail-next-dispatch", (_request, response) => { failNextDispatch = true; response.json({ ok: true }); });
 const server = app.listen(4317, "127.0.0.1", () => {
+  void workForce.start();
   waitScheduler.start();
   void automations.start();
   console.log("Cortex test fixture ready on http://127.0.0.1:4317");
@@ -200,6 +213,7 @@ async function close() {
   workflowScheduler.stop();
   waitScheduler.stop();
   await automations.stop();
+  await workForce.stop();
   agentUseCase.cancelAllExecutions();
   agentService.cancelAllExecutions();
   const expiresAt = Date.now() + 5_000;

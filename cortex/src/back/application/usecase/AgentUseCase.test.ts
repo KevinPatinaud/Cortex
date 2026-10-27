@@ -241,6 +241,31 @@ function createAgentAnswer(
   });
 }
 
+test("Work Force lists configured agents without inference and runs only the selected agent with its profile", async () => {
+  const { useCase, calls } = createSequentialUseCase([{ sessionId: "work-force-session",
+    answer: createAgentAnswer(["Résultat Work Force"], false, false, null, []) }]);
+  const project = await useCase.getConfiguredProject("project-id");
+  assert.equal(calls.length, 0);
+  const selected = project.agents.find(agent => agent.id === ".claude/agents/analysis.md")!;
+  selected.model = "configured-model";
+  selected.reasoningEffort = "high";
+  selected.nextAgentIds = [project.agents.find(agent => agent.id !== selected.id)!.id];
+  const runner = useCase.createWorkForceRunner(project, selected.id);
+  const isolated = await runner.loadProject(project.projectId, false);
+  assert.deepEqual(isolated.agents.map(agent => agent.id), [selected.id]);
+  assert.deepEqual(isolated.agents[0].nextAgentIds, []);
+  const result = await useCase.runWorkForceAgent(runner, project.projectId, selected.id);
+  assert.match(result.answer, /Résultat Work Force/);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.model, "configured-model");
+  assert.equal(calls[0].options.reasoningEffort, "high");
+  assert.equal(calls[0].options.workingDirectory, project.directoryPath);
+  assert.equal(useCase.getActualLoadedProject(), null);
+  assert.equal(useCase.isProjectRunning(project.projectId), false);
+  const normal = await useCase.getConfiguredProject(project.projectId);
+  assert.ok(normal.agents.every(agent => !agent.hasSession));
+});
+
 test("améliore uniquement l’agent ciblé avec tout le projet comme contexte", async () => {
   const improvedPrompt = [
     "Analyse la demande.",

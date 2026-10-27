@@ -1,3 +1,5 @@
+import { WorkForceService } from "../../../application/service/workForce/WorkForceService.ts";
+import { ConfiguredWorkForceAgents } from "../../../application/service/workForce/ConfiguredWorkForceAgents.ts";
 import { ExecutionWorkspaceGuard } from "../../../application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -85,6 +87,7 @@ const workflowAuditRepository = new SqliteWorkflowAuditRepository(
   auditDatabaseFile
 );
 const workflowAuditService = new WorkflowAuditService(workflowAuditRepository);
+const codexQuota = new CodexQuotaService(configurationFile, () => readCodexRateLimits(workspaceDirectory));
 const agentUseCase = new AgentUseCase(
   agentService,
   projectUseCase,
@@ -94,7 +97,7 @@ const agentUseCase = new AgentUseCase(
     maxWorkflowExecutions: readPositiveSetting("CORTEX_MAX_WORKFLOW_EXECUTIONS", 100)
   },
   undefined,
-  new CodexQuotaService(configurationFile, () => readCodexRateLimits(workspaceDirectory)),
+  codexQuota,
   new ExecutionWorkspaceGuard(configurationFile, path.join(workspaceDirectory, "data", "execution-workspaces"),
     undefined, checkpointId => workflowAuditRepository.getCheckpoint(checkpointId)?.state),
   new ExecutionQualityService(configurationFile, path.join(workspaceDirectory, "data", "execution-quality"))
@@ -113,12 +116,14 @@ const gmail = new GmailService(
   process.env.CORTEX_GMAIL_REDIRECT_URI?.trim() || `http://127.0.0.1:${port}/api/gmail/callback`,
   agentUseCase
 );
+const workForce = new WorkForceService(configurationFile, new ConfiguredWorkForceAgents(projectUseCase, agentUseCase), codexQuota);
 const app = createCortexApplication({
-  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations
+  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations, workForce
 });
 
 const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase);
 const httpServer = app.listen(port, host, () => {
+  void workForce.start().catch(error => console.error("Unable to start Work Force:", error));
   workflowWaitScheduler.start();
   gmail.start();
   const browserHost = host === "0.0.0.0" || host === "::"
@@ -142,6 +147,7 @@ async function shutdown(): Promise<void> {
   workflowScheduler.stop();
   workflowWaitScheduler.stop();
   const automationsStopped = automations.stop();
+  const workForceStopped = workForce.stop();
   void gmail.stop();
   agentUseCase.cancelAllExecutions();
   agentService.cancelAllExecutions();
@@ -162,6 +168,7 @@ async function shutdown(): Promise<void> {
   await closed;
   await gmail.close();
   await automationsStopped;
+  await workForceStopped;
   automationRepository.close();
   workflowAuditRepository.close();
   clearTimeout(deadline);

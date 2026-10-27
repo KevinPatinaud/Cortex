@@ -1,3 +1,4 @@
+import "./page/work_force/workForceSettings.css";
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { LogOut } from "lucide-react";
 import { AgentProjectWorkspace } from "./page/agent/components/AgentProjectWorkspace.tsx";
@@ -11,6 +12,9 @@ import { useTranslation } from "./i18n.tsx";
 
 const AgentProjectEditor = lazy(() => import("./page/agent/components/AgentProjectEditor.tsx")
   .then((module) => ({ default: module.AgentProjectEditor })));
+
+const WorkForceWorkspace = lazy(() => import("./page/work_force/WorkForceWorkspace.tsx")
+  .then(module => ({ default: module.WorkForceWorkspace })));
 
 interface ProjectSelection {
   project: Project;
@@ -26,6 +30,7 @@ export function App() {
   const [isAuthenticationRequired, setIsAuthenticationRequired] = useState(false);
   const [selection, setSelection] = useState<ProjectSelection | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [workForceMode, setWorkForceMode] = useState(() => new URL(window.location.href).searchParams.get("mode") === "work-force");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [creationRequest, setCreationRequest] = useState(0);
   const [deletedProject, setDeletedProject] = useState<{ id: string } | null>(null);
@@ -34,6 +39,18 @@ export function App() {
   >({});
   const confirmProjectChange = useCallback(() => !hasUnsavedChanges ||
     window.confirm(t("editor.leaveWithDraftConfirm")), [hasUnsavedChanges, t]);
+  function changeWorkForce(enabled: boolean) {
+    if (!confirmProjectChange()) return;
+    setWorkForceMode(enabled);
+    const url = new URL(window.location.href);
+    if (enabled) url.searchParams.set("mode", "work-force"); else url.searchParams.delete("mode");
+    window.history.pushState(window.history.state, "", url);
+  }
+  useEffect(() => {
+    const sync = () => setWorkForceMode(new URL(window.location.href).searchParams.get("mode") === "work-force");
+    window.addEventListener("popstate", sync);
+    return () => window.removeEventListener("popstate", sync);
+  }, []);
   const refreshContent = useCallback((content: AgentProject) => {
     setProjectActivity(current => {
       if (content.workflowInstance?.status === "running" || content.agents.some(agent => agent.executionStatus === "running")) {
@@ -77,12 +94,13 @@ export function App() {
   }, [connectionAttempt]);
 
   useEffect(() => {
+    if (workForceMode) { document.title = "Work Force · Cortex"; return; }
     const projectName = selection?.project.directoryPath
       .split(/[\\/]/)
       .filter(Boolean)
       .at(-1);
     document.title = projectName ? `${projectName} · Cortex` : "Cortex";
-  }, [selection?.project.directoryPath]);
+  }, [selection?.project.directoryPath, workForceMode]);
 
   if (hasConnectionError) {
     return (
@@ -118,6 +136,10 @@ export function App() {
     });
   }
 
+  if (workForceMode) return <Suspense fallback={<main className="login-page" aria-busy="true"><p role="status">{t("common.loading")}</p></main>}>
+    <WorkForceWorkspace onNormal={() => changeWorkForce(false)} />
+  </Suspense>;
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">{t("navigation.skipToContent")}</a>
@@ -139,6 +161,7 @@ export function App() {
         </button>
       )}
       <ProjectDirectoryManager
+        onOpenWorkForce={() => changeWorkForce(true)}
         activeProject={selection?.project ?? null}
         deletedProject={deletedProject}
         isEditing={isEditing}

@@ -2,6 +2,27 @@
 
 Cortex is a local application for creating, visualizing, and running Codex, Claude, or GitHub Copilot agent workflows. The React frontend is served by an Express API that reads agent configurations directly from saved projects.
 
+**Work Force**, accessible from the project sidebar, repeatedly runs a manually
+ordered selection of agents from any saved projects. Select agents, drag their
+rows or use the up/down buttons, optionally choose a local start and/or end
+date/time, then start or schedule the loop. Every agent requires both Codex
+reserves: by default 30% remaining over five hours and 8% over the week. These
+mandatory thresholds are independent of the normal workflow rule and can be
+changed in Settings → General → Work Force, or on the Work Force page. A refused
+or unavailable quota reading is retried every five minutes, keeping the next
+agent in place. Execution is sequential and wraps back to the first agent.
+
+Manual stop and the planned end let the current agent finish and prevent further
+launches. Start and end dates are independent, stored as UTC instants and shown
+in the browser's time zone. The server must stay running; closing the page is
+fine. Configuration, pending schedules, quota waits and the next position survive
+restarts. An interrupted active agent or a failed/waiting agent pauses the loop
+for review before manual restart. Agents reuse their configured engine, model,
+instructions, workspace policy and quality checks, with separate Work Force
+conversations and audits. Normal workflow edges do not launch extra agents.
+The latest 20 execution results are visible on the page; full audits remain in
+each project's history. Stop the loop before changing the list or schedule.
+
 Scheduled monitoring agents can dispatch independent, durable dossiers within the same project. Cortex identifies asynchronous branches from the project instructions when loading its graph; no separate automation configuration is needed. Dossiers and replies appear below their entry agent, with persistent deduplication and conditional follow-up. See the [workflow guide and real-estate example](docs/workflow-automations.md).
 
 In **Settings → General**, enable the Codex quota launch rule to require at least **50% remaining over five hours** and **10% remaining over the week**. Both thresholds are configurable from 0 to 100% and persist in `config.json` under `codexQuota`. The rule is disabled by default. It applies to all projects and engines, manual agent launches, scheduled workflows, and automatic resumes; already running workflows finish normally. These percentages describe the Codex subscription reserve, not raw token counts or API credits.
