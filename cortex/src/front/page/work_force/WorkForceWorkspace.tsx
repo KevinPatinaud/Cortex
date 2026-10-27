@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowDown, ArrowLeft, ArrowUp, GripVertical, Play, RefreshCw, Square, X } from "lucide-react";
+import { ArrowLeft, GripVertical, Play, RefreshCw, Square, X } from "lucide-react";
 import { useTranslation } from "../../i18n.tsx";
 import { getWorkForce, getWorkForceAgents, saveWorkForce, startWorkForce, stopWorkForce } from "../../services/workForceApi.ts";
 import { workForceAgentKey, type WorkForceAgentRef, type WorkForceCatalog, type WorkForceOverview } from "../../../shared/WorkForce.ts";
@@ -122,8 +122,6 @@ export function WorkForceWorkspace({ onNormal, onPrompts }: { onNormal(): void; 
                 <GripVertical size={16} aria-hidden="true" /><span className="work-force__number">{index + 1}</span>
                 <div className="work-force__agent-name"><strong>{name}</strong><small>{agent?.projectName ?? copy.unavailable}</small></div>
                 <div className="work-force__row-actions">
-                  <button type="button" disabled={locked || busy || index === 0} aria-label={`${copy.up} ${name}`} onClick={() => move(index, index - 1)}><ArrowUp size={15} aria-hidden="true" /></button>
-                  <button type="button" disabled={locked || busy || index === selected.length - 1} aria-label={`${copy.down} ${name}`} onClick={() => move(index, index + 1)}><ArrowDown size={15} aria-hidden="true" /></button>
                   <button type="button" disabled={locked || busy} aria-label={`${copy.remove} ${name}`} onClick={() => edit(() => setSelected(current => current.filter(item => workForceAgentKey(item) !== workForceAgentKey(ref))))}><X size={15} aria-hidden="true" /></button>
                 </div>
               </li>;

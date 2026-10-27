@@ -42,7 +42,9 @@ test("selects agents across projects, reorders, saves local start/end times and 
   await expect(page.getByRole("heading", { name: "Work Force", exact: true })).toBeVisible();
   await page.getByRole("checkbox", { name: `${a.name} ${a.projectName} Agent Work Force`, exact: true }).check();
   await page.getByRole("checkbox", { name: `${b.name} ${b.projectName} Agent Work Force`, exact: true }).check();
-  await page.getByRole("button", { name: `Monter ${b.name}`, exact: true }).click();
+  await expect(page.getByRole("button", { name: /^(Monter|Descendre) / })).toHaveCount(0);
+  const rows = page.locator(".work-force__sequence li");
+  await rows.filter({ hasText: b.name }).dragTo(rows.filter({ hasText: a.name }));
   await expect(page.locator(".work-force__sequence li").first()).toContainText(b.name);
   const date = new Date(Date.now() + 86_400_000); date.setHours(9, 30, 0, 0);
   const values = await page.evaluate(iso => {
