@@ -1,7 +1,3 @@
-import type { GlobalExecutionQueue } from "../../../application/service/executionQueue/GlobalExecutionQueue.ts";
-import { createExecutionQueueController } from "./ExecutionQueueController.ts";
-import type { WorkForceService } from "../../../application/service/workForce/WorkForceService.ts";
-import { createWorkForceController } from "./WorkForceController.ts";
 import express from "express";
 import path from "node:path";
 import type { AgentUseCase } from "../../../application/usecase/AgentUseCase.ts";
@@ -15,6 +11,14 @@ import { createGmailController } from "./GmailController.ts";
 import { createWorkflowAutomationController } from "./WorkflowAutomationController.ts";
 import type { WorkflowAutomationService } from "../../../application/service/workflowAutomation/WorkflowAutomationService.ts";
 import type { GmailService } from "../../../application/service/gmail/GmailService.ts";
+import type { PromptQueueService } from "../../../application/service/promptQueue/PromptQueueService.ts";
+import { createPromptQueueController } from "./PromptQueueController.ts";
+import type { CodexUpdateService } from "../../../application/service/iaService/CodexUpdateService.ts";
+import { ValidationError } from "../../../application/error/ValidationError.ts";
+import type { WorkForceService } from "../../../application/service/workForce/WorkForceService.ts";
+import { createWorkForceController } from "./WorkForceController.ts";
+import type { GlobalExecutionQueue } from "../../../application/service/executionQueue/GlobalExecutionQueue.ts";
+import { createExecutionQueueController } from "./ExecutionQueueController.ts";
 
 /** Production and integration tests share the same HTTP application. */
 export function createCortexApplication(options: {
@@ -23,10 +27,12 @@ export function createCortexApplication(options: {
   workflowScheduler: WorkflowScheduler;
   authentication: PasswordAuthentication | null;
   clientDirectory: string;
-  workForce?: WorkForceService;
-  executionQueue?: GlobalExecutionQueue;
   gmail?: GmailService;
   automations?: WorkflowAutomationService;
+  promptQueue?: PromptQueueService;
+  workForce?: WorkForceService;
+  executionQueue?: GlobalExecutionQueue;
+  codexUpdates?: Pick<CodexUpdateService, "check" | "status">;
 }) {
   const app = express();
   app.disable("x-powered-by");
@@ -35,7 +41,7 @@ export function createCortexApplication(options: {
       "Content-Security-Policy": [
         "default-src 'self'", "base-uri 'self'", "connect-src 'self'",
         "font-src 'self'", "form-action 'self'", "frame-ancestors 'none'",
-        "img-src 'self' data:", "object-src 'none'", "script-src 'self'",
+        "img-src 'self' data: blob:", "object-src 'none'", "script-src 'self'",
         "style-src 'self' 'unsafe-inline'"
       ].join("; "),
       "Permissions-Policy": "camera=(), geolocation=(), microphone=()",
@@ -49,6 +55,15 @@ export function createCortexApplication(options: {
   app.use("/api/auth", createAuthenticationRouter(options.authentication));
   app.get("/api/health", (_request, response) => { response.json({ status: "ok" }); });
   if (options.authentication) app.use("/api", requireAuthentication(options.authentication));
+  if (options.codexUpdates) {
+    app.get("/api/codex-engine", (_request, response) => { response.setHeader("Cache-Control", "no-store"); response.json(options.codexUpdates!.status()); });
+    app.post("/api/codex-engine/check", (request, response) => {
+      if (!request.is("application/json")) throw new ValidationError("La vérification doit être envoyée en JSON.");
+      void options.codexUpdates!.check(true);
+      response.status(202).json(options.codexUpdates!.status());
+    });
+  }
+  if (options.promptQueue) app.use("/api/prompt-queue", createPromptQueueController(options.promptQueue));
   if (options.workForce) app.use("/api/work-force", createWorkForceController(options.workForce));
   if (options.executionQueue) app.use("/api/execution-queue", createExecutionQueueController(options.executionQueue));
   if (options.gmail) app.use("/api/gmail", createGmailController(options.gmail));

@@ -50,6 +50,14 @@ test("désactive le multi-agent interne quand Cortex lance Codex", async () => {
   assert.equal(provider.capturedArgs[disableIndex + 1], "multi_agent");
 });
 
+test("an existing provider resolves the active runtime for each new turn after an engine update", async () => {
+  let active = "version-one.js";
+  const provider = new CapturingCodexAgentProvider(process.cwd(), () => ({ command: process.execPath, args: [active] }));
+  await provider.ask("First"); assert.equal(provider.capturedArgs[0], "version-one.js");
+  active = "version-two.js";
+  await provider.ask("Second", { sessionId: "session-id" }); assert.equal(provider.capturedArgs[0], "version-two.js");
+});
+
 test("enables bounded research/review only on explicit project policy", async () => {
   const provider = new CapturingCodexAgentProvider(process.cwd());
   await provider.ask("Review this task", { persistSession: true, delegation: "bounded" });
@@ -107,6 +115,27 @@ test("transmet aussi par stdin le prompt d'une session reprise", async () => {
 
   assert.deepEqual(provider.capturedArgs.slice(-2), ["session-id", "-"]);
   assert.equal(provider.capturedInput, "Compile la suite du journal");
+});
+
+test("queued chats keep a durable session and allow initial and resumed turns outside Git", async () => {
+  const provider = new CapturingCodexAgentProvider(process.cwd());
+  for (const sessionId of [undefined, "chat-session"]) {
+    await provider.ask("Queued chat turn", { persistSession: true, skipGitRepoCheck: true, sessionId });
+    assert.ok(provider.capturedArgs.includes("--skip-git-repo-check"));
+    assert.ok(!provider.capturedArgs.includes("--ephemeral"));
+    assert.equal(provider.capturedArgs.includes("resume"), Boolean(sessionId));
+  }
+});
+
+test("images are attached natively to both new and resumed Codex turns without modifying the user's prompt", async () => {
+  const provider = new CapturingCodexAgentProvider(process.cwd());
+  const images = ["C:\\Pièces jointes\\photo.png", "C:\\Pièces jointes\\deuxième image.jpg"];
+  for (const sessionId of [undefined, "chat-session"]) {
+    await provider.ask("Compare les images", { persistSession: true, sessionId, imagePaths: images });
+    assert.deepEqual(provider.capturedArgs.flatMap((arg, index) => arg === "--image" ? [provider.capturedArgs[index + 1]] : []), images);
+    assert.equal(provider.capturedInput, "Compare les images");
+    assert.equal(provider.capturedArgs.at(-1), "-");
+  }
 });
 
 test("contraint la réponse finale avec un fichier de schéma nettoyé après l'appel", async () => {

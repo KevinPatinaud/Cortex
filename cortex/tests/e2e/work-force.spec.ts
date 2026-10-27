@@ -44,7 +44,17 @@ test("selects agents across projects, reorders, saves local start/end times and 
   await page.getByRole("checkbox", { name: `${b.name} ${b.projectName} Agent Work Force`, exact: true }).check();
   await expect(page.getByRole("button", { name: /^(Monter|Descendre) / })).toHaveCount(0);
   const rows = page.locator(".work-force__sequence li");
-  await rows.filter({ hasText: b.name }).dragTo(rows.filter({ hasText: a.name }));
+  const source = rows.filter({ hasText: b.name }).locator(":scope > svg");
+  const target = rows.filter({ hasText: a.name }).locator(":scope > svg");
+  await target.scrollIntoViewIfNeeded();
+  await source.scrollIntoViewIfNeeded();
+  const from = (await source.boundingBox())!, to = (await target.boundingBox())!;
+  await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(from.x + from.width / 2, from.y - 8, { steps: 3 });
+  await page.mouse.move(to.x + to.width / 2, to.y + to.height / 2, { steps: 10 });
+  await page.mouse.move(to.x + to.width / 2 + 1, to.y + to.height / 2 + 1);
+  await page.mouse.up();
   await expect(page.locator(".work-force__sequence li").first()).toContainText(b.name);
   const date = new Date(Date.now() + 86_400_000); date.setHours(9, 30, 0, 0);
   const values = await page.evaluate(iso => {

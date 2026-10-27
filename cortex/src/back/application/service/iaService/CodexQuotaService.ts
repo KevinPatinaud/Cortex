@@ -11,6 +11,7 @@ export class CodexQuotaService {
   private readonly repository: JsonConfigurationRepository;
   private pending: Promise<CodexQuotaStatus> | null = null;
   private deniedStatus: CodexQuotaStatus | null = null;
+  private lastStatus: CodexQuotaStatus | null = null;
 
   constructor(
     configurationFile: string,
@@ -38,6 +39,8 @@ export class CodexQuotaService {
     finally { this.pending = null; }
   }
 
+  getLastStatus(): CodexQuotaStatus | null { return this.lastStatus; }
+
   private async readStatus(): Promise<CodexQuotaStatus> {
     let status: CodexQuotaStatus;
     try { status = parseCodexQuota(await this.readLimits(), this.now()); }
@@ -47,12 +50,13 @@ export class CodexQuotaService {
         error: "Quotas Codex indisponibles. Vérifiez la connexion Codex et la version du CLI sur le serveur Cortex." };
     }
     this.deniedStatus = null;
+    this.lastStatus = status;
     return status;
   }
 
-  async assertMayStart(): Promise<void> {
+  async assertMayStart(required = false): Promise<void> {
     const configuration = await this.getConfiguration();
-    if (!configuration.enabled) return;
+    if (!configuration.enabled && !required) return;
     // Reuse only refused readings to throttle retries. Every allowed launch uses a fresh read.
     let status = this.deniedStatus;
     if (!status || this.now() - Date.parse(status.checkedAt) >= 60_000 ||

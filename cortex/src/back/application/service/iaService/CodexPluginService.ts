@@ -1,6 +1,5 @@
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
-import path from "node:path";
+import { resolveCodexCommand } from "./CodexCommand.ts";
 import { ValidationError } from "../../error/ValidationError.ts";
 import type {
   CodexPluginAuthPolicy,
@@ -94,27 +93,8 @@ export class CodexPluginService {
 }
 
 function createCodexCommandRunner(): CodexCommandRunner {
-  const npmCodexScript = process.env.APPDATA
-    ? path.join(
-        process.env.APPDATA,
-        "npm",
-        "node_modules",
-        "@openai",
-        "codex",
-        "bin",
-        "codex.js"
-      )
-    : "";
-  const command = process.platform === "win32" &&
-    npmCodexScript &&
-    existsSync(npmCodexScript)
-    ? process.execPath
-    : "codex";
-  const argumentPrefix = command === process.execPath
-    ? [npmCodexScript]
-    : [];
-
   return (args) => new Promise((resolve, reject) => {
+    const { command, args: argumentPrefix } = resolveCodexCommand();
     const child = execFile(command, [...argumentPrefix, ...args], {
       encoding: "utf8",
       maxBuffer: 10 * 1024 * 1024,

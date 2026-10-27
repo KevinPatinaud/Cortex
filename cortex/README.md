@@ -44,6 +44,35 @@ conversations and audits. Normal workflow edges do not launch extra agents.
 The latest 20 execution results are visible on the page; full audits remain in
 each project's history. Stop the loop before changing the list or schedule.
 
+**Chats et prompts** adds durable prompt queues alongside workflows: prepare
+several independent Codex conversations by writing a first message. Titles,
+working directories and models are selected automatically. Defaults can be
+changed in the dedicated Settings menu and apply to future chats. A compact
+composer selector also offers the live Codex catalog and each model's supported
+reasoning levels. Each queued prompt keeps the profile selected when it was sent.
+The composer accepts images and documents through the paperclip, file dropping
+or image pasting. Attachments remain with queued prompts and survive restarts;
+images are sent through Codex's native image input and original document paths
+are supplied for the engine to read using its local tools.
+The clock beside the paperclip optionally sets a local date (today by default)
+and time. The stored UTC instant prevents early execution; due prompts still
+respect quotas and conversation order. Waiting schedules can be changed or
+removed, survive restarts, and require the Cortex server to remain running.
+Prompts run
+sequentially inside each chat; different chats can run in parallel (two by
+default) when the global simultaneous-execution setting allows it. Otherwise,
+prompts, normal agents and Work Force all share the same serial execution queue.
+Future schedules and quota waits do not reserve a slot; quotas are checked again
+when the prompt actually reaches the front of the global queue.
+Every automatic departure requires both Codex reserves to meet the
+configured thresholds, including when the global workflow quota toggle is off.
+The defaults are 50% remaining over five hours and 10% over the week. Queued work
+retries automatically as reserves recover. Sending below either threshold opens
+a popup with the observed reserves: keep the prompt queued or explicitly force
+this attempt. Forcing preserves conversation order and execution capacity;
+the next prompt still needs sufficient reserves. See the [prompt queue guide](docs/prompt-queue.md)
+for preparation, concurrency, model selection, persistence and recovery.
+
 Scheduled monitoring agents can dispatch independent, durable dossiers within the same project. Cortex identifies asynchronous branches from the project instructions when loading its graph; no separate automation configuration is needed. Dossiers and replies appear below their entry agent, with persistent deduplication and conditional follow-up. See the [workflow guide and real-estate example](docs/workflow-automations.md).
 
 In **Settings → General**, enable the Codex quota launch rule to require at least **50% remaining over five hours** and **10% remaining over the week**. Both thresholds are configurable from 0 to 100% and persist in `config.json` under `codexQuota`. The rule is disabled by default. It applies to all projects and engines, manual agent launches, scheduled workflows, and automatic resumes; already running workflows finish normally. These percentages describe the Codex subscription reserve, not raw token counts or API credits.
@@ -51,6 +80,16 @@ In **Settings → General**, enable the Codex quota launch rule to require at le
 Cortex queries its server's authenticated Codex CLI using [`account/rateLimits/read`](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt), without starting an inference turn. The settings button checks that same account and displays the observation time. Missing, invalid, expired, or unavailable five-hour/weekly windows block launches while the rule is enabled. Cron occurrences are skipped with a reason until the next scheduled occurrence; waiting workflows and queued dossiers retain their state and retry automatically. Denied attempts reuse the refusal for up to 60 seconds, while every permitted launch requires a fresh reading. Disabling the rule takes effect on the next attempt.
 
 The Codex model selector reads the deployed CLI's [`model/list`](https://learn.chatgpt.com/docs/app-server#list-models-modellist) catalog in the selected project's directory, including pagination and model-specific reasoning efforts. It displays the CLI version and configured default, and can refresh after a Codex upgrade. Discovery and execution resolve the same executable on the Cortex server; the browser's local Codex installation is irrelevant. No model names are hard-coded for Codex. Missing catalogs show an error and retry action; previously saved model/effort values are preserved and identified when absent from the current catalog. Changing models clears an incompatible effort only as part of that explicit user action. Discovery starts no inference turn; final account access is checked when a real execution runs.
+
+## Automatic Codex updates
+
+Cortex automatically checks for a stable Codex CLI update on startup and every
+six hours. It installs verified releases in its own `data/codex-runtime` folder
+and waits for running executions before activation. Discovery, execution, quota
+reads and plugins use the same active runtime. Failed updates retain the previous
+version and retry automatically; the model picker shows progress and offers a
+manual recheck through its refresh button. Existing queued model choices remain
+unchanged. See the [prompt queue guide](docs/prompt-queue.md) for details.
 
 ## Prerequisites
 

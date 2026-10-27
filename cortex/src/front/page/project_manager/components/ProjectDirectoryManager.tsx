@@ -27,6 +27,7 @@ import { removeProjectDraft } from "../../agent/components/projectDraft.ts";
 
 interface ProjectDirectoryManagerProps {
   onOpenWorkForce?: () => void;
+  onOpenPromptQueue?: () => void;
   activeProject: Project | null;
   deletedProject: { id: string } | null;
   isEditing: boolean;
@@ -72,6 +73,7 @@ function updateProjectUrl(
 
 export function ProjectDirectoryManager({
   onOpenWorkForce,
+  onOpenPromptQueue,
   activeProject,
   deletedProject,
   isEditing,
@@ -82,7 +84,7 @@ export function ProjectDirectoryManager({
   onBeforeProjectChange,
   creationRequest
 }: ProjectDirectoryManagerProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
@@ -545,7 +547,8 @@ export function ProjectDirectoryManager({
         aria-label={t("sidebar.aria")}
       >
         <header className="project-sidebar__header">
-          {onOpenWorkForce && <button className="work-force-mode-link" type="button" onClick={onOpenWorkForce}>Work Force<Plus size={16} aria-hidden="true" /></button>}
+          {onOpenWorkForce && <button className="prompt-mode-link" type="button" onClick={onOpenWorkForce}>Work Force<Plus size={16} aria-hidden="true" /></button>}
+          {onOpenPromptQueue && <button className="prompt-mode-link" type="button" onClick={onOpenPromptQueue}>{language === "fr" ? "Chats et prompts" : "Chats and prompts"}<Plus size={16} aria-hidden="true" /></button>}
           <p className="project-sidebar__eyebrow">{t("sidebar.workspace")}</p>
           <div className="project-sidebar__title-row">
             <h2>{t("sidebar.projects")}</h2>

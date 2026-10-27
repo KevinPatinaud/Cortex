@@ -1,5 +1,6 @@
 import type { CodexModel, CodexModelCatalog } from "../../../../shared/CodexModel.ts";
 import { withCodexAppServer, type CodexAppServerSession } from "./CodexAppServer.ts";
+import type { CodexUpdateService } from "./CodexUpdateService.ts";
 
 export class CodexModelService {
   private readonly pending = new Map<string, Promise<CodexModelCatalog>>();
@@ -18,9 +19,10 @@ export class CodexModelService {
         }))].sort();
       } catch { /* Discovery is optional on older CLIs; absence is not proof that tools are unavailable. */ }
       return catalog;
-    })) {}
+    }), private readonly updates?: Pick<CodexUpdateService, "check" | "status">) {}
 
   async getCatalog(directory = this.workingDirectory): Promise<CodexModelCatalog> {
+    if (this.updates) void this.updates.check();
     let request = this.pending.get(directory);
     if (!request) {
       request = this.read(directory).catch(() => ({
@@ -29,7 +31,7 @@ export class CodexModelService {
       }));
       this.pending.set(directory, request);
     }
-    try { return await request; }
+    try { const catalog = await request; return this.updates ? { ...catalog, engineUpdate: this.updates.status() } : catalog; }
     finally { if (this.pending.get(directory) === request) this.pending.delete(directory); }
   }
 }

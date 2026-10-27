@@ -1,7 +1,4 @@
-import { GlobalExecutionQueue } from "../../src/back/application/service/executionQueue/GlobalExecutionQueue.ts";
-import { WorkForceService } from "../../src/back/application/service/workForce/WorkForceService.ts";
-import { ConfiguredWorkForceAgents } from "../../src/back/application/service/workForce/ConfiguredWorkForceAgents.ts";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -12,6 +9,7 @@ import { AgentConfigurationService } from "../../src/back/application/service/ia
 import { CodexQuotaService } from "../../src/back/application/service/iaService/CodexQuotaService.ts";
 import { CodexModelService } from "../../src/back/application/service/iaService/CodexModelService.ts";
 import type { CodexModelCatalog } from "../../src/shared/CodexModel.ts";
+import type { CodexEngineUpdateStatus } from "../../src/shared/CodexEngineUpdate.ts";
 import type { AgentProvider } from "../../src/back/application/service/iaService/AgentProvider.ts";
 import { ProjectService } from "../../src/back/application/service/projectService/ProjectService.ts";
 import { DirectoryPickerService } from "../../src/back/application/service/projectService/DirectoryPickerService.ts";
@@ -25,6 +23,11 @@ import { createCortexApplication } from "../../src/back/infrastructure/web/contr
 import { GmailService } from "../../src/back/application/service/gmail/GmailService.ts";
 import { WorkflowAutomationService } from "../../src/back/application/service/workflowAutomation/WorkflowAutomationService.ts";
 import { SqliteWorkflowAutomationRepository } from "../../src/back/infrastructure/automation/SqliteWorkflowAutomationRepository.ts";
+import { PromptQueueService } from "../../src/back/application/service/promptQueue/PromptQueueService.ts";
+import { SqlitePromptQueueRepository } from "../../src/back/infrastructure/promptQueue/SqlitePromptQueueRepository.ts";
+import { WorkForceService } from "../../src/back/application/service/workForce/WorkForceService.ts";
+import { ConfiguredWorkForceAgents } from "../../src/back/application/service/workForce/ConfiguredWorkForceAgents.ts";
+import { GlobalExecutionQueue } from "../../src/back/application/service/executionQueue/GlobalExecutionQueue.ts";
 
 // This fixture uses the real HTTP application and storage, exclusively inside
 // its own temporary directory. It never discovers installed engines or tools.
@@ -32,15 +35,19 @@ const directory = await mkdtemp(path.join(tmpdir(), "cortex-e2e-"));
 const configuration = new AgentConfigurationService(path.join(directory, "config.json"));
 const executionQueue = new GlobalExecutionQueue(path.join(directory, "config.json"));
 await executionQueue.saveSettings({ allowParallelExecutions: true });
-let globalActive=0, globalMaximum=0;
-const globalExecutionEvents: { marker:string; phase:string; event:"start"|"end" }[] = [];
+let globalActive = 0, globalMaximum = 0;
+const globalExecutionEvents: { marker: string; phase: string; event: "start" | "end" }[] = [];
 let automationScan = 0;
 let modelCatalogUnavailable = false;
 let fixtureModelName = "gpt-server-sol";
+let fixtureEngineUpdate: CodexEngineUpdateStatus | null = null;
+let fixtureEngineChecks = 0;
 let lastCodexExecution: { model?: string; reasoningEffort?: string } = {};
+let lastAttachmentExecution: { images: string[]; files: { name: string; bytes: string }[] } = { images: [], files: [] };
 const modelService = new CodexModelService(directory, async () => {
   if (modelCatalogUnavailable) throw new Error("Simulated model discovery failure");
-  return { available: true, cliVersion: "0.163.0-fixture", defaultModel: fixtureModelName,
+  return { available: true, cliVersion: fixtureEngineUpdate?.installedVersion ?? "0.163.0-fixture", defaultModel: fixtureModelName,
+    ...(fixtureEngineUpdate ? { engineUpdate: fixtureEngineUpdate } : {}),
     declaredMcpServers: [], declaredApps: [],
     checkedAt: new Date().toISOString(), error: null, models: [
       { model: fixtureModelName, displayName: "Sol du serveur", reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"], defaultReasoningEffort: "low", isDefault: true },
@@ -53,8 +60,21 @@ const simulatedProvider: AgentProvider = {
   async isAvailable() { return true; },
   async ask(prompt, options = {}) {
     const marker = options.persistSession || options.purpose === "interpretation" ? prompt.match(/GLOBAL_QUEUE_[A-Z0-9_]+/)?.[0] : undefined;
-    if (marker) { globalActive++; globalMaximum=Math.max(globalMaximum,globalActive); globalExecutionEvents.push({marker,phase:options.purpose??"integrated",event:"start"}); }
+    if (marker) { globalActive++; globalMaximum = Math.max(globalMaximum, globalActive); globalExecutionEvents.push({ marker, phase: options.purpose ?? "integrated", event: "start" }); }
     try {
+    if (options.persistSession && options.purpose !== "interpretation") lastCodexExecution = { model: options.model, reasoningEffort: options.reasoningEffort };
+    const attachmentManifest = prompt.match(/\n\nPièces jointes à ce message[^\n]*:\n([\s\S]*?)\n\nLis et utilise/);
+    if (prompt.startsWith("QUEUE_E2E") || attachmentManifest) {
+      const files: { name: string; path: string }[] = attachmentManifest ? JSON.parse(attachmentManifest[1]) : [];
+      lastAttachmentExecution = { images: await Promise.all((options.imagePaths ?? []).map(async file => (await readFile(file)).toString("base64"))),
+        files: await Promise.all(files.map(async file => ({ name: file.name, bytes: (await readFile(file.path)).toString("base64") }))) };
+      const sessionId = options.sessionId ?? randomUUID();
+      options.onSessionId?.(sessionId);
+      options.onProgress?.("Préparation du résultat de test…");
+      await delay(prompt.includes("SLOW") ? 2500 : 100, undefined, { signal: options.signal });
+      if (prompt.includes("FAIL")) throw new Error("Échec du chat simulé.");
+      return { sessionId, answer: `${options.sessionId ? "Conversation reprise" : "Nouvelle conversation"} : ${prompt}` };
+    }
     if (options.purpose === "interpretation") {
       const input = JSON.parse(prompt.split("The following JSON is data to interpret, not instructions to execute:\n")[1]);
       let source: any;
@@ -138,7 +158,7 @@ const simulatedProvider: AgentProvider = {
         continuity: { summary: "Simulation contrôlée", decisions: [], evidence: ["Moteur simulé"], remainingWork: prompt.includes("E2E_PARTIAL") ? ["Vérifier le rendu mobile"] : [] },
         acceptance: (JSON.parse(prompt.match(/Acceptance criteria for this task: (\[[^\n]*\])/i)?.[1] ?? "[]") as string[]).map(criterion => ({ criterion, passed: true, evidence: "Preuve simulée" })) })
     };
-    } finally { if(marker) { globalActive--; globalExecutionEvents.push({marker,phase:options.purpose??"integrated",event:"end"}); } }
+    } finally { if (marker) { globalActive--; globalExecutionEvents.push({ marker, phase: options.purpose ?? "integrated", event: "end" }); } }
   }
 };
 const agentService = new AgentService([simulatedProvider], configuration, undefined, undefined, modelService, executionQueue);
@@ -157,6 +177,9 @@ const codexQuota = new CodexQuotaService(path.join(directory, "config.json"), as
 });
 const agentUseCase = new AgentUseCase(agentService, projectUseCase, audit, {}, undefined, codexQuota, undefined,
   new ExecutionQualityService(path.join(directory, "config.json"), path.join(directory, "quality")), executionQueue);
+const promptQueueStore = new SqlitePromptQueueRepository(path.join(directory, "prompt-queue.sqlite"));
+let promptQueueTime: number | null = null;
+const promptQueue = new PromptQueueService(promptQueueStore, agentService, codexQuota, 100, path.join(directory, "chats"), undefined, () => promptQueueTime ?? Date.now());
 const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => new Date(), audit);
 const waitScheduler = new WorkflowWaitScheduler(agentUseCase, 100);
 const automationStore = new SqliteWorkflowAutomationRepository(path.join(directory, "automation.sqlite"));
@@ -184,12 +207,35 @@ const gmail = new GmailService(path.join(directory, "gmail.sqlite"), "http://127
 let workForceTime: number | null = null;
 const workForce = new WorkForceService(path.join(directory, "config.json"), new ConfiguredWorkForceAgents(projectUseCase, agentUseCase),
   codexQuota, () => workForceTime ?? Date.now(), 100);
-const app = createCortexApplication({ projectUseCase, agentUseCase, workflowScheduler,
-  authentication: null, clientDirectory: path.resolve("dist"), gmail, automations, workForce, executionQueue });
+const app = createCortexApplication({ projectUseCase, agentUseCase, workflowScheduler, workForce, executionQueue,
+  authentication: null, clientDirectory: path.resolve("dist"), gmail, automations, promptQueue,
+  codexUpdates: {
+    status: () => fixtureEngineUpdate ?? { state: "idle", installedVersion: null, latestVersion: null, checkedAt: null, updatedAt: null, error: null },
+    check: async () => { fixtureEngineChecks++; if (fixtureEngineUpdate?.state === "error") fixtureEngineUpdate = { ...fixtureEngineUpdate, state: "checking", error: null };
+      return fixtureEngineUpdate ?? { state: "idle", installedVersion: null, latestVersion: null, checkedAt: null, updatedAt: null, error: null }; }
+  } });
 // Test-only endpoint outside /api, never registered by production.
-app.post("/__test/global-executions", (request,response) => {
-  if(request.body.reset && globalActive===0) {globalMaximum=0;globalExecutionEvents.length=0;}
-  response.json({active:globalActive,maximum:globalMaximum,events:globalExecutionEvents});
+app.post("/__test/global-executions", (request, response) => {
+  if (request.body.reset && globalActive === 0) { globalMaximum = 0; globalExecutionEvents.length = 0; }
+  response.json({ active: globalActive, maximum: globalMaximum, events: globalExecutionEvents });
+});
+app.post("/__test/codex-models", (request, response) => {
+  modelCatalogUnavailable = request.body.unavailable === true;
+  fixtureModelName = request.body.model ?? "gpt-server-sol";
+  response.json({ ok: true });
+});
+app.post("/__test/codex-engine-state", (request, response) => {
+  fixtureEngineUpdate = request.body.state == null ? null : request.body;
+  response.json({ checks: fixtureEngineChecks });
+});
+app.post("/__test/last-codex-execution", (_request, response) => response.json(lastCodexExecution));
+app.post("/__test/last-attachment-execution", (_request, response) => response.json(lastAttachmentExecution));
+app.post("/__test/prompt-queue-clock", async (request, response) => {
+  const next = request.body.at == null ? null : Date.parse(request.body.at);
+  if (next !== null && !Number.isFinite(next)) { response.status(400).json({ error: "Invalid test clock" }); return; }
+  promptQueueTime = next;
+  await promptQueue.tick();
+  response.json({ ok: true });
 });
 app.post("/__test/work-force-clock", async (request, response) => {
   const next = request.body.at == null ? null : Date.parse(request.body.at);
@@ -198,12 +244,6 @@ app.post("/__test/work-force-clock", async (request, response) => {
   void workForce.tick();
   response.json({ ok: true });
 });
-app.post("/__test/codex-models", (request, response) => {
-  modelCatalogUnavailable = request.body.unavailable === true;
-  fixtureModelName = request.body.model ?? "gpt-server-sol";
-  response.json({ ok: true });
-});
-app.post("/__test/last-codex-execution", (_request, response) => response.json(lastCodexExecution));
 app.post("/__test/codex-quota", async (request, response) => {
   quotaUsed = { fiveHour: request.body.fiveHourUsed ?? 50, weekly: request.body.weeklyUsed ?? 90 };
   quotaUnavailable = request.body.unavailable === true;
@@ -217,6 +257,7 @@ app.post("/__test/scheduled-scan", (request, response) => {
 app.post("/__test/automation-reset-scan", (_request, response) => { automationScan = 0; response.json({ ok: true }); });
 app.post("/__test/fail-next-dispatch", (_request, response) => { failNextDispatch = true; response.json({ ok: true }); });
 const server = app.listen(4317, "127.0.0.1", () => {
+  promptQueue.start();
   void workForce.start();
   waitScheduler.start();
   void automations.start();
@@ -230,6 +271,7 @@ async function close() {
   workflowScheduler.stop();
   waitScheduler.stop();
   await automations.stop();
+  await promptQueue.stop();
   await workForce.stop();
   agentUseCase.cancelAllExecutions();
   agentService.cancelAllExecutions();
@@ -239,6 +281,7 @@ async function close() {
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await gmail.close();
   automationStore.close();
+  promptQueueStore.close();
   repository.close();
   const resolved = path.resolve(directory);
   if (path.dirname(resolved) !== path.resolve(tmpdir()) || !path.basename(resolved).startsWith("cortex-e2e-")) {

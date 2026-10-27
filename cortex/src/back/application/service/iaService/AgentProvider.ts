@@ -24,8 +24,12 @@ export interface AgentExecutionOptions {
   profile?: ExecutionProfile;
   signal?: AbortSignal;
   onProgress?: (progress: string) => void;
+  onSessionId?: (sessionId: string) => void;
+  skipGitRepoCheck?: boolean;
   configuration?: AgentConfiguration;
   model?: string;
+  /** Local image inputs supplied by the user for this turn. */
+  imagePaths?: string[];
   /** Constrain the final response when the provider supports structured output. */
   outputSchema?: Record<string, unknown>;
   persistSession?: boolean;

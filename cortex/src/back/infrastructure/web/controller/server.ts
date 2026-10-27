@@ -1,6 +1,3 @@
-import { GlobalExecutionQueue } from "../../../application/service/executionQueue/GlobalExecutionQueue.ts";
-import { WorkForceService } from "../../../application/service/workForce/WorkForceService.ts";
-import { ConfiguredWorkForceAgents } from "../../../application/service/workForce/ConfiguredWorkForceAgents.ts";
 import { ExecutionWorkspaceGuard } from "../../../application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
 import { spawn } from "node:child_process";
 import path from "node:path";
@@ -13,6 +10,8 @@ import { createDefaultAgentToolRegistry } from "../../../application/service/iaS
 import { McpConfigurationService } from "../../../application/service/iaService/McpConfigurationService.ts";
 import { CodexPluginService } from "../../../application/service/iaService/CodexPluginService.ts";
 import { CodexModelService } from "../../../application/service/iaService/CodexModelService.ts";
+import { CodexUpdateService } from "../../../application/service/iaService/CodexUpdateService.ts";
+import { codexRuntimeDirectory } from "../../../application/service/iaService/CodexCommand.ts";
 import { CodexQuotaService } from "../../../application/service/iaService/CodexQuotaService.ts";
 import { readCodexRateLimits } from "../../../application/service/iaService/CodexRateLimits.ts";
 import { ClaudeAgentProvider } from "../../../application/service/iaService/providers/ClaudeAgentProvider.ts";
@@ -36,6 +35,11 @@ import {
   readSecureCookie
 } from "../middleware/PasswordAuthentication.ts";
 import { createCortexApplication } from "./CortexApplication.ts";
+import { PromptQueueService } from "../../../application/service/promptQueue/PromptQueueService.ts";
+import { SqlitePromptQueueRepository } from "../../promptQueue/SqlitePromptQueueRepository.ts";
+import { WorkForceService } from "../../../application/service/workForce/WorkForceService.ts";
+import { ConfiguredWorkForceAgents } from "../../../application/service/workForce/ConfiguredWorkForceAgents.ts";
+import { GlobalExecutionQueue } from "../../../application/service/executionQueue/GlobalExecutionQueue.ts";
 
 const port = readPort(process.env.PORT);
 const host = process.env.HOST?.trim() || "127.0.0.1";
@@ -70,12 +74,14 @@ const agentConfigurationService = new AgentConfigurationService(
 );
 const executionQueue = new GlobalExecutionQueue(configurationFile);
 await executionQueue.status();
+let codexIsBusy = () => false;
+const codexUpdates = new CodexUpdateService(codexRuntimeDirectory(), () => codexIsBusy());
 const agentService = new AgentService([
   new CodexAgentProvider(workspaceDirectory),
   new ClaudeAgentProvider(workspaceDirectory),
   new CopilotAgentProvider(agentToolRegistry, mcpConfigurationService)
 ], agentConfigurationService, mcpConfigurationService, codexPluginService,
-new CodexModelService(workspaceDirectory), executionQueue);
+new CodexModelService(workspaceDirectory, undefined, codexUpdates), executionQueue);
 const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(
   configurationFile,
@@ -91,6 +97,8 @@ const workflowAuditRepository = new SqliteWorkflowAuditRepository(
 );
 const workflowAuditService = new WorkflowAuditService(workflowAuditRepository);
 const codexQuota = new CodexQuotaService(configurationFile, () => readCodexRateLimits(workspaceDirectory));
+const promptQueueRepository = new SqlitePromptQueueRepository(path.join(workspaceDirectory, "data", "prompt-queue.sqlite"));
+const promptQueue = new PromptQueueService(promptQueueRepository, agentService, codexQuota, 15_000, path.join(workspaceDirectory, "data", "prompt-chats"));
 const agentUseCase = new AgentUseCase(
   agentService,
   projectUseCase,
@@ -102,7 +110,8 @@ const agentUseCase = new AgentUseCase(
   undefined,
   codexQuota,
   new ExecutionWorkspaceGuard(configurationFile, path.join(workspaceDirectory, "data", "execution-workspaces"),
-    undefined, checkpointId => workflowAuditRepository.getCheckpoint(checkpointId)?.state, () => executionQueue.allowsParallelExecutions()),
+    undefined, checkpointId => workflowAuditRepository.getCheckpoint(checkpointId)?.state,
+    () => executionQueue.allowsParallelExecutions()),
   new ExecutionQualityService(configurationFile, path.join(workspaceDirectory, "data", "execution-quality")), executionQueue
 );
 const workflowScheduler = new WorkflowScheduler(
@@ -121,11 +130,14 @@ const gmail = new GmailService(
 );
 const workForce = new WorkForceService(configurationFile, new ConfiguredWorkForceAgents(projectUseCase, agentUseCase), codexQuota);
 const app = createCortexApplication({
-  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations, workForce, executionQueue
+  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations, promptQueue, codexUpdates, workForce, executionQueue
 });
+codexIsBusy = () => agentService.hasActiveExecutions() || agentUseCase.hasActiveExecutions();
 
 const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase);
 const httpServer = app.listen(port, host, () => {
+  codexUpdates.start();
+  promptQueue.start();
   void workForce.start().catch(error => console.error("Unable to start Work Force:", error));
   workflowWaitScheduler.start();
   gmail.start();
@@ -148,9 +160,11 @@ async function shutdown(): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   executionQueue.stop();
+  codexUpdates.stop();
   workflowScheduler.stop();
   workflowWaitScheduler.stop();
   const automationsStopped = automations.stop();
+  const promptQueueStopped = promptQueue.stop();
   const workForceStopped = workForce.stop();
   void gmail.stop();
   agentUseCase.cancelAllExecutions();
@@ -172,7 +186,9 @@ async function shutdown(): Promise<void> {
   await closed;
   await gmail.close();
   await automationsStopped;
+  await promptQueueStopped;
   await workForceStopped;
+  promptQueueRepository.close();
   automationRepository.close();
   workflowAuditRepository.close();
   clearTimeout(deadline);
