@@ -213,7 +213,7 @@ export class WorkflowScheduler {
       this.handledMinuteKeys.set(projectId, minuteKey);
       const runtime = this.getRuntimeState(projectId);
 
-      if (runtime.running || this.agentUseCase.isProjectRunning(projectId) || this.agentUseCase.hasWorkflowWaits?.(projectId)) {
+      if (runtime.running || (this.agentUseCase.isNormalProjectRunning?.(projectId) ?? this.agentUseCase.isProjectRunning(projectId)) || this.agentUseCase.hasWorkflowWaits?.(projectId)) {
         const reason = "The previous workflow execution is still running.";
         runtime.lastRunAt = new Date(date);
         runtime.lastRunStatus = "skipped";

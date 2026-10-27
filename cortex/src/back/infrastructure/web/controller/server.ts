@@ -1,3 +1,4 @@
+import { GlobalExecutionQueue } from "../../../application/service/executionQueue/GlobalExecutionQueue.ts";
 import { WorkForceService } from "../../../application/service/workForce/WorkForceService.ts";
 import { ConfiguredWorkForceAgents } from "../../../application/service/workForce/ConfiguredWorkForceAgents.ts";
 import { ExecutionWorkspaceGuard } from "../../../application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
@@ -67,12 +68,14 @@ const codexPluginService = new CodexPluginService();
 const agentConfigurationService = new AgentConfigurationService(
   configurationFile
 );
+const executionQueue = new GlobalExecutionQueue(configurationFile);
+await executionQueue.status();
 const agentService = new AgentService([
   new CodexAgentProvider(workspaceDirectory),
   new ClaudeAgentProvider(workspaceDirectory),
   new CopilotAgentProvider(agentToolRegistry, mcpConfigurationService)
 ], agentConfigurationService, mcpConfigurationService, codexPluginService,
-new CodexModelService(workspaceDirectory));
+new CodexModelService(workspaceDirectory), executionQueue);
 const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(
   configurationFile,
@@ -99,8 +102,8 @@ const agentUseCase = new AgentUseCase(
   undefined,
   codexQuota,
   new ExecutionWorkspaceGuard(configurationFile, path.join(workspaceDirectory, "data", "execution-workspaces"),
-    undefined, checkpointId => workflowAuditRepository.getCheckpoint(checkpointId)?.state),
-  new ExecutionQualityService(configurationFile, path.join(workspaceDirectory, "data", "execution-quality"))
+    undefined, checkpointId => workflowAuditRepository.getCheckpoint(checkpointId)?.state, () => executionQueue.allowsParallelExecutions()),
+  new ExecutionQualityService(configurationFile, path.join(workspaceDirectory, "data", "execution-quality")), executionQueue
 );
 const workflowScheduler = new WorkflowScheduler(
   projectUseCase,
@@ -118,7 +121,7 @@ const gmail = new GmailService(
 );
 const workForce = new WorkForceService(configurationFile, new ConfiguredWorkForceAgents(projectUseCase, agentUseCase), codexQuota);
 const app = createCortexApplication({
-  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations, workForce
+  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations, workForce, executionQueue
 });
 
 const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase);
@@ -144,6 +147,7 @@ let shuttingDown = false;
 async function shutdown(): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
+  executionQueue.stop();
   workflowScheduler.stop();
   workflowWaitScheduler.stop();
   const automationsStopped = automations.stop();

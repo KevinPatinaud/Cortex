@@ -1,5 +1,14 @@
 # Shared execution workspaces
 
+The global **Allow simultaneous executions** setting now decides who coordinates
+execution. When disabled, one shared Cortex queue admits a complete agent at a
+time across all modes; workspace leases and verification are taken only after
+admission and released between workflow agents. When enabled, different agents
+may run together and each project must coordinate its repositories and resources.
+In that mode the shared workspace reservation/publication journal does not impose
+mutual exclusion; the agent's execution policy and its own checks still apply.
+Existing active agents retain their admission mode until they finish.
+
 Projects which edit the same checkout can opt into one server-enforced lease in `config.json`:
 
 ```json

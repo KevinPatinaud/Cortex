@@ -2,6 +2,27 @@
 
 Cortex is a local application for creating, visualizing, and running Codex, Claude, or GitHub Copilot agent workflows. The React frontend is served by an Express API that reads agent configurations directly from saved projects.
 
+**Settings → General → Allow simultaneous executions** controls the shared
+execution queue for the whole Cortex instance. Disable it to run one complete
+agent or prompt at a time across normal workflows, Work Force, chats and internal
+AI tasks. Ready requests share FIFO order; mission, interpretation and final
+checks retain the same reservation. Work Force rejoins at the end after each
+agent. Future schedules, quota waits and external-event waits hold no slot.
+Quotas and Work Force end times are checked again after a queue wait. Pending
+requests can be cancelled; stopping Work Force removes a pending request while
+letting an already granted agent finish.
+
+The setting persists in `config.json` as
+`executionConcurrency.allowParallelExecutions` and defaults to `false` (one
+execution at a time). Enabled mode admits different agents together;
+the same configured agent is never admitted twice simultaneously. Each project
+then owns repository/resource coordination: the shared workspace reservation and
+its publication checks are delegated to the project, while agent execution
+policies and checks still apply. Disabling the setting drains active jobs before
+admitting another. A single Cortex server process must own the instance. The
+authenticated `/api/execution-queue` endpoint exposes active and waiting entries;
+`PUT /api/execution-queue/settings` changes the setting.
+
 **Work Force**, accessible from the project sidebar, repeatedly runs a manually
 ordered selection of agents from any saved projects. Select agents, drag their
 rows or use the up/down buttons, optionally choose a local start and/or end

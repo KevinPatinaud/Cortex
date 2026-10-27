@@ -1,5 +1,6 @@
 {
   "projects": [],
+  "executionConcurrency": { "allowParallelExecutions": false },
   "projectOrganization": {
     "folders": [],
     "projectFolders": {}

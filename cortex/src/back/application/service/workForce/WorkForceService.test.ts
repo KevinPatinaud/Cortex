@@ -26,7 +26,9 @@ function harness(file: string) {
       const agent = agents.find(agent => agent.agentId === ref.agentId)!;
       let cancel = () => {};
       return { agent, runner: {
-        run() {
+        async run(control) {
+          await control.beforeStart?.();
+          await control.onStarted?.();
           calls.push(agent.agentId); active++; maximum = Math.max(maximum, active);
           return new Promise<{ answer: string; waiting: boolean }>((resolve, reject) => {
             let done = false;

@@ -20,7 +20,7 @@ export interface WorkForceConfiguration {
   startsAt: string | null;
   endsAt: string | null;
 }
-export type WorkForcePhase = "stopped" | "scheduled" | "running" | "waiting_quota" | "waiting_agent" | "stopping" | "failed" | "interrupted";
+export type WorkForcePhase = "stopped" | "scheduled" | "queued" | "running" | "waiting_quota" | "waiting_agent" | "stopping" | "failed" | "interrupted";
 export interface WorkForceExecution {
   agent: WorkForceAgent;
   startedAt: string;

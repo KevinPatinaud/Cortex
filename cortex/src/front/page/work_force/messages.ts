@@ -13,7 +13,7 @@ export const fr = {
   settingsIndependent: "Ces seuils s’appliquent à Work Force, indépendamment de la règle du mode normal.",
   invalidDate: "Vérifiez les dates et heures choisies.", failed: "Échec", succeeded: "Terminé", interrupted: "Interrompu", result: "Voir le résultat",
   retry: "Réessayer", unavailable: "Agent indisponible", status: "État de Work Force", selectionLocked: "Arrêtez Work Force pour modifier la sélection ou les horaires.",
-  phases: { stopped: "À l’arrêt", scheduled: "Début programmé", running: "En cours", waiting_quota: "En attente des quotas", waiting_agent: "Projet occupé", stopping: "Arrêt après l’agent en cours", failed: "À vérifier avant de reprendre", interrupted: "Exécution interrompue" }
+  phases: { stopped: "À l’arrêt", scheduled: "Début programmé", queued: "Dans la file globale de Cortex", running: "En cours", waiting_quota: "En attente des quotas", waiting_agent: "Projet occupé", stopping: "Arrêt après l’agent en cours", failed: "À vérifier avant de reprendre", interrupted: "Exécution interrompue" }
 };
 export const en: typeof fr = {
   normal: "Normal mode", prompts: "Chats and prompts", description: "Your project agents, in your chosen order. One execution at a time, in a loop.",
@@ -30,5 +30,5 @@ export const en: typeof fr = {
   settingsIndependent: "These thresholds apply to Work Force independently of the normal-mode rule.",
   invalidDate: "Check the selected dates and times.", failed: "Failed", succeeded: "Completed", interrupted: "Interrupted", result: "View result",
   retry: "Retry", unavailable: "Unavailable agent", status: "Work Force status", selectionLocked: "Stop Work Force to edit the selection or schedule.",
-  phases: { stopped: "Stopped", scheduled: "Start scheduled", running: "Running", waiting_quota: "Waiting for quota", waiting_agent: "Project busy", stopping: "Stopping after current agent", failed: "Check before resuming", interrupted: "Execution interrupted" }
+  phases: { stopped: "Stopped", scheduled: "Start scheduled", queued: "In the Cortex global queue", running: "Running", waiting_quota: "Waiting for quota", waiting_agent: "Project busy", stopping: "Stopping after current agent", failed: "Check before resuming", interrupted: "Execution interrupted" }
 };

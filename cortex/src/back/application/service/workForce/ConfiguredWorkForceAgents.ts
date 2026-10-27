@@ -23,7 +23,7 @@ export class ConfiguredWorkForceAgents implements WorkForceAgents {
     return catalog;
   }
   async prepare(ref: WorkForceAgentRef) {
-    if (this.agents.isProjectRunning(ref.projectId)) throw new ExecutionWorkspaceBusyError("Ce projet est déjà en cours d’exécution. Work Force réessaiera automatiquement.");
+    if (!this.agents.usesGlobalExecutionQueue() && this.agents.isProjectRunning(ref.projectId)) throw new ExecutionWorkspaceBusyError("Ce projet est déjà en cours d’exécution. Work Force réessaiera automatiquement.");
     const project = await this.agents.getConfiguredProject(ref.projectId);
     const agent = project.agents.find(candidate => candidate.id === ref.agentId);
     if (!agent?.prompt.trim()) throw new ValidationError("L’agent Work Force est absent ou ses instructions sont vides.");
@@ -33,8 +33,8 @@ export class ConfiguredWorkForceAgents implements WorkForceAgents {
     return { agent: { projectId: project.projectId, agentId: agent.id, name: agent.name,
       description: agent.description, projectName: path.basename(project.directoryPath) },
       runner: {
-        async run() {
-          const result = await mainRunner.runWorkForceAgent(runner, project.projectId, agent.id);
+        async run(control?: import("../../usecase/AgentUseCase.ts").AgentStartControl) {
+          const result = await mainRunner.runWorkForceAgent(runner, project.projectId, agent.id, control);
           const parsed = parseAgentResponse(result.answer);
           return { answer: parsed ? [...parsed.items.map(item => item.content), parsed.notes].filter(Boolean).join("\n\n") : result.answer,
             waiting: runner.hasWorkflowWaits(project.projectId) };

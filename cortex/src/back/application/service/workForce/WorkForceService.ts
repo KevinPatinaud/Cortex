@@ -6,9 +6,11 @@ import { ValidationError } from "../../error/ValidationError.ts";
 import { ExecutionWorkspaceBusyError } from "../executionWorkspace/ExecutionWorkspaceGuard.ts";
 import { JsonConfigurationRepository } from "../configuration/JsonConfigurationRepository.ts";
 import { quotaDenial } from "../iaService/CodexQuotaService.ts";
+import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
+import type { AgentStartControl } from "../../usecase/AgentUseCase.ts";
 
 export interface WorkForceRunner {
-  run(): Promise<{ answer: string; waiting: boolean }>;
+  run(control: AgentStartControl): Promise<{ answer: string; waiting: boolean }>;
   cancel(): void;
 }
 export interface WorkForceAgents {
@@ -117,6 +119,7 @@ export class WorkForceService {
       await this.initialize();
       Object.assign(this.state.runtime, { armed: false, phase: this.state.runtime.active ? "stopping" : "stopped",
         nextCheckAt: null, reason: null });
+      if (!this.state.runtime.active) this.runner?.cancel();
       await this.persist();
       return this.overview();
     });
@@ -145,6 +148,7 @@ export class WorkForceService {
     if (this.expired() && this.state.runtime.armed) {
       Object.assign(this.state.runtime, { armed: false, phase: this.state.runtime.active ? "stopping" : "stopped", nextCheckAt: null,
         reason: "La fin planifiée de Work Force est atteinte." });
+      if (!this.state.runtime.active) this.runner?.cancel();
       await this.persist();
     }
     if (this.inFlight || !this.mayLaunch()) return;
@@ -182,9 +186,7 @@ export class WorkForceService {
         return;
       }
       this.runner = runner;
-      runtime.active = { agent, startedAt: new Date(this.now()).toISOString(), finishedAt: null, outcome: "running", error: null, answer: null };
-      Object.assign(runtime, { phase: "running", nextCheckAt: null, reason: null });
-      // A durable start marker prevents silent replay after a process crash.
+      Object.assign(runtime, { phase: "queued", nextCheckAt: null, reason: null });
       await this.persist();
       if (this.shuttingDown || !runtime.armed || this.expired()) {
         runtime.active = null;
@@ -192,7 +194,26 @@ export class WorkForceService {
         await this.persist();
         return;
       }
-      const result = await runner.run();
+      const assertStillAllowed = () => {
+        if (this.shuttingDown || !runtime.armed || this.expired()) throw new DOMException("Work Force a été arrêté avant le lancement.", "AbortError");
+      };
+      const result = await runner.run({
+        beforeStart: async () => {
+          assertStillAllowed();
+          // A queue wait may be long: never launch with the earlier quota reading.
+          this.quotaStatus = await this.quota.getStatus();
+          assertStillAllowed();
+          const denial = quotaDenial({ enabled: true, ...this.state.settings }, this.quotaStatus);
+          if (denial) throw new CodexQuotaBlockedError(denial);
+        },
+        onStarted: async () => {
+          assertStillAllowed();
+          runtime.active = { agent, startedAt: new Date(this.now()).toISOString(), finishedAt: null, outcome: "running", error: null, answer: null };
+          runtime.phase = "running";
+          // Only a granted agent receives the durable marker for started effects.
+          await this.persist();
+        }
+      });
       runtime.active!.answer = result.answer;
       if (result.waiting) throw new Error("Cet agent attend un événement externe. Consultez son résultat avant de reprendre Work Force.");
       runtime.history = [{ ...runtime.active!, finishedAt: new Date(this.now()).toISOString(), outcome: "succeeded",
@@ -203,7 +224,13 @@ export class WorkForceService {
       if (!runtime.armed || this.expired()) Object.assign(runtime, { armed: false, phase: "stopped", nextCheckAt: null });
       await this.persist();
     } catch (error) {
-      if (error instanceof ExecutionWorkspaceBusyError && runtime.armed && !this.shuttingDown) {
+      if (!runtime.active && this.shuttingDown) {
+        // A queued agent has produced no effects and can rejoin after restart.
+      } else if (!runtime.active && (!runtime.armed || this.expired())) {
+        Object.assign(runtime, { armed: false, phase: "stopped", nextCheckAt: null });
+      } else if (error instanceof CodexQuotaBlockedError && !runtime.active) {
+        Object.assign(runtime, { phase: "waiting_quota", reason: error.message, nextCheckAt: new Date(this.now() + WORK_FORCE_QUOTA_RETRY_MS).toISOString() });
+      } else if (error instanceof ExecutionWorkspaceBusyError && runtime.armed && !this.shuttingDown) {
         Object.assign(runtime, { active: null, phase: "waiting_agent", reason: error.message, nextCheckAt: new Date(this.now() + 5000).toISOString() });
       } else {
         const reason = error instanceof Error ? error.message : "L’exécution de Work Force a échoué.";

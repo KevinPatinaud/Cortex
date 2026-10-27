@@ -13,6 +13,11 @@ export const DEFAULT_AGENT_CONFIGURATION: AgentConfiguration = {
 };
 
 export interface AgentExecutionOptions {
+  /** Revalidated only when the global execution slot is actually acquired. */
+  beforeStart?: () => Promise<void>;
+  executionSource?: import("../../../../shared/ExecutionConcurrency.ts").CortexExecutionSource;
+  executionLabel?: string;
+  executionKey?: string;
   purpose?: "mission" | "interpretation";
   delegation?: "none" | "bounded";
   onProfile?: (profile: ExecutionProfile) => void;

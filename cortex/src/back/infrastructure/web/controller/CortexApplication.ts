@@ -1,3 +1,5 @@
+import type { GlobalExecutionQueue } from "../../../application/service/executionQueue/GlobalExecutionQueue.ts";
+import { createExecutionQueueController } from "./ExecutionQueueController.ts";
 import type { WorkForceService } from "../../../application/service/workForce/WorkForceService.ts";
 import { createWorkForceController } from "./WorkForceController.ts";
 import express from "express";
@@ -22,6 +24,7 @@ export function createCortexApplication(options: {
   authentication: PasswordAuthentication | null;
   clientDirectory: string;
   workForce?: WorkForceService;
+  executionQueue?: GlobalExecutionQueue;
   gmail?: GmailService;
   automations?: WorkflowAutomationService;
 }) {
@@ -47,6 +50,7 @@ export function createCortexApplication(options: {
   app.get("/api/health", (_request, response) => { response.json({ status: "ok" }); });
   if (options.authentication) app.use("/api", requireAuthentication(options.authentication));
   if (options.workForce) app.use("/api/work-force", createWorkForceController(options.workForce));
+  if (options.executionQueue) app.use("/api/execution-queue", createExecutionQueueController(options.executionQueue));
   if (options.gmail) app.use("/api/gmail", createGmailController(options.gmail));
   if (options.automations) app.use("/api/automations", createWorkflowAutomationController(options.automations));
   app.use("/api/projects", createProjectController(options.projectUseCase, options.automations));
