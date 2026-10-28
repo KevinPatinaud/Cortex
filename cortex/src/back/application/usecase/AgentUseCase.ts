@@ -1176,6 +1176,7 @@ export class AgentUseCase {
                 ...(!twoPhase ? { outputSchema: responseSchema } : {}),
                 ...(sessionId ? { sessionId } : {}),
                 workingDirectory,
+                onSessionId: id => { returnedSessionId = id; },
                 onProfile: profile => { if (auditExecutionId) this.workflowAuditService?.setExecutionProfile(auditExecutionId, profile); },
                 signal,
                 onProgress
@@ -1314,6 +1315,17 @@ export class AgentUseCase {
             pendingThreadIds.delete(id);
             return completedThread;
           } catch (error) {
+            // Preserve an interrupted mission's native conversation before the
+            // caller records failure, including across a server restart.
+            if (!processing && !rawResponse && returnedSessionId) {
+              const interruptedThread: AgentWorkflowThreadState = { ...workflow, id, sessionId: returnedSessionId,
+                ...(missionPromptVersion ? { missionPromptVersion } : {}), workingDirectory,
+                responseMode: twoPhase ? "separate" : "integrated",
+                conversation: workflow?.conversation ?? [], upstreamItems: [...upstreamItems] };
+              const current = this.getAgentWorkflow(normalizedProjectId, agent.id) ?? [];
+              this.setAgentWorkflow(normalizedProjectId, agent.id, [...current.filter(thread => thread.id !== id), interruptedThread]);
+              this.persistWorkflowCheckpoint(normalizedProjectId);
+            }
             if (processing && this.getAgentWorkflow(normalizedProjectId, agent.id)?.some(thread => thread.id === id && thread.pendingInterpretation)) {
               if (["running", "pending"].includes(processing.interpretation.status)) {
                 if (processing.interpretation.status === "running") processing.interpretation.status = "failed";

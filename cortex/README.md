@@ -404,6 +404,15 @@ explicit action; the server never resumes interrupted work automatically. The
 engine must still be able to access any saved session. A reset or project edit
 invalidates the checkpoint.
 
+Codex terminal `turn.failed` and `error` events provide the displayed failure;
+older tool diagnostics from stderr do not replace that cause. A model capacity
+failure gets at most two retries, after 5 and 15 seconds, using the same model
+and the same durable mission conversation to reconcile and finish existing
+work. Read-only interpretation may retry in a fresh isolated session. Other
+failures and business turns without a durable session are not replayed.
+Cancellation also interrupts the retry wait. Streamed mission session IDs are
+saved on failure so explicit recovery can continue them after a server restart.
+
 Automatic workflows follow selected branches and loops until completion, with
 a default maximum of 100 agent executions per run. Each agent launch executes at
 most four instances concurrently. Agent engine executions have no time limit and

@@ -2,13 +2,14 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type {
   AgentExecutionOptions,
   AgentExecutionResult,
   AgentProvider
 } from "../AgentProvider.ts";
 import { DEFAULT_AGENT_CONFIGURATION } from "../AgentProvider.ts";
-import { CliAgentProvider } from "../CliAgentProvider.ts";
+import { CliAgentProcessError, CliAgentProvider } from "../CliAgentProvider.ts";
 import { createCodexProgress } from "../ExecutionProgress.ts";
 import { resolveCodexCommand, type CodexCommand } from "../CodexCommand.ts";
 
@@ -32,6 +33,31 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     prompt: string,
     options: AgentExecutionOptions = {}
   ): Promise<AgentExecutionResult> {
+    let currentPrompt = prompt;
+    let currentOptions = options;
+    for (let attempt = 0; ; attempt++) {
+      try { return await this.askOnce(currentPrompt, currentOptions); }
+      catch (error) {
+        options.signal?.throwIfAborted();
+        const interpretation = options.purpose === "interpretation";
+        // A business turn may already have effects. Continue its durable thread;
+        // never replay its initial prompt in a new conversation.
+        if (!(error instanceof CodexTurnError) || !error.atCapacity || attempt >= 2 ||
+          (!interpretation && (!options.persistSession || !error.sessionId))) throw error;
+        const milliseconds = [5_000, 15_000][attempt];
+        options.onProgress?.(`Le modèle Codex est temporairement saturé. Reprise ${attempt + 1}/2 dans ${milliseconds / 1000} secondes, avec le même modèle.`);
+        await this.waitForCapacity(milliseconds, options.signal);
+        currentOptions = interpretation ? options : { ...options, sessionId: error.sessionId, imagePaths: undefined };
+        currentPrompt = interpretation ? prompt : "The preceding turn stopped because the selected model was temporarily at capacity. Continue only the unfinished work in this same conversation. First reconcile the current files, running tools and any completed external actions with the saved mission state. Do not repeat completed actions or start a new subject. Finish the original requested task and its validation.";
+      }
+    }
+  }
+
+  protected async waitForCapacity(milliseconds: number, signal?: AbortSignal): Promise<void> {
+    await delay(milliseconds, undefined, { signal });
+  }
+
+  private async askOnce(prompt: string, options: AgentExecutionOptions): Promise<AgentExecutionResult> {
     const selectedCommand = this.resolveCommand();
     const interpretation = options.purpose === "interpretation";
     if (interpretation && options.sessionId) throw new Error("An interpretation must use its own session.");
@@ -101,13 +127,22 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
       // system's command-line limit (E2BIG). Codex accepts `-` as an explicit
       // instruction to read the prompt from stdin, including resumed sessions.
       args.push("-");
-      const output = await this.runCommand(selectedCommand.command, [
+      let output: string;
+      try { output = await this.runCommand(selectedCommand.command, [
         ...selectedCommand.args,
         ...args
       ], undefined, options.workingDirectory, prompt, {
         signal: options.signal,
         onProgress: createCodexProgress(options.onProgress, options.onSessionId)
-      });
+      }); } catch (error) {
+        if (error instanceof CliAgentProcessError) {
+          const failure = codexFailure(error.output, options.sessionId);
+          if (failure) throw failure;
+        }
+        throw error;
+      }
+      const failure = codexFailure(output, options.sessionId);
+      if (failure) throw failure;
       const result = parseCodexJsonOutput(output, options.sessionId);
       if (options.profile) result.profile = { ...options.profile, observedCapabilities: observedCapabilities(output) };
 
@@ -124,6 +159,33 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
       if (schemaDirectory) await rm(schemaDirectory, { recursive: true, force: true });
     }
   }
+}
+
+export class CodexTurnError extends Error {
+  readonly atCapacity: boolean;
+  constructor(message: string, readonly sessionId?: string, code?: string) {
+    const atCapacity = code === "server_overloaded" || /selected model is at capacity/i.test(message);
+    super(atCapacity ? `Le modèle Codex est temporairement saturé. ${message}` : `Codex : ${message}`);
+    this.name = "CodexTurnError";
+    this.atCapacity = atCapacity;
+  }
+}
+
+function codexFailure(output: string, existingSessionId?: string): CodexTurnError | undefined {
+  let sessionId = existingSessionId;
+  let failure: { message: string; code?: string } | undefined;
+  for (const line of output.split(/\r?\n/)) {
+    try {
+      const event = JSON.parse(line);
+      sessionId = readString(event.thread_id) || readString(event.session_id) || sessionId;
+      if (event.type === "turn.completed") failure = undefined;
+      if (event.type !== "turn.failed" && event.type !== "error") continue;
+      const detail = readRecord(event.error);
+      const message = readString(detail.message) || readString(event.message) || readString(event.error);
+      if (message) failure = { message, code: readString(detail.codex_error_info) || readString(detail.code) || undefined };
+    } catch { /* Tool output and stderr are not terminal turn failures. */ }
+  }
+  return failure ? new CodexTurnError(failure.message, sessionId, failure.code) : undefined;
 }
 
 function observedCapabilities(output: string): string[] {
