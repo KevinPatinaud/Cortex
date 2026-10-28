@@ -1,6 +1,14 @@
 import { execFile, spawn } from "node:child_process";
 import type { AgentExecutionOptions } from "./AgentProvider.ts";
 
+/** Keep structured stdout available to the provider when the CLI exits in error. */
+export class CliAgentProcessError extends Error {
+  constructor(readonly output: string, diagnostics: string, code: number | string | null) {
+    super(`The agent engine exited (${code}). ${diagnostics.trim()}`.trim());
+    this.name = "CliAgentProcessError";
+  }
+}
+
 export abstract class CliAgentProvider {
   constructor(protected readonly workingDirectory: string) {}
 
@@ -73,9 +81,7 @@ export abstract class CliAgentProvider {
         clearTimeout(timer);
         options.signal?.removeEventListener("abort", onAbort);
         if (interruption) reject(interruption);
-        else if (code !== 0) reject(new Error(
-          `The agent engine exited (${code ?? signal}). ${diagnostics.trim()}`.trim()
-        ));
+        else if (code !== 0) reject(new CliAgentProcessError(output, diagnostics, code ?? signal));
         else resolve(output.trim());
       });
       child.stdin.on("error", () => { /* Process completion reports failures. */ });

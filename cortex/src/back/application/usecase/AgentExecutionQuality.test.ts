@@ -61,6 +61,35 @@ async function sharedWorkspace(f: Awaited<ReturnType<typeof fixture>>, verify: C
     id => f.storage.getCheckpoint(id)?.state);
 }
 
+for (const mode of ["workflow", "work-force"] as const) test(`${mode}: a mission's streamed session survives failure and server restart for native continuation`, async t => {
+  let calls = 0;
+  const f = await fixture(t, async (_prompt, options) => {
+    if (++calls === 1) {
+      options.onSessionId?.("interrupted-native-session");
+      throw new Error("Model still at capacity after bounded retries");
+    }
+    assert.equal(options.sessionId, "interrupted-native-session");
+    return result(options);
+  });
+  const runWorkForce = async (useCase: AgentUseCase) => {
+    const project = await useCase.getConfiguredProject(f.project.id);
+    const agent = project.agents[0];
+    const runner = useCase.createWorkForceRunner(project, agent.id);
+    await runner.loadProject(f.project.id, false);
+    return useCase.runWorkForceAgent(runner, f.project.id, agent.id);
+  };
+  await assert.rejects(mode === "workflow" ? f.useCase.runWorkflow(f.project.id) : runWorkForce(f.useCase), /capacity/);
+  const project = await f.useCase.getConfiguredProject(f.project.id);
+  const key = mode === "workflow" ? f.project.id : `instance:work-force:${f.project.id}:${project.agents[0].id}`;
+  const checkpoint = f.storage.getCheckpoint(key)!.state as WorkflowCheckpointState;
+  assert.equal(checkpoint.agents[0].threads[0].sessionId, "interrupted-native-session");
+  const failed = f.useCase.listWorkflowAuditRuns(f.project.id).items[0];
+  assert.equal(f.useCase.getWorkflowAuditRun(f.project.id, failed.id).executions[0].sessionId, "interrupted-native-session");
+  if (mode === "workflow") await f.restart().resumeWorkflow(f.project.id);
+  else await runWorkForce(f.restart());
+  assert.equal(calls, 2);
+});
+
 for (const scope of ["agent", "workflow"] as const) test(`${scope}: workspace recovery resumes interpretation without adding a new mission or repeating delivery`, async t => {
   let missionCalls = 0, formatterCalls = 0;
   let published = false;

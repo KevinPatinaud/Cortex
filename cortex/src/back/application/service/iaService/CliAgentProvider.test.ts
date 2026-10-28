@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
-import { CliAgentProvider } from "./CliAgentProvider.ts";
+import { CliAgentProcessError, CliAgentProvider } from "./CliAgentProvider.ts";
 import type { AgentExecutionOptions } from "./AgentProvider.ts";
 import { createCodexProgress, createTextProgress } from "./ExecutionProgress.ts";
 
@@ -11,6 +11,17 @@ class LocalProcessProvider extends CliAgentProvider {
     return this.runCommand(process.execPath, ["-e", script], timeout, undefined, undefined, options);
   }
 }
+
+test("retains structured stdout on a nonzero exit without putting tool output in the displayed error", async () => {
+  const provider = new LocalProcessProvider(process.cwd());
+  await assert.rejects(provider.run("console.log('structured event'); console.error('diagnostic'); process.exitCode = 1;"), error => {
+    assert.ok(error instanceof CliAgentProcessError);
+    assert.equal(error.output.trim(), "structured event");
+    assert.match(error.message, /diagnostic/);
+    assert.doesNotMatch(error.message, /structured event/);
+    return true;
+  });
+});
 
 test("reports output before completion and stops a cancelled CLI", async () => {
   const provider = new LocalProcessProvider(process.cwd());

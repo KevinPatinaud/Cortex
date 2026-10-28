@@ -3,6 +3,8 @@ import test from "node:test";
 import { access, readFile } from "node:fs/promises";
 import { CodexAgentProvider } from "./CodexAgentProvider.ts";
 import type { ExecutionProfile } from "../../../../../shared/ExecutionQuality.ts";
+import type { AgentExecutionOptions } from "../AgentProvider.ts";
+import { CliAgentProcessError } from "../CliAgentProvider.ts";
 
 class CapturingCodexAgentProvider extends CodexAgentProvider {
   capturedArgs: string[] = [];
@@ -38,6 +40,102 @@ class CapturingCodexAgentProvider extends CodexAgentProvider {
     ].join("\n");
   }
 }
+
+const capacityOutput = [
+  { type: "thread.started", thread_id: "durable-session" },
+  { type: "item.completed", item: { type: "command_execution", aggregated_output: "Selected model is at capacity. PRIVATE TOOL OUTPUT" } },
+  { type: "error", message: "Selected model is at capacity. Please try a different model." },
+  { type: "turn.failed", error: { message: "Selected model is at capacity. Please try a different model.", codex_error_info: "server_overloaded" } }
+].map(event => JSON.stringify(event)).join("\n");
+
+class RecoveringCodexProvider extends CodexAgentProvider {
+  calls: { args: string[]; prompt?: string }[] = [];
+  waits: number[] = [];
+  outputs: (string | Error)[] = [];
+  onWait?: () => void;
+  protected override async runCommand(_command: string, args: string[], _timeout?: number, _cwd?: string,
+    input?: string, options?: AgentExecutionOptions): Promise<string> {
+    this.calls.push({ args: [...args], prompt: input });
+    const output = this.outputs.shift()!;
+    options?.onProgress?.((output instanceof CliAgentProcessError ? output.output : typeof output === "string" ? output : "") + "\n");
+    if (output instanceof Error) throw output;
+    return output;
+  }
+  protected override async waitForCapacity(milliseconds: number, signal?: AbortSignal) {
+    this.waits.push(milliseconds);
+    this.onWait?.();
+    signal?.throwIfAborted();
+  }
+}
+
+const completedOutput = [
+  { type: "thread.started", thread_id: "durable-session" },
+  { type: "item.completed", item: { type: "agent_message", text: "Completed remaining work" } },
+  { type: "turn.completed" }
+].map(event => JSON.stringify(event)).join("\n");
+
+test("capacity resumes the same durable thread with the same model and schema instead of replaying the mission", async () => {
+  const provider = new RecoveringCodexProvider(process.cwd());
+  provider.outputs = [new CliAgentProcessError(capacityOutput, "Old apply_patch failure; rollout thread not found", 1), completedOutput];
+  const sessions: string[] = [], progress: string[] = [];
+  const result = await provider.ask("Original mission", { persistSession: true, model: "selected-model", reasoningEffort: "xhigh",
+    outputSchema: { type: "object" }, onSessionId: id => sessions.push(id), onProgress: text => progress.push(text) });
+  assert.equal(result.answer, "Completed remaining work");
+  assert.deepEqual(provider.waits, [5000]);
+  assert.deepEqual(provider.calls[1].args.slice(-2), ["durable-session", "-"]);
+  assert.ok(provider.calls[1].args.includes("resume"));
+  assert.ok(provider.calls[1].args.includes("selected-model"));
+  assert.ok(provider.calls[1].args.includes("--output-schema"));
+  assert.match(provider.calls[1].prompt!, /only the unfinished work/);
+  assert.notEqual(provider.calls[1].prompt, "Original mission");
+  assert.ok(sessions.includes("durable-session"));
+  assert.ok(progress.some(text => text.includes("Reprise 1/2")));
+  assert.ok(!progress.some(text => /PRIVATE TOOL|apply_patch|rollout/.test(text)));
+});
+
+test("capacity retries are bounded and the terminal error supersedes stale stderr", async () => {
+  const provider = new RecoveringCodexProvider(process.cwd());
+  provider.outputs = Array.from({ length: 3 }, () => new CliAgentProcessError(capacityOutput, "Old patch error", 1));
+  await assert.rejects(provider.ask("Mission", { persistSession: true }), error => {
+    assert.match((error as Error).message, /temporairement saturé/);
+    assert.doesNotMatch((error as Error).message, /Old patch/);
+    return true;
+  });
+  assert.deepEqual(provider.waits, [5000, 15000]);
+  assert.equal(provider.calls.length, 3);
+});
+
+test("cancelling a capacity wait prevents a new process", async () => {
+  const provider = new RecoveringCodexProvider(process.cwd());
+  const controller = new AbortController();
+  provider.outputs = [new CliAgentProcessError(capacityOutput, "", 1)];
+  provider.onWait = () => controller.abort();
+  await assert.rejects(provider.ask("Mission", { persistSession: true, signal: controller.signal }), { name: "AbortError" });
+  assert.equal(provider.calls.length, 1);
+});
+
+test("never retries a non-capacity failure or replays an ephemeral business mission", async () => {
+  for (const output of [capacityOutput, JSON.stringify({ type: "turn.failed", error: { message: "Invalid credentials" } })]) {
+    const provider = new RecoveringCodexProvider(process.cwd());
+    provider.outputs = [new CliAgentProcessError(output, "Old stderr", 1)];
+    await assert.rejects(provider.ask("Mission"), /saturé|Invalid credentials/);
+    assert.deepEqual(provider.waits, []);
+    assert.equal(provider.calls.length, 1);
+  }
+});
+
+test("a failed turn is not accepted as a successful commentary response even when the process exits zero", async () => {
+  const provider = new RecoveringCodexProvider(process.cwd());
+  provider.outputs = [completedOutput + '\n' + JSON.stringify({ type: "turn.failed", error: { message: "Terminal failure" } })];
+  await assert.rejects(provider.ask("Mission"), /Terminal failure/);
+});
+
+test("a recovered error and tool diagnostics do not make a completed turn fail", async () => {
+  const provider = new RecoveringCodexProvider(process.cwd());
+  provider.outputs = [capacityOutput + '\n' + completedOutput];
+  assert.equal((await provider.ask("Mission")).answer, "Completed remaining work");
+  assert.deepEqual(provider.waits, []);
+});
 
 test("désactive le multi-agent interne quand Cortex lance Codex", async () => {
   const provider = new CapturingCodexAgentProvider(process.cwd());
