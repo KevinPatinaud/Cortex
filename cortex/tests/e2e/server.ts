@@ -28,6 +28,8 @@ import { SqlitePromptQueueRepository } from "../../src/back/infrastructure/promp
 import { WorkForceService } from "../../src/back/application/service/workForce/WorkForceService.ts";
 import { ConfiguredWorkForceAgents } from "../../src/back/application/service/workForce/ConfiguredWorkForceAgents.ts";
 import { GlobalExecutionQueue } from "../../src/back/application/service/executionQueue/GlobalExecutionQueue.ts";
+import { ExecutionWorkspaceBusyError } from "../../src/back/application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
+import { WORK_FORCE_NORMAL_SUSPENDED_REASON } from "../../src/shared/WorkForce.ts";
 
 // This fixture uses the real HTTP application and storage, exclusively inside
 // its own temporary directory. It never discovers installed engines or tools.
@@ -180,10 +182,18 @@ const agentUseCase = new AgentUseCase(agentService, projectUseCase, audit, {}, u
 const promptQueueStore = new SqlitePromptQueueRepository(path.join(directory, "prompt-queue.sqlite"));
 let promptQueueTime: number | null = null;
 const promptQueue = new PromptQueueService(promptQueueStore, agentService, codexQuota, 100, path.join(directory, "chats"), undefined, () => promptQueueTime ?? Date.now());
-const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => new Date(), audit);
-const waitScheduler = new WorkflowWaitScheduler(agentUseCase, 100);
+let workForceTime: number | null = null;
+const workForce = new WorkForceService(path.join(directory, "config.json"), new ConfiguredWorkForceAgents(projectUseCase, agentUseCase),
+  codexQuota, () => workForceTime ?? Date.now(), 100);
+await workForce.status();
+const normalExecutionsSuspended = () => workForce.isActive();
+executionQueue.setAdmissionGuard(entry => {
+  if (entry.source === "normal" && normalExecutionsSuspended()) throw new ExecutionWorkspaceBusyError(WORK_FORCE_NORMAL_SUSPENDED_REASON);
+});
+const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => new Date(), audit, normalExecutionsSuspended);
+const waitScheduler = new WorkflowWaitScheduler(agentUseCase, 100, normalExecutionsSuspended);
 const automationStore = new SqliteWorkflowAutomationRepository(path.join(directory, "automation.sqlite"));
-const automations = new WorkflowAutomationService(automationStore, agentUseCase, projectUseCase, audit);
+const automations = new WorkflowAutomationService(automationStore, agentUseCase, projectUseCase, audit, 4, normalExecutionsSuspended);
 let failNextDispatch = false;
 const enqueue = automationStore.enqueue.bind(automationStore);
 automationStore.enqueue = (...args) => {
@@ -204,9 +214,6 @@ const gmail = new GmailService(path.join(directory, "gmail.sqlite"), "http://127
   })) });
   throw new Error("Unexpected fake Gmail URL");
 }) as typeof fetch);
-let workForceTime: number | null = null;
-const workForce = new WorkForceService(path.join(directory, "config.json"), new ConfiguredWorkForceAgents(projectUseCase, agentUseCase),
-  codexQuota, () => workForceTime ?? Date.now(), 100);
 const app = createCortexApplication({ projectUseCase, agentUseCase, workflowScheduler, workForce, executionQueue,
   authentication: null, clientDirectory: path.resolve("dist"), gmail, automations, promptQueue,
   codexUpdates: {

@@ -98,13 +98,13 @@ test("enabling parallelism releases different agents; disabling lets active runs
   expect((await first).ok()).toBe(true); expect((await third).ok()).toBe(true);
 });
 
-test("Work Force rechecks quotas after its global wait and leaves the slot to the next ready agent",async({request})=>{
+test("Work Force rechecks quotas after its global wait and keeps normal agents suspended while quotas are low",async({request})=>{
   const a=await createAgent(request,"GLOBAL_QUEUE_QUOTA_A"),b=await createAgent(request,"GLOBAL_QUEUE_QUOTA_B",false),c=await createAgent(request,"GLOBAL_QUEUE_QUOTA_C",false);
   const first=runAgent(request,a); await expect.poll(async()=>(await starts(request)).length).toBe(1);
   await startForce(request,b); await expect.poll(async()=>(await force(request)).runtime.phase).toBe("queued");
   const next=runAgent(request,c); await request.post("/__test/codex-quota",{data:{fiveHourUsed:99,weeklyUsed:99}});
   expect((await first).ok()).toBe(true); await expect.poll(async()=>(await force(request)).runtime.phase).toBe("waiting_quota");
-  expect((await next).ok()).toBe(true); expect((await starts(request)).map((entry:any)=>entry.marker)).toEqual([a.marker,c.marker]);
+  expect((await next).status()).toBe(409); expect((await starts(request)).map((entry:any)=>entry.marker)).toEqual([a.marker]);
   expect((await force(request)).runtime.cursor).toBe(0);
 });
 
@@ -131,7 +131,7 @@ test("a complete agent retains the slot through mission and interpretation",asyn
   expect((await telemetry(request)).maximum).toBe(1);
 });
 
-test("a scheduled normal workflow joins the queue while Work Force uses another agent in the same project",async({request})=>{
+test("a scheduled normal workflow is skipped during Work Force and resumes at its next occurrence after stop",async({request})=>{
   const a=await createAgent(request,"GLOBAL_QUEUE_SCHEDULE_A",false);
   const content=await (await request.get(`/api/agents/projects/${a.projectId}`)).json();
   const name=content.directoryPath.split(/[\\/]/).at(-1);
@@ -146,15 +146,53 @@ test("a scheduled normal workflow joins the queue while Work Force uses another 
   const schedule=`/api/agents/projects/${a.projectId}/workflow/schedule`;
   expect((await request.put(schedule,{data:{cron:"* * * * *",enabled:true,timezone:"UTC",parameterValues:{}}})).ok()).toBe(true);
   await request.post("/__test/scheduled-scan",{data:{at:"2027-01-04T10:20:00Z"}});
-  await expect.poll(async()=>(await queue(request)).waiting.some((entry:any)=>entry.source==="normal")).toBe(true);
+  await expect.poll(async()=>(await (await request.get(schedule)).json()).lastRunStatus).toBe("skipped");
+  expect((await (await request.get(schedule)).json()).lastRunError).toContain("Work Force");
+  expect((await queue(request)).waiting.some((entry:any)=>entry.source==="normal")).toBe(false);
   await request.post("/api/work-force/stop",{data:{}});
+  await expect.poll(async()=>(await force(request)).runtime.active).toBeNull();
+  await request.post("/__test/scheduled-scan",{data:{at:"2027-01-04T10:20:00Z"}});
+  expect((await (await request.get(schedule)).json()).lastRunStatus).toBe("skipped");
+  await request.post("/__test/scheduled-scan",{data:{at:"2027-01-04T10:21:00Z"}});
   await expect.poll(async()=>(await (await request.get(schedule)).json()).lastRunStatus,{timeout:10000}).toBe("succeeded");
   expect((await telemetry(request)).maximum).toBe(1);
   expect((await starts(request)).map((entry:any)=>entry.marker)).toEqual(["GLOBAL_QUEUE_SCHEDULE_B",a.marker,"GLOBAL_QUEUE_SCHEDULE_B"]);
   await request.put(schedule,{data:{cron:"* * * * *",enabled:false,timezone:"UTC",parameterValues:{}}});
 });
 
-test("parallel mode allows distinct agents in the same project and normal cancellation does not stop Work Force",async({request})=>{
+for (const parallel of [false, true]) test(`active Work Force turns the mode button red and blocks normal cron and manual agents (parallel=${parallel})`, async ({page,request},info) => {
+  const selected=await createAgent(request,"GLOBAL_QUEUE_PRIORITY_SELECTED",false),normal=await createAgent(request,"GLOBAL_QUEUE_PRIORITY_NORMAL",false);
+  await request.put("/api/execution-queue/settings",{data:{allowParallelExecutions:parallel}});
+  // Normal quota protection is disabled, proving this is the Work Force policy.
+  await request.post("/__test/codex-quota",{data:{fiveHourUsed:70,weeklyUsed:97}});
+  await startForce(request,selected);
+  await expect.poll(async()=>(await force(request)).runtime.phase).toBe("waiting_quota");
+  expect((await (await request.get("/api/work-force/status")).json()).active).toBe(true);
+  const refused=await runAgent(request,normal); expect(refused.status()).toBe(409);
+  expect((await refused.json()).error).toContain("Work Force");
+  const schedule=`/api/agents/projects/${normal.projectId}/workflow/schedule`;
+  expect((await request.put(schedule,{data:{cron:"* * * * *",enabled:true,timezone:"UTC",parameterValues:{}}})).ok()).toBe(true);
+  await request.post("/__test/scheduled-scan",{data:{at:"2027-01-04T12:00:00Z"}});
+  await expect.poll(async()=>(await (await request.get(schedule)).json()).lastRunStatus).toBe("skipped");
+  expect((await starts(request)).length).toBe(0);
+  await page.goto(`/?project=${normal.projectId}`);
+  let button=page.getByRole("button",{name:"Work Force",exact:true});
+  if(!await button.isVisible())await page.getByRole("button",{name:"Afficher la liste des projets",exact:true}).click();
+  await expect(button).toHaveAttribute("aria-pressed","true");
+  await expect(button).toHaveCSS("background-color","rgb(180, 35, 50)");
+  expect((await new AxeBuilder({page}).include(".project-sidebar__header").withTags(["wcag2a","wcag2aa","wcag21aa"]).analyze()).violations).toEqual([]);
+  await page.screenshot({path:info.outputPath("work-force-active-red.png"),fullPage:true});
+  await request.post("/api/work-force/stop",{data:{}});
+  await expect(button).toHaveAttribute("aria-pressed","false");
+  await request.post("/__test/scheduled-scan",{data:{at:"2027-01-04T12:00:00Z"}});
+  expect((await starts(request)).length).toBe(0);
+  await request.post("/__test/scheduled-scan",{data:{at:"2027-01-04T12:01:00Z"}});
+  await expect.poll(async()=>(await (await request.get(schedule)).json()).lastRunStatus).toBe("succeeded");
+  expect((await starts(request)).map((event:any)=>event.marker)).toEqual([normal.marker]);
+  await request.put(schedule,{data:{cron:"* * * * *",enabled:false,timezone:"UTC",parameterValues:{}}});
+});
+
+test("an already running normal agent can finish in parallel, and cancelling it does not stop Work Force",async({request})=>{
   const a=await createAgent(request,"GLOBAL_QUEUE_SHARED_A");
   const original=await (await request.get(`/api/agents/projects/${a.projectId}`)).json();
   const name=original.directoryPath.split(/[\\/]/).at(-1);
@@ -165,8 +203,9 @@ test("parallel mode allows distinct agents in the same project and normal cancel
   expect(saved.ok()).toBe(true); const b={projectId:a.projectId,agentId:(await saved.json()).agents.find((agent:any)=>agent.name==="GLOBAL_QUEUE_SHARED_B").id};
   await request.put("/api/execution-queue/settings",{data:{allowParallelExecutions:true}});
   await request.post("/__test/global-executions",{data:{reset:true}});
+  const normal=runAgent(request,a); await expect.poll(async()=>(await starts(request)).length).toBe(1);
   await startForce(request,b); await expect.poll(async()=>(await force(request)).runtime.phase).toBe("running");
-  const normal=runAgent(request,a); await expect.poll(async()=>(await telemetry(request)).maximum).toBe(2);
+  await expect.poll(async()=>(await telemetry(request)).maximum).toBe(2);
   await request.post("/api/work-force/stop",{data:{}});
   await request.post(`/api/agents/projects/${a.projectId}/workflow/cancel`,{data:{}}); await normal;
   await expect.poll(async()=>(await force(request)).runtime.phase).toBe("stopped");

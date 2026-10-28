@@ -13,6 +13,28 @@ import type { WorkflowScheduleConfiguration } from "../projectService/ProjectSer
 import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
 import { ExecutionWorkspaceBusyError } from "../executionWorkspace/ExecutionWorkspaceGuard.ts";
 
+test("Work Force skips normal occurrences without probing quotas or changing schedules, then resumes without catch-up", async () => {
+  let suspended = true, calls = 0;
+  const now = new Date("2026-10-28T10:00:05Z"), repository = new SqliteWorkflowAuditRepository(":memory:");
+  const configuration = { cron: "* * * * *", timezone: "UTC", enabled: true, parameterValues: { retained: "yes" } };
+  const projects = { getProjects: async () => [{ id: "normal" }], getWorkflowScheduleConfiguration: async () => configuration,
+    saveWorkflowScheduleConfiguration: async () => assert.fail("Schedule was changed") } as unknown as ProjectUseCase;
+  const agents = { isProjectRunning: () => false, runWorkflow: async () => { calls++; } } as unknown as AgentUseCase;
+  const scheduler = new WorkflowScheduler(projects, agents, () => now, new WorkflowAuditService(repository), () => suspended);
+  try {
+    await scheduler.start(); await new Promise(setImmediate);
+    assert.equal(calls, 0);
+    const skipped = await scheduler.getSchedule("normal");
+    assert.equal(skipped.lastRunStatus, "skipped"); assert.match(skipped.lastRunError!, /Work Force/);
+    assert.equal(skipped.enabled, true); assert.deepEqual(skipped.parameterValues, { retained: "yes" });
+    suspended = false;
+    scheduler.checkDueSchedules(now); await new Promise(setImmediate);
+    assert.equal(calls, 0);
+    scheduler.checkDueSchedules(new Date(now.getTime()+60000)); await new Promise(setImmediate);
+    assert.equal(calls, 1); assert.equal((await scheduler.getSchedule("normal")).lastRunStatus, "succeeded");
+  } finally { scheduler.stop(); repository.close(); }
+});
+
 test("a slot recovers only previously started work, never launches its own new task afterwards", async () => {
   const now = new Date("2026-10-23T20:50:00Z");
   const calls: string[] = [];

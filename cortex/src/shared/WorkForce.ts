@@ -15,6 +15,7 @@ export const DEFAULT_WORK_FORCE_SETTINGS: WorkForceSettings = {
   minimumWeeklyRemainingPercent: 8
 };
 export const WORK_FORCE_QUOTA_RETRY_MS = 5 * 60 * 1000;
+export const WORK_FORCE_NORMAL_SUSPENDED_REASON = "Work Force est actif. Les agents du mode normal sont suspendus jusqu’à son arrêt.";
 export interface WorkForceConfiguration {
   agents: WorkForceAgentRef[];
   startsAt: string | null;
@@ -44,6 +45,11 @@ export interface WorkForceOverview {
   settings: WorkForceSettings;
   runtime: WorkForceRuntime;
   quotaStatus: CodexQuotaStatus | null;
+}
+export interface WorkForceStatus {
+  active: boolean;
+  armed: boolean;
+  phase: WorkForcePhase;
 }
 export interface WorkForceCatalog { agents: WorkForceAgent[]; errors: string[] }
 export function workForceAgentKey(agent: WorkForceAgentRef): string {

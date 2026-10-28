@@ -34,6 +34,29 @@ test("one FIFO serves Work Force, normal agents and prompts without overlap", as
   assert.equal(queue.hasExecutions(),false);
 }));
 
+test("admission is rechecked after waiting while an already admitted agent can finish its interpretation", async () => fixture(async queue => {
+  let suspended = false;
+  queue.setAdmissionGuard(entry => { if (suspended && entry.source === "normal") throw new Error("Work Force active"); });
+  const wait = gate(), order: string[] = [];
+  const first = queue.run({ source: "normal", label: "Started agent", key: "started" }, async () => {
+    order.push("mission"); await wait.promise;
+    await queue.run({ source: "internal", label: "Interpretation" }, async () => { order.push("interpretation"); });
+  });
+  await until(() => order.length === 1);
+  const queued = queue.run({ source: "normal", label: "Queued agent" }, async () => assert.fail("Normal agent ran during Work Force"));
+  const rejected = assert.rejects(queued, /Work Force active/);
+  const selected = queue.run({ source: "work-force", label: "Selected agent" }, async () => { order.push("work-force"); });
+  await until(async () => (await queue.status()).waiting.length === 2);
+  suspended = true; wait.resolve();
+  await Promise.all([first, rejected, selected]);
+  assert.deepEqual(order, ["mission", "interpretation", "work-force"]);
+  await queue.saveSettings({ allowParallelExecutions: true });
+  await assert.rejects(queue.run({ source: "normal", label: "Parallel normal" }, async () => assert.fail()), /Work Force active/);
+  suspended = false;
+  await queue.run({ source: "normal", label: "After stop" }, async () => { order.push("normal-resumed"); });
+  assert.equal(queue.hasExecutions(), false);
+}));
+
 test("mission and interpretation retain the same agent reservation; nested provider calls do not deadlock", async () => fixture(async queue => {
   await queue.saveSettings({allowParallelExecutions:false});
   const phases: string[] = [], mission = gate();

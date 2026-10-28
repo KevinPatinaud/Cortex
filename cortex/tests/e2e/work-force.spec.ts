@@ -99,13 +99,12 @@ test("quota waits last five minutes, normal-mode thresholds do not interfere, an
   expect((await overview(request)).runtime.history.length).toBe(historyCount);
   await request.post("/__test/work-force-clock", { data: { at: new Date(now + 300_000).toISOString() } });
   await expect.poll(async () => (await overview(request)).runtime.active?.agent.name).toBe(a.name);
-  // The same configured agent cannot overlap, even when parallelism is allowed.
+  // Normal-mode starts are suspended while Work Force owns the agent loop.
   const overlapping = request.post(`/api/agents/projects/${a.projectId}/agents/run`, { data: { agentId: a.agentId } });
-  await expect.poll(async () => (await (await request.get("/api/execution-queue")).json()).waiting.length).toBe(1);
+  expect((await overlapping).status()).toBe(409);
   await request.post("/__test/work-force-clock", { data: { at: new Date(end).toISOString() } });
   await expect.poll(async () => (await overview(request)).runtime.phase).toBe("stopping");
   await expect.poll(async () => (await overview(request)).runtime.phase).toBe("stopped");
-  expect((await overlapping).status()).toBe(400); // Quotas are rechecked after the wait.
   const result = await overview(request);
   expect(result.runtime.history[0]).toMatchObject({ agent: { name: a.name }, outcome: "succeeded" });
   expect(result.runtime.cursor).toBe(1);

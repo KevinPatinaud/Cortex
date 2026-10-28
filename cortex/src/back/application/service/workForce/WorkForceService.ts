@@ -1,6 +1,6 @@
 import { DEFAULT_WORK_FORCE_SETTINGS, WORK_FORCE_QUOTA_RETRY_MS, workForceAgentKey,
   type WorkForceAgent, type WorkForceAgentRef, type WorkForceCatalog, type WorkForceConfiguration,
-  type WorkForceExecution, type WorkForceOverview, type WorkForceRuntime, type WorkForceSettings } from "../../../../shared/WorkForce.ts";
+  type WorkForceExecution, type WorkForceOverview, type WorkForceRuntime, type WorkForceSettings, type WorkForceStatus } from "../../../../shared/WorkForce.ts";
 import type { CodexQuotaStatus } from "../../../../shared/CodexQuota.ts";
 import { ValidationError } from "../../error/ValidationError.ts";
 import { ExecutionWorkspaceBusyError } from "../executionWorkspace/ExecutionWorkspaceGuard.ts";
@@ -74,6 +74,15 @@ export class WorkForceService {
   async overview(): Promise<WorkForceOverview> {
     await this.initialize();
     return structuredClone({ ...this.state, quotaStatus: this.quotaStatus });
+  }
+  isActive(): boolean {
+    const { configuration, runtime } = this.state;
+    return Boolean(runtime.active) || (runtime.armed && !this.expired() &&
+      (!configuration.startsAt || Date.parse(configuration.startsAt) <= this.now()));
+  }
+  async status(): Promise<WorkForceStatus> {
+    await this.initialize();
+    return { active: this.isActive(), armed: this.state.runtime.armed, phase: this.state.runtime.phase };
   }
   catalog(): Promise<WorkForceCatalog> { return this.agents.catalog(); }
 

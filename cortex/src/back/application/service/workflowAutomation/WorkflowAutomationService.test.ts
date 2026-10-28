@@ -22,7 +22,7 @@ const response = (items: unknown[], next: string[] = [], wait?: unknown) => ({
     nextAgentIds: next, isMultiSelectionAllowed: true, isMultiSelectionThreaded: false, notes: null, ...(wait ? { wait } : {}) })
 });
 
-async function fixture(unified = false, inferBranches = false, quota?: CodexQuotaService) {
+async function fixture(unified = false, inferBranches = false, quota?: CodexQuotaService, suspended: () => boolean = () => false) {
   const directory = await mkdtemp(path.join(tmpdir(), "cortex-automation-"));
   let keys = ["one", "two"];
   let failNegotiation = false;
@@ -84,7 +84,7 @@ async function fixture(unified = false, inferBranches = false, quota?: CodexQuot
     const audit = new WorkflowAuditService(auditStore);
     const store = new SqliteWorkflowAutomationRepository(path.join(directory, "jobs.sqlite"));
     const agents = new AgentUseCase(provider, projects, audit, {}, undefined, quota);
-    const service = new WorkflowAutomationService(store, agents, projects, audit, 2);
+    const service = new WorkflowAutomationService(store, agents, projects, audit, 2, suspended);
     return { auditStore, audit, store, agents, service, close: async () => { await service.stop(); store.close(); auditStore.close(); } };
   };
   return { open, calls, setKeys: (value: string[]) => { keys = value; }, setFail: (value: boolean) => { failNegotiation = value; },
@@ -128,6 +128,22 @@ test("three native structured selection items create independent waiting dossier
     await f.service.tick();
     assert.equal(f.store.list("source").total, 3);
     assert.equal(state.calls.filter(call => call.prompt.includes("TASK_NEGOTIATE")).length, 3);
+  } finally { await f.close(); await state.cleanup(); }
+});
+
+test("Work Force preserves queued dossiers and resumes them only after its stop", async () => {
+  let paused = true;
+  const state = await fixture(true, true, undefined, () => paused);
+  state.setKeys(["one"]);
+  const f = state.open();
+  try {
+    await f.agents.runWorkflow("source", { criteria: "Rental investment" });
+    await f.service.start(); await f.service.tick();
+    assert.equal(f.store.list("source").jobs[0]?.status, "queued");
+    assert.equal(state.calls.filter(call => call.prompt.includes("TASK_NEGOTIATE")).length, 0);
+    paused = false;
+    await settle(f, () => f.store.list("source").jobs[0]?.status === "waiting");
+    assert.equal(state.calls.filter(call => call.prompt.includes("TASK_NEGOTIATE")).length, 1);
   } finally { await f.close(); await state.cleanup(); }
 });
 

@@ -1,8 +1,9 @@
-import type { WorkForceCatalog, WorkForceConfiguration, WorkForceOverview, WorkForceSettings } from "../../shared/WorkForce.ts";
+import type { WorkForceCatalog, WorkForceConfiguration, WorkForceOverview, WorkForceSettings, WorkForceStatus } from "../../shared/WorkForce.ts";
 import { requestJson } from "./apiClient.ts";
 const base = "/api/work-force";
 const json = (method: string, body: unknown = {}) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 export const getWorkForce = () => requestJson<WorkForceOverview>(base);
+export const getWorkForceStatus = () => requestJson<WorkForceStatus>(`${base}/status`);
 export const getWorkForceAgents = () => requestJson<WorkForceCatalog>(`${base}/agents`);
 export const saveWorkForce = (configuration: WorkForceConfiguration) => requestJson<WorkForceOverview>(`${base}/configuration`, json("PUT", configuration));
 export const saveWorkForceSettings = (settings: WorkForceSettings) => requestJson<WorkForceOverview>(`${base}/settings`, json("PUT", settings));

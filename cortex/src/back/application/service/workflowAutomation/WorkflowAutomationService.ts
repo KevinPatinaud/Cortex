@@ -11,6 +11,8 @@ import { ValidationError } from "../../error/ValidationError.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
 import { AgentBlockedError } from "../../error/AgentBlockedError.ts";
 import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
+import { ExecutionWorkspaceBusyError } from "../executionWorkspace/ExecutionWorkspaceGuard.ts";
+import { WORK_FORCE_NORMAL_SUSPENDED_REASON } from "../../../../shared/WorkForce.ts";
 import type { WorkflowJob, WorkflowJobFilter } from "../../../../shared/WorkflowAutomation.ts";
 
 export class WorkflowAutomationService {
@@ -22,7 +24,8 @@ export class WorkflowAutomationService {
   private starting: Promise<void> | null = null;
 
   constructor(private readonly store: SqliteWorkflowAutomationRepository, private readonly agents: AgentUseCase,
-    private readonly projects: ProjectUseCase, private readonly audit: WorkflowAuditService, private readonly concurrency = 4) {
+    private readonly projects: ProjectUseCase, private readonly audit: WorkflowAuditService, private readonly concurrency = 4,
+    private readonly isSuspended: () => boolean = () => false) {
     agents.setWorkflowDispatch((projectId, agentId) => this.instructions(projectId, agentId),
       (project, agent) => this.dispatch(project, agent), projectId => this.rules(projectId),
       (projectId, branches) => this.syncBranches(projectId, branches));
@@ -290,7 +293,7 @@ export class WorkflowAutomationService {
   }
 
   async tick(now = new Date()): Promise<void> {
-    if (this.scanning || this.stopped) return;
+    if (this.scanning || this.stopped || this.isSuspended()) return;
     this.scanning = true;
     try {
       const projectIds = new Set((await this.projects.getProjects()).map(project => project.id));
@@ -298,7 +301,7 @@ export class WorkflowAutomationService {
         if (!projectIds.has(job.sourceProjectId) || !projectIds.has(job.targetProjectId)) {
           await this.cancel(job.targetProjectId, job.id); continue;
         }
-        if (this.stopped || this.active.has(job.id) || this.active.size >= this.concurrency) continue;
+        if (this.stopped || this.isSuspended() || this.active.has(job.id) || this.active.size >= this.concurrency) continue;
         const state = readWorkflowCheckpoint(this.audit.forInstance(job.id).getCheckpoint(job.targetProjectId)?.state);
         const resume = Boolean(state?.instance);
         if (job.status === "waiting") {
@@ -317,13 +320,14 @@ export class WorkflowAutomationService {
     try {
       await runner.loadProject(job.targetProjectId, false);
       if (this.store.get(job.id)?.status === "cancelled" || this.stopped) return;
+      if (this.isSuspended()) throw new ExecutionWorkspaceBusyError(WORK_FORCE_NORMAL_SUSPENDED_REASON);
       const additionalInstructions = job.clarifications?.length
         ? `Précisions explicites de l’utilisateur pour ce dossier, dans l’ordre chronologique. Elles complètent ou corrigent les paramètres initiaux et restent applicables aux étapes suivantes. Ne déduisez aucune autorisation supplémentaire.\n\n${job.clarifications.map(item => `${item.createdAt}\n${item.content}`).join("\n\n")}` : undefined;
       const result = await runner.runWorkflow(job.targetProjectId, job.parameterValues, "scheduled", { resume, now, additionalInstructions,
         onStart: () => this.store.update(job.id, "running") });
       if (this.store.get(job.id)?.status !== "cancelled") this.store.update(job.id, result.status === "waiting" ? "waiting" : "completed");
     } catch (error) {
-      if (error instanceof CodexQuotaBlockedError && !this.stopped) {
+      if ((error instanceof CodexQuotaBlockedError || error instanceof ExecutionWorkspaceBusyError) && !this.stopped) {
         // Retain queued jobs and durable waits; the next scan retries the quota gate.
         const current = this.store.get(job.id);
         if (current && current.status !== "cancelled" && (current.status !== job.status || current.error !== error.message)) {

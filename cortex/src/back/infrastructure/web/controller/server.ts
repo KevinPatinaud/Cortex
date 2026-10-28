@@ -1,4 +1,5 @@
-import { ExecutionWorkspaceGuard } from "../../../application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
+import { ExecutionWorkspaceGuard, ExecutionWorkspaceBusyError } from "../../../application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
+import { WORK_FORCE_NORMAL_SUSPENDED_REASON } from "../../../../shared/WorkForce.ts";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -114,27 +115,33 @@ const agentUseCase = new AgentUseCase(
     () => executionQueue.allowsParallelExecutions()),
   new ExecutionQualityService(configurationFile, path.join(workspaceDirectory, "data", "execution-quality")), executionQueue
 );
+const workForce = new WorkForceService(configurationFile, new ConfiguredWorkForceAgents(projectUseCase, agentUseCase), codexQuota);
+await workForce.status();
+const normalExecutionsSuspended = () => workForce.isActive();
+executionQueue.setAdmissionGuard(entry => {
+  if (entry.source === "normal" && normalExecutionsSuspended()) throw new ExecutionWorkspaceBusyError(WORK_FORCE_NORMAL_SUSPENDED_REASON);
+});
 const workflowScheduler = new WorkflowScheduler(
   projectUseCase,
   agentUseCase,
   () => new Date(),
-  workflowAuditService
+  workflowAuditService,
+  normalExecutionsSuspended
 );
 
 const automationRepository = new SqliteWorkflowAutomationRepository(auditDatabaseFile);
-const automations = new WorkflowAutomationService(automationRepository, agentUseCase, projectUseCase, workflowAuditService);
+const automations = new WorkflowAutomationService(automationRepository, agentUseCase, projectUseCase, workflowAuditService, 4, normalExecutionsSuspended);
 const gmail = new GmailService(
   path.join(workspaceDirectory, "data", "gmail", "connection.sqlite"),
   process.env.CORTEX_GMAIL_REDIRECT_URI?.trim() || `http://127.0.0.1:${port}/api/gmail/callback`,
   agentUseCase
 );
-const workForce = new WorkForceService(configurationFile, new ConfiguredWorkForceAgents(projectUseCase, agentUseCase), codexQuota);
 const app = createCortexApplication({
   projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations, promptQueue, codexUpdates, workForce, executionQueue
 });
 codexIsBusy = () => agentService.hasActiveExecutions() || agentUseCase.hasActiveExecutions();
 
-const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase);
+const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase, 1000, normalExecutionsSuspended);
 const httpServer = app.listen(port, host, () => {
   codexUpdates.start();
   promptQueue.start();

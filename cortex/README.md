@@ -25,7 +25,7 @@ authenticated `/api/execution-queue` endpoint exposes active and waiting entries
 
 **Work Force**, accessible from the project sidebar, repeatedly runs a manually
 ordered selection of agents from any saved projects. Select agents, drag their
-rows or use the up/down buttons, optionally choose a local start and/or end
+rows using the handle on the left, optionally choose a local start and/or end
 date/time, then start or schedule the loop. Every agent requires both Codex
 reserves: by default 30% remaining over five hours and 8% over the week. These
 mandatory thresholds are independent of the normal workflow rule and can be
@@ -43,6 +43,19 @@ instructions, workspace policy and quality checks, with separate Work Force
 conversations and audits. Normal workflow edges do not launch extra agents.
 The latest 20 execution results are visible on the page; full audits remain in
 each project's history. Stop the loop before changing the list or schedule.
+
+While the loop is active (including quota waits), the sidebar's **Work Force**
+button turns red and normal-mode agent starts are suspended, regardless of the
+parallel-execution setting. Only agents selected in Work Force are launched by
+the agent loop. Normal cron occurrences are recorded as skipped, without quota
+probes or later catch-up. Automatic workflow wakes and downstream dossiers wait
+until Work Force stops. New manual normal-agent starts are also refused while
+the loop is active; an agent already admitted can finish its mission and checks.
+Existing schedules are preserved and resume at their next occurrence after the
+loop stops. Before a planned future start they remain eligible; at the planned
+end the priority remains in effect only until the active Work Force agent drains.
+The lightweight `/api/work-force/status` read used by the button does not query
+Codex quotas or start inference.
 
 **Chats et prompts** adds durable prompt queues alongside workflows: prepare
 several independent Codex conversations by writing a first message. Titles,

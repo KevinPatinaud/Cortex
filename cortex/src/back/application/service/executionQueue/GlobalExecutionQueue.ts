@@ -34,6 +34,7 @@ export class GlobalExecutionQueue {
   private readonly active = new Set<Lease>();
   private readonly waiting: Pending[] = [];
   private closed = false;
+  private admissionGuard?: (entry: CortexExecutionEntry) => void;
 
   constructor(configurationFile: string) { this.repository = new JsonConfigurationRepository(configurationFile); }
   private initialize(): Promise<void> {
@@ -62,6 +63,7 @@ export class GlobalExecutionQueue {
   }
   isInsideExecution(): boolean { return this.context.getStore()?.active === true; }
   hasExecutions(): boolean { return this.active.size > 0 || this.waiting.length > 0; }
+  setAdmissionGuard(guard: (entry: CortexExecutionEntry) => void): void { this.admissionGuard = guard; }
 
   async run<T>(options: ExecutionAdmission, operation: () => Promise<T>): Promise<T> {
     const parent = this.context.getStore();
@@ -74,6 +76,7 @@ export class GlobalExecutionQueue {
     options.signal?.throwIfAborted();
     const entry: CortexExecutionEntry = { id: randomUUID(), source: options.source, label: options.label,
       ...(options.key ? { key: options.key } : {}), ...(options.projectId ? { projectId: options.projectId } : {}), queuedAt: new Date().toISOString() };
+    this.admissionGuard?.(entry);
     const lease = await new Promise<Lease>((resolve, reject) => {
       const pending: Pending = { entry, signal: options.signal, resolve, reject, cancel: () => {
         const index = this.waiting.indexOf(pending);
@@ -94,6 +97,7 @@ export class GlobalExecutionQueue {
     });
     try {
       options.signal?.throwIfAborted();
+      this.admissionGuard?.(lease.entry);
       return await this.context.run(lease, operation);
     } finally {
       lease.active = false;

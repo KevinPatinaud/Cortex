@@ -11,6 +11,7 @@ export function createWorkForceController(service: WorkForceService): Router {
     next();
   });
   router.get("/", asyncRoute(async (_request, response) => { response.setHeader("Cache-Control", "no-store"); response.json(await service.overview()); }, mapping));
+  router.get("/status", asyncRoute(async (_request, response) => { response.setHeader("Cache-Control", "no-store"); response.json(await service.status()); }, mapping));
   router.get("/agents", asyncRoute(async (_request, response) => { response.json(await service.catalog()); }, mapping));
   router.put("/configuration", asyncRoute(async (request, response) => { response.json(await service.saveConfiguration(request.body)); }, mapping));
   router.put("/settings", asyncRoute(async (request, response) => { response.json(await service.saveSettings(request.body)); }, mapping));

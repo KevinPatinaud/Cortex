@@ -67,6 +67,27 @@ async function fixture(run: (h: ReturnType<typeof harness>, file: string) => Pro
 }
 const configure = (service: WorkForceService, dates: { startsAt?: string; endsAt?: string } = {}) => service.saveConfiguration({ agents: refs, startsAt: null, endsAt: null, ...dates });
 
+test("active status follows the planned window, includes quota waits and draining, and never reads quotas", async () => fixture(async h => {
+  assert.deepEqual(await h.service.status(), { active: false, armed: false, phase: "stopped" });
+  await configure(h.service, { startsAt: new Date(h.now()+60000).toISOString(), endsAt: new Date(h.now()+120000).toISOString() });
+  await h.service.arm();
+  assert.equal((await h.service.status()).active, false);
+  assert.equal(h.reads(), 0);
+  h.quotas(0, 0); h.advance(60000);
+  await until(async () => { await h.service.tick(); return (await h.service.status()).phase === "waiting_quota"; });
+  const reads = h.reads();
+  assert.equal((await h.service.status()).active, true);
+  assert.equal(h.reads(), reads);
+  h.advance(60000); await h.service.tick();
+  assert.equal((await h.service.status()).active, false);
+  await configure(h.service); h.quotas(30, 8); await h.service.arm();
+  await until(() => h.calls.length === 1);
+  await h.service.disarm();
+  assert.equal((await h.service.status()).active, true);
+  h.pending[0].finish();
+  await until(async () => !(await h.service.status()).active);
+}));
+
 test("runs agents in manual order, wraps to the first and never overlaps; manual stop drains the active agent", async () => fixture(async h => {
   await h.service.saveConfiguration({ agents: [...refs].reverse(), startsAt: null, endsAt: null });
   assert.deepEqual((await h.service.overview()).settings, { minimumFiveHourRemainingPercent: 30, minimumWeeklyRemainingPercent: 8 });

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "r
 import { ChevronDown, FileArchive, FolderInput, LoaderCircle, PanelLeftClose, PanelLeftOpen, Plus, Search } from "lucide-react";
 import { useTranslation } from "../../../i18n.tsx";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
+import { WorkForceModeButton } from "../../work_force/WorkForceModeButton.tsx";
 import {
   getActualLoadedAgentProject,
   loadAgentProject,
@@ -547,7 +548,7 @@ export function ProjectDirectoryManager({
         aria-label={t("sidebar.aria")}
       >
         <header className="project-sidebar__header">
-          {onOpenWorkForce && <button className="prompt-mode-link" type="button" onClick={onOpenWorkForce}>Work Force<Plus size={16} aria-hidden="true" /></button>}
+          {onOpenWorkForce && <WorkForceModeButton onClick={onOpenWorkForce} />}
           {onOpenPromptQueue && <button className="prompt-mode-link" type="button" onClick={onOpenPromptQueue}>{language === "fr" ? "Chats et prompts" : "Chats and prompts"}<Plus size={16} aria-hidden="true" /></button>}
           <p className="project-sidebar__eyebrow">{t("sidebar.workspace")}</p>
           <div className="project-sidebar__title-row">

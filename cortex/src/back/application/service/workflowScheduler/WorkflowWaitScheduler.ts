@@ -5,13 +5,14 @@ export class WorkflowWaitScheduler {
   private timer: NodeJS.Timeout | null = null;
   private scanning = false;
   private controller = new AbortController();
-  constructor(private readonly agents: AgentUseCase, private readonly intervalMs = 1000) {}
+  constructor(private readonly agents: AgentUseCase, private readonly intervalMs = 1000,
+    private readonly isSuspended: () => boolean = () => false) {}
 
   start(): void {
     if (this.timer) return;
     this.controller = new AbortController();
     const tick = async () => {
-      if (this.scanning) return;
+      if (this.scanning || this.isSuspended()) return;
       this.scanning = true;
       try { await this.agents.wakeWaitingWorkflows(new Date(), { background: true, signal: this.controller.signal }); }
       catch (error) { console.error("Unable to scan workflow waits:", error); }
