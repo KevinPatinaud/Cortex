@@ -5,6 +5,7 @@ import { DEFAULT_EXECUTION_CONCURRENCY, type CortexExecutionEntry, type CortexEx
 import { JsonConfigurationRepository } from "../configuration/JsonConfigurationRepository.ts";
 import { ValidationError } from "../../error/ValidationError.ts";
 
+export class ExecutionSlotUnavailableError extends Error {}
 export class ExecutionDeferredError extends Error {}
 export interface ExecutionAdmission {
   source: CortexExecutionSource;
@@ -13,6 +14,8 @@ export interface ExecutionAdmission {
   projectId?: string;
   signal?: AbortSignal;
   onQueued?: () => void;
+  /** Refuse atomically when a reservation cannot start immediately. */
+  waitForSlot?: boolean;
 }
 interface Lease { entry: CortexExecutionEntry; active: boolean; parallel: boolean }
 interface Pending {
@@ -77,6 +80,10 @@ export class GlobalExecutionQueue {
     const entry: CortexExecutionEntry = { id: randomUUID(), source: options.source, label: options.label,
       ...(options.key ? { key: options.key } : {}), ...(options.projectId ? { projectId: options.projectId } : {}), queuedAt: new Date().toISOString() };
     this.admissionGuard?.(entry);
+    if (options.waitForSlot === false && (this.waiting.length > 0 ||
+      (!this.settings.allowParallelExecutions && this.active.size > 0) ||
+      (entry.key && [...this.active].some(lease => lease.entry.key === entry.key))))
+      throw new ExecutionSlotUnavailableError("Créneau ignoré : la file globale de Cortex est occupée.");
     const lease = await new Promise<Lease>((resolve, reject) => {
       const pending: Pending = { entry, signal: options.signal, resolve, reject, cancel: () => {
         const index = this.waiting.indexOf(pending);

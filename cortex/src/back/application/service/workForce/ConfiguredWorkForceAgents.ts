@@ -8,7 +8,7 @@ import type { WorkForceAgents } from "./WorkForceService.ts";
 import { parseAgentResponse } from "../../../../shared/AgentResponse.ts";
 
 export class ConfiguredWorkForceAgents implements WorkForceAgents {
-  constructor(private readonly projects: ProjectUseCase, private readonly agents: AgentUseCase) {}
+  constructor(private readonly projects: ProjectUseCase, private readonly agents: AgentUseCase, private readonly kind: "work-force" | "work-light" = "work-force") {}
 
   async catalog(): Promise<WorkForceCatalog> {
     const catalog: WorkForceCatalog = { agents: [], errors: [] };
@@ -27,7 +27,7 @@ export class ConfiguredWorkForceAgents implements WorkForceAgents {
     const project = await this.agents.getConfiguredProject(ref.projectId);
     const agent = project.agents.find(candidate => candidate.id === ref.agentId);
     if (!agent?.prompt.trim()) throw new ValidationError("L’agent Work Force est absent ou ses instructions sont vides.");
-    const runner = this.agents.createWorkForceRunner(project, agent.id);
+    const runner = this.agents.createWorkForceRunner(project, agent.id, this.kind);
     const mainRunner = this.agents;
     await runner.loadProject(project.projectId, false);
     return { agent: { projectId: project.projectId, agentId: agent.id, name: agent.name,

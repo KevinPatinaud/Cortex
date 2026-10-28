@@ -111,16 +111,22 @@ export class WorkForceService {
   arm(): Promise<WorkForceOverview> {
     return this.command(async () => {
       await this.initialize();
-      if (this.state.runtime.armed) return this.overview();
-      if (this.shuttingDown || this.inFlight) throw new ValidationError("Un agent est encore en cours de terminaison.");
-      if (!this.state.configuration.agents.length) throw new ValidationError("Sélectionnez au moins un agent.");
-      const { startsAt, endsAt } = this.state.configuration;
-      if (endsAt && Date.parse(endsAt) <= this.now()) throw new ValidationError("La fin planifiée doit être dans le futur.");
-      Object.assign(this.state.runtime, { armed: true, phase: startsAt && Date.parse(startsAt) > this.now() ? "scheduled" : "running",
-        nextCheckAt: null, reason: null });
-      await this.persist();
+      const overview = await this.repository.runExclusive(async () => {
+        if (this.state.runtime.armed) return this.overview();
+        const light = (await this.repository.read()).workLight as { runtime?: { armed?: boolean; active?: unknown } } | undefined;
+        if (light?.runtime?.armed || light?.runtime?.active) throw new ValidationError("Arrêtez Work Light avant d’activer Work Force.");
+        if (this.shuttingDown || this.inFlight) throw new ValidationError("Un agent est encore en cours de terminaison.");
+        if (!this.state.configuration.agents.length) throw new ValidationError("Sélectionnez au moins un agent.");
+        const { startsAt, endsAt } = this.state.configuration;
+        if (endsAt && Date.parse(endsAt) <= this.now()) throw new ValidationError("La fin planifiée doit être dans le futur.");
+        const previous = structuredClone(this.state.runtime);
+        Object.assign(this.state.runtime, { armed: true, phase: startsAt && Date.parse(startsAt) > this.now() ? "scheduled" : "running",
+          nextCheckAt: null, reason: null });
+        try { await this.persist(); } catch (error) { this.state.runtime = previous; throw error; }
+        return this.overview();
+      });
       this.kick();
-      return this.overview();
+      return overview;
     });
   }
   disarm(): Promise<WorkForceOverview> {

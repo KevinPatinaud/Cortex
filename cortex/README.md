@@ -4,7 +4,7 @@ Cortex is a local application for creating, visualizing, and running Codex, Clau
 
 **Settings → General → Allow simultaneous executions** controls the shared
 execution queue for the whole Cortex instance. Disable it to run one complete
-agent or prompt at a time across normal workflows, Work Force, chats and internal
+agent or prompt at a time across normal workflows, Work Force, Work Light, chats and internal
 AI tasks. Ready requests share FIFO order; mission, interpretation and final
 checks retain the same reservation. Work Force rejoins at the end after each
 agent. Future schedules, quota waits and external-event waits hold no slot.
@@ -537,3 +537,35 @@ The password protects the application, but remote deployments must still use HTT
 - `src/back/infrastructure`: Express HTTP server;
 - `src/shared`: shared contracts and algorithms;
 - `docs`: manual acceptance test campaigns.
+
+## Work Light
+
+**Work Light** runs one selected agent at each cron occurrence. Choose existing
+agents from the sidebar, drag them into order, then configure one or more advanced
+cron rules and an IANA time zone (Europe/Paris by default). Enable the mode after
+saving. For A/B/C at 12:00 and 20:00, the rotation is A, B, C, A across days.
+Completion does not trigger the next agent: it waits for the next slot.
+
+Each slot uses the global execution queue with immediate admission. An occupied
+serial queue, the same agent already running, a previous Work Light run still
+active, or insufficient/unknown quota skips the slot and retains the next agent.
+There is no off-schedule catch-up. The default minimum reserves are 30% over five
+hours and 8% weekly, editable separately under Settings → General → Work Light
+or on its page. Status and preview reads do not query quotas or invoke a model.
+
+The cursor advances only after success. Failures, external waits and interrupted
+runs pause for review. Configuration, cursor and minute claims persist across
+restarts; offline slots and the startup minute are skipped. Coincident cron rules
+share one absolute UTC-minute claim, including daylight-saving transitions.
+Activation starts from the next future slot; stopping lets the current agent finish.
+Reordering while stopped preserves the next agent by identity when still selected.
+
+Work Force and Work Light cannot be armed together. While Work Light is active,
+normal-mode starts, cron schedules, automatic dossiers and workflow wakeups are
+suspended. Existing normal runs may finish. Chats/prompts still follow global
+concurrency rules. The sidebar button turns red while Work Light is active.
+The server must stay running and its clock must be synchronized for timely slots.
+
+API: /api/work-light with /status, /agents, /configuration, /settings, /preview,
+/start and /stop. Editing the list/schedule requires a stopped mode. Histories of
+the last 20 executions and 40 evaluated slots are visible on the Work Light page.

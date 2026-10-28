@@ -27,6 +27,7 @@ import { ConfirmationDialog } from "./ConfirmationDialog.tsx";
 import { removeProjectDraft } from "../../agent/components/projectDraft.ts";
 
 interface ProjectDirectoryManagerProps {
+  onOpenWorkLight?: () => void;
   onOpenWorkForce?: () => void;
   onOpenPromptQueue?: () => void;
   activeProject: Project | null;
@@ -73,7 +74,7 @@ function updateProjectUrl(
 }
 
 export function ProjectDirectoryManager({
-  onOpenWorkForce,
+  onOpenWorkForce, onOpenWorkLight,
   onOpenPromptQueue,
   activeProject,
   deletedProject,
@@ -548,6 +549,7 @@ export function ProjectDirectoryManager({
         aria-label={t("sidebar.aria")}
       >
         <header className="project-sidebar__header">
+          {onOpenWorkLight && <WorkForceModeButton light onClick={onOpenWorkLight} />}
           {onOpenWorkForce && <WorkForceModeButton onClick={onOpenWorkForce} />}
           {onOpenPromptQueue && <button className="prompt-mode-link" type="button" onClick={onOpenPromptQueue}>{language === "fr" ? "Chats et prompts" : "Chats and prompts"}<Plus size={16} aria-hidden="true" /></button>}
           <p className="project-sidebar__eyebrow">{t("sidebar.workspace")}</p>

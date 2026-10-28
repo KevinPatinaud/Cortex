@@ -128,7 +128,8 @@ test("Work Force thresholds are editable in settings and invalid configurations 
   const trigger = page.locator(".agent-engine-settings-trigger");
   if (!await trigger.isVisible()) await page.getByRole("button", { name: "Afficher la liste des projets", exact: true }).click();
   await trigger.click();
-  await expect(page.getByLabel("Réserve minimale sur 5 h (%)", { exact: true })).toHaveValue("35");
-  await expect(page.getByLabel("Réserve minimale hebdomadaire (%)", { exact: true })).toHaveValue("12");
+  const forceSettings = page.getByRole("region", { name: "Paramètres Work Force", exact: true });
+  await expect(forceSettings.getByLabel("Réserve minimale sur 5 h (%)", { exact: true })).toHaveValue("35");
+  await expect(forceSettings.getByLabel("Réserve minimale hebdomadaire (%)", { exact: true })).toHaveValue("12");
   expect((await new AxeBuilder({ page }).include(".work-force-settings").withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze()).violations).toEqual([]);
 });

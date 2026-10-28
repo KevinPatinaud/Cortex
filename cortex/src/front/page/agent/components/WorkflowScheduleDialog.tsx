@@ -14,6 +14,11 @@ import { trapDialogFocus } from "../../shared/dialogFocus.ts";
 
 interface WorkflowScheduleDialogProps {
   projectId: string;
+  previewSchedule?: (cron: string, timezone: string) => Promise<WorkflowSchedulePreview>;
+  persistSchedule?: (input: { cron: string; crons: string[]; timezone: string; enabled: boolean; parameterValues: WorkflowParameterValues }) => Promise<WorkflowSchedule>;
+  description?: string;
+  scheduleOnly?: boolean;
+  heading?: string;
   projectName: string;
   schedule: WorkflowSchedule;
   parameterValues: WorkflowParameterValues;
@@ -27,7 +32,7 @@ export function WorkflowScheduleDialog({
   schedule,
   parameterValues,
   onCancel,
-  onSaved
+  onSaved, previewSchedule, persistSchedule, description, scheduleOnly, heading
 }: WorkflowScheduleDialogProps) {
   const { language, t } = useTranslation();
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -87,12 +92,12 @@ export function WorkflowScheduleDialog({
     const timer = window.setTimeout(() => {
       void Promise.all(entries.map(async (entry) => {
         if (!describeCronExpression(entry.cron, language)) return {};
-        try { return { value: await previewWorkflowSchedule(projectId, entry.cron, timezone) }; }
+        try { return { value: await (previewSchedule ? previewSchedule(entry.cron, timezone) : previewWorkflowSchedule(projectId, entry.cron, timezone)) }; }
         catch (error: unknown) { return { error: error instanceof Error ? error.message : t("common.unexpectedError") }; }
       })).then((values) => { if (active) setPreview({ key: previewKey, entries: values }); });
     }, 300);
     return () => { active = false; window.clearTimeout(timer); };
-  }, [projectId, previewKey, language, t]);
+  }, [projectId, previewKey, language, t, previewSchedule]);
   const [enabled, setEnabled] = useState(schedule.enabled);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
@@ -127,13 +132,14 @@ export function WorkflowScheduleDialog({
     setError("");
 
     try {
-      onSaved(await saveWorkflowSchedule(projectId, {
+      const input = {
         cron: entries[0].cron,
         crons: entries.map((entry) => entry.cron),
         timezone,
         enabled,
         parameterValues
-      }));
+      };
+      onSaved(await (persistSchedule ? persistSchedule(input) : saveWorkflowSchedule(projectId, input)));
     } catch (requestError) {
       setError(requestError instanceof Error
         ? requestError.message
@@ -184,7 +190,7 @@ export function WorkflowScheduleDialog({
             <span className="schedule-dialog__eyebrow">
               {t("schedule.eyebrow")}
             </span>
-            <h2 id={titleId}>{t("schedule.title")}</h2>
+            <h2 id={titleId}>{heading ?? t("schedule.title")}</h2>
           </div>
           <button
             className="schedule-dialog__close"
@@ -199,13 +205,13 @@ export function WorkflowScheduleDialog({
 
         <div className="schedule-dialog__body">
         <fieldset className="schedule-dialog__fields" disabled={isSaving}>
-          <p id={descriptionId}>{t("schedule.description")}</p>
+          <p id={descriptionId}>{description ?? t("schedule.description")}</p>
           <div className="schedule-dialog__project">
-            <span>{t("dialog.affectedProject")}</span>
+            <span>{scheduleOnly ? "Cortex" : t("dialog.affectedProject")}</span>
             <strong>{projectName}</strong>
           </div>
 
-          <label className="schedule-dialog__toggle">
+          {!scheduleOnly && <label className="schedule-dialog__toggle">
             <input
               type="checkbox"
               checked={enabled}
@@ -215,13 +221,13 @@ export function WorkflowScheduleDialog({
               <strong>{t("schedule.enabled")}</strong>
               <small>{t("schedule.enabledHelp")}</small>
             </span>
-          </label>
+          </label>}
 
           <div className="schedule-dialog__entries-heading">
             <h3>{t("schedule.entries")}</h3>
             <button type="button" onClick={addEntry}><Plus size={16} aria-hidden="true" />{t("schedule.addEntry")}</button>
           </div>
-          <p className="schedule-dialog__entries-help">{t("schedule.entriesHelp")}</p>
+          {!scheduleOnly && <p className="schedule-dialog__entries-help">{t("schedule.entriesHelp")}</p>}
           <div className="schedule-dialog__entries" role="group" aria-label={t("schedule.entries")}>
             {entries.map((entry, index) => {
               const invalid = !describeCronExpression(entry.cron, language) || currentPreviews?.[index]?.error;
@@ -311,7 +317,7 @@ export function WorkflowScheduleDialog({
               <div><span>{t("schedule.yourZone")}</span><strong>{browserTimezone}</strong></div>
               <div><span>{t("schedule.serverZone")}</span><strong>{serverTimezone}</strong></div>
             </div>
-            <p className="schedule-dialog__preview-note">{enabled ? t("schedule.previewHelp") : t("schedule.pausedHelp")}</p>
+            {!scheduleOnly && <p className="schedule-dialog__preview-note">{enabled ? t("schedule.previewHelp") : t("schedule.pausedHelp")}</p>}
           </section>
           </div>
           {schedule.lastRunAt && schedule.lastRunStatus && (

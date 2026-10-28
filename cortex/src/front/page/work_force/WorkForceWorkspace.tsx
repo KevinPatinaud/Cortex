@@ -19,7 +19,7 @@ function instant(local: string): string | null {
   if (!Number.isFinite(date.getTime()) || localDate(date.toISOString()).slice(0, local.length) !== local) throw new Error("invalid date");
   return date.toISOString();
 }
-export function WorkForceWorkspace({ onNormal, onPrompts }: { onNormal(): void; onPrompts?: () => void }) {
+export function WorkForceWorkspace({ onNormal, onPrompts, onWorkLight }: { onNormal(): void; onPrompts?: () => void; onWorkLight?: () => void }) {
   const { language, t } = useTranslation();
   const copy = language === "fr" ? fr : en;
   const [overview, setOverview] = useState<WorkForceOverview | null>(null);
@@ -81,7 +81,7 @@ export function WorkForceWorkspace({ onNormal, onPrompts }: { onNormal(): void; 
   return <main className="work-force" id="main-content">
     <header className="work-force__header">
       <nav aria-label="Modes Cortex"><button type="button" onClick={onNormal}><ArrowLeft size={16} aria-hidden="true" />{copy.normal}</button>
-        {onPrompts && <button type="button" onClick={onPrompts}>{copy.prompts}</button>}</nav>
+        {onPrompts && <button type="button" onClick={onPrompts}>{copy.prompts}</button>}{onWorkLight && <button type="button" onClick={onWorkLight}>Work Light</button>}</nav>
       <div><p className="work-force__eyebrow">CORTEX</p><h1>Work Force</h1><p>{copy.description}</p></div>
       <div className="work-force__actions">
         {runtime?.armed ? <button type="button" disabled={busy} onClick={() => void act("stop")}><Square size={16} aria-hidden="true" />{copy.stop}</button>

@@ -25,7 +25,8 @@ export class WorkflowAutomationService {
 
   constructor(private readonly store: SqliteWorkflowAutomationRepository, private readonly agents: AgentUseCase,
     private readonly projects: ProjectUseCase, private readonly audit: WorkflowAuditService, private readonly concurrency = 4,
-    private readonly isSuspended: () => boolean = () => false) {
+    private readonly isSuspended: () => boolean = () => false,
+    private readonly suspensionReason: () => string = () => WORK_FORCE_NORMAL_SUSPENDED_REASON) {
     agents.setWorkflowDispatch((projectId, agentId) => this.instructions(projectId, agentId),
       (project, agent) => this.dispatch(project, agent), projectId => this.rules(projectId),
       (projectId, branches) => this.syncBranches(projectId, branches));
@@ -320,7 +321,7 @@ export class WorkflowAutomationService {
     try {
       await runner.loadProject(job.targetProjectId, false);
       if (this.store.get(job.id)?.status === "cancelled" || this.stopped) return;
-      if (this.isSuspended()) throw new ExecutionWorkspaceBusyError(WORK_FORCE_NORMAL_SUSPENDED_REASON);
+      if (this.isSuspended()) throw new ExecutionWorkspaceBusyError(this.suspensionReason());
       const additionalInstructions = job.clarifications?.length
         ? `Précisions explicites de l’utilisateur pour ce dossier, dans l’ordre chronologique. Elles complètent ou corrigent les paramètres initiaux et restent applicables aux étapes suivantes. Ne déduisez aucune autorisation supplémentaire.\n\n${job.clarifications.map(item => `${item.createdAt}\n${item.content}`).join("\n\n")}` : undefined;
       const result = await runner.runWorkflow(job.targetProjectId, job.parameterValues, "scheduled", { resume, now, additionalInstructions,

@@ -72,7 +72,8 @@ export class WorkflowScheduler {
     private readonly agentUseCase: AgentUseCase,
     private readonly now: () => Date = () => new Date(),
     private readonly workflowAuditService?: WorkflowAuditService,
-    private readonly isSuspended: () => boolean = () => false
+    private readonly isSuspended: () => boolean = () => false,
+    private readonly suspensionReason: () => string = () => WORK_FORCE_NORMAL_SUSPENDED_REASON
   ) {}
 
   async start(): Promise<void> {
@@ -218,10 +219,10 @@ export class WorkflowScheduler {
       if (this.isSuspended()) {
         runtime.lastRunAt = new Date(date);
         runtime.lastRunStatus = "skipped";
-        runtime.lastRunError = WORK_FORCE_NORMAL_SUSPENDED_REASON;
-        this.workflowAuditService?.completeScheduledOccurrence(projectId, minuteKey, "skipped", WORK_FORCE_NORMAL_SUSPENDED_REASON);
+        runtime.lastRunError = this.suspensionReason();
+        this.workflowAuditService?.completeScheduledOccurrence(projectId, minuteKey, "skipped", this.suspensionReason());
         this.workflowAuditService?.recordSkippedRun({ projectId, trigger: "scheduled", scope: "workflow",
-          parameterValues: { ...schedule.parameterValues }, workflowSnapshot: null }, WORK_FORCE_NORMAL_SUSPENDED_REASON);
+          parameterValues: { ...schedule.parameterValues }, workflowSnapshot: null }, this.suspensionReason());
         continue;
       }
 
@@ -257,7 +258,7 @@ export class WorkflowScheduler {
     parameterValues: Record<string, string>
   ): Promise<void> {
     try {
-      if (this.isSuspended()) throw new ExecutionWorkspaceBusyError(WORK_FORCE_NORMAL_SUSPENDED_REASON);
+      if (this.isSuspended()) throw new ExecutionWorkspaceBusyError(this.suspensionReason());
       const projectExists = (await this.projectUseCase.getProjects()).some(
         (project) => project.id === projectId
       );
@@ -272,7 +273,7 @@ export class WorkflowScheduler {
       }
 
       const recoveryProjectId = await this.agentUseCase.getRecoveryProjectId?.(projectId);
-      if (this.isSuspended()) throw new ExecutionWorkspaceBusyError(WORK_FORCE_NORMAL_SUSPENDED_REASON);
+      if (this.isSuspended()) throw new ExecutionWorkspaceBusyError(this.suspensionReason());
       if (recoveryProjectId && recoveryProjectId !== projectId) {
         const reason = `Créneau utilisé pour reprendre l'intervention interrompue de ${recoveryProjectId}.`;
         this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "skipped", reason);

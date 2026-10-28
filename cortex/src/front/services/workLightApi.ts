@@ -1,0 +1,14 @@
+import type { WorkLightConfiguration, WorkLightOverview, WorkLightStatus } from "../../shared/WorkLight.ts";
+import type { WorkForceCatalog, WorkForceSettings } from "../../shared/WorkForce.ts";
+import type { WorkflowSchedulePreview } from "./agentApi.ts";
+import { requestJson } from "./apiClient.ts";
+const base = "/api/work-light";
+const json = (method: string, body: unknown = {}) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+export const getWorkLight = () => requestJson<WorkLightOverview>(base);
+export const getWorkLightStatus = () => requestJson<WorkLightStatus>(base + "/status");
+export const getWorkLightAgents = () => requestJson<WorkForceCatalog>(base + "/agents");
+export const saveWorkLight = (configuration: WorkLightConfiguration) => requestJson<WorkLightOverview>(base + "/configuration", json("PUT", configuration));
+export const saveWorkLightSettings = (settings: WorkForceSettings) => requestJson<WorkLightOverview>(base + "/settings", json("PUT", settings));
+export const startWorkLight = () => requestJson<WorkLightOverview>(base + "/start", json("POST"));
+export const stopWorkLight = () => requestJson<WorkLightOverview>(base + "/stop", json("POST"));
+export const previewWorkLight = (cron: string, timezone: string) => requestJson<WorkflowSchedulePreview>(base + "/preview", json("POST", {cron, timezone}));

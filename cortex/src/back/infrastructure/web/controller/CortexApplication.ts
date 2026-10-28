@@ -15,6 +15,8 @@ import type { PromptQueueService } from "../../../application/service/promptQueu
 import { createPromptQueueController } from "./PromptQueueController.ts";
 import type { CodexUpdateService } from "../../../application/service/iaService/CodexUpdateService.ts";
 import { ValidationError } from "../../../application/error/ValidationError.ts";
+import type { WorkLightService } from "../../../application/service/workLight/WorkLightService.ts";
+import { createWorkLightController } from "./WorkLightController.ts";
 import type { WorkForceService } from "../../../application/service/workForce/WorkForceService.ts";
 import { createWorkForceController } from "./WorkForceController.ts";
 import type { GlobalExecutionQueue } from "../../../application/service/executionQueue/GlobalExecutionQueue.ts";
@@ -31,6 +33,7 @@ export function createCortexApplication(options: {
   automations?: WorkflowAutomationService;
   promptQueue?: PromptQueueService;
   workForce?: WorkForceService;
+  workLight?: WorkLightService;
   executionQueue?: GlobalExecutionQueue;
   codexUpdates?: Pick<CodexUpdateService, "check" | "status">;
 }) {
@@ -64,6 +67,7 @@ export function createCortexApplication(options: {
     });
   }
   if (options.promptQueue) app.use("/api/prompt-queue", createPromptQueueController(options.promptQueue));
+  if (options.workLight) app.use("/api/work-light", createWorkLightController(options.workLight));
   if (options.workForce) app.use("/api/work-force", createWorkForceController(options.workForce));
   if (options.executionQueue) app.use("/api/execution-queue", createExecutionQueueController(options.executionQueue));
   if (options.gmail) app.use("/api/gmail", createGmailController(options.gmail));

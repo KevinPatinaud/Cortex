@@ -25,6 +25,8 @@ import { WorkflowAutomationService } from "../../src/back/application/service/wo
 import { SqliteWorkflowAutomationRepository } from "../../src/back/infrastructure/automation/SqliteWorkflowAutomationRepository.ts";
 import { PromptQueueService } from "../../src/back/application/service/promptQueue/PromptQueueService.ts";
 import { SqlitePromptQueueRepository } from "../../src/back/infrastructure/promptQueue/SqlitePromptQueueRepository.ts";
+import { WorkLightService } from "../../src/back/application/service/workLight/WorkLightService.ts";
+import { WORK_LIGHT_NORMAL_SUSPENDED_REASON } from "../../src/shared/WorkLight.ts";
 import { WorkForceService } from "../../src/back/application/service/workForce/WorkForceService.ts";
 import { ConfiguredWorkForceAgents } from "../../src/back/application/service/workForce/ConfiguredWorkForceAgents.ts";
 import { GlobalExecutionQueue } from "../../src/back/application/service/executionQueue/GlobalExecutionQueue.ts";
@@ -185,15 +187,19 @@ const promptQueue = new PromptQueueService(promptQueueStore, agentService, codex
 let workForceTime: number | null = null;
 const workForce = new WorkForceService(path.join(directory, "config.json"), new ConfiguredWorkForceAgents(projectUseCase, agentUseCase),
   codexQuota, () => workForceTime ?? Date.now(), 100);
+let workLightTime: number | null = null;
+const workLight = new WorkLightService(path.join(directory, "config.json"), new ConfiguredWorkForceAgents(projectUseCase, agentUseCase, "work-light"), codexQuota, () => workLightTime ?? Date.now(), 100);
 await workForce.status();
-const normalExecutionsSuspended = () => workForce.isActive();
+await workLight.status();
+const normalExecutionsSuspended = () => workForce.isActive() || workLight.isActive();
+const normalSuspensionReason = () => workLight.isActive() ? WORK_LIGHT_NORMAL_SUSPENDED_REASON : WORK_FORCE_NORMAL_SUSPENDED_REASON;
 executionQueue.setAdmissionGuard(entry => {
-  if (entry.source === "normal" && normalExecutionsSuspended()) throw new ExecutionWorkspaceBusyError(WORK_FORCE_NORMAL_SUSPENDED_REASON);
+  if (entry.source === "normal" && normalExecutionsSuspended()) throw new ExecutionWorkspaceBusyError(normalSuspensionReason());
 });
-const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => new Date(), audit, normalExecutionsSuspended);
+const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => new Date(), audit, normalExecutionsSuspended, normalSuspensionReason);
 const waitScheduler = new WorkflowWaitScheduler(agentUseCase, 100, normalExecutionsSuspended);
 const automationStore = new SqliteWorkflowAutomationRepository(path.join(directory, "automation.sqlite"));
-const automations = new WorkflowAutomationService(automationStore, agentUseCase, projectUseCase, audit, 4, normalExecutionsSuspended);
+const automations = new WorkflowAutomationService(automationStore, agentUseCase, projectUseCase, audit, 4, normalExecutionsSuspended, normalSuspensionReason);
 let failNextDispatch = false;
 const enqueue = automationStore.enqueue.bind(automationStore);
 automationStore.enqueue = (...args) => {
@@ -214,7 +220,7 @@ const gmail = new GmailService(path.join(directory, "gmail.sqlite"), "http://127
   })) });
   throw new Error("Unexpected fake Gmail URL");
 }) as typeof fetch);
-const app = createCortexApplication({ projectUseCase, agentUseCase, workflowScheduler, workForce, executionQueue,
+const app = createCortexApplication({ projectUseCase, agentUseCase, workflowScheduler, workForce, workLight, executionQueue,
   authentication: null, clientDirectory: path.resolve("dist"), gmail, automations, promptQueue,
   codexUpdates: {
     status: () => fixtureEngineUpdate ?? { state: "idle", installedVersion: null, latestVersion: null, checkedAt: null, updatedAt: null, error: null },
@@ -244,6 +250,11 @@ app.post("/__test/prompt-queue-clock", async (request, response) => {
   await promptQueue.tick();
   response.json({ ok: true });
 });
+app.post("/__test/work-light-clock", (request, response) => {
+  const next = request.body.at == null ? null : Date.parse(request.body.at);
+  if (next !== null && !Number.isFinite(next)) { response.status(400).json({ error: "Invalid test clock" }); return; }
+  workLightTime = next; void workLight.tick(); response.json({ ok: true });
+});
 app.post("/__test/work-force-clock", async (request, response) => {
   const next = request.body.at == null ? null : Date.parse(request.body.at);
   if (next !== null && !Number.isFinite(next)) { response.status(400).json({ error: "Invalid test clock" }); return; }
@@ -266,6 +277,7 @@ app.post("/__test/fail-next-dispatch", (_request, response) => { failNextDispatc
 const server = app.listen(4317, "127.0.0.1", () => {
   promptQueue.start();
   void workForce.start();
+  void workLight.start();
   waitScheduler.start();
   void automations.start();
   console.log("Cortex test fixture ready on http://127.0.0.1:4317");
@@ -280,6 +292,7 @@ async function close() {
   await automations.stop();
   await promptQueue.stop();
   await workForce.stop();
+  await workLight.stop();
   agentUseCase.cancelAllExecutions();
   agentService.cancelAllExecutions();
   const expiresAt = Date.now() + 5_000;

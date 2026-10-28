@@ -4,9 +4,16 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { GlobalExecutionQueue } from "./GlobalExecutionQueue.ts";
+import { GlobalExecutionQueue, ExecutionSlotUnavailableError } from "./GlobalExecutionQueue.ts";
 
 const gate = () => { let resolve!: () => void; const promise = new Promise<void>(done => { resolve = done; }); return { promise, resolve }; };
+test("simultaneous strict-slot admissions reserve atomically and never join the waiting queue", async () => fixture(async queue => {
+  const wait = gate(), starts: string[] = [];
+  const first = queue.run({ source: "work-light", label: "A", key: "a", waitForSlot: false }, async () => { starts.push("A"); await wait.promise; });
+  const second = queue.run({ source: "work-light", label: "B", key: "b", waitForSlot: false }, async () => { starts.push("B"); });
+  await assert.rejects(second, ExecutionSlotUnavailableError); assert.deepEqual(starts, ["A"]);
+  assert.equal((await queue.status()).waiting.length, 0); wait.resolve(); await first;
+}));
 async function until(check: () => boolean | Promise<boolean>) {
   for (let index = 0; index < 200; index++) { if (await check()) return; await delay(5); }
   assert.fail("Queue did not reach expected state");

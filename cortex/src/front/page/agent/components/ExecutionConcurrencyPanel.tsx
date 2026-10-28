@@ -27,7 +27,7 @@ export function ExecutionConcurrencyPanel() {
   const title = fr ? "Autoriser les exécutions simultanées" : "Allow simultaneous executions";
   return <section className="execution-concurrency-panel" aria-labelledby={id}>
     <label><span><strong id={id}>{title}</strong><small>
-      {fr ? "Une file d’attente commune à tous les projets et modes : normal, Work Force et prompts." : "One shared queue for every project and mode: normal, Work Force and prompts."}
+      {fr ? "Une file d’attente commune à tous les projets et modes : normal, Work Force, Work Light et prompts." : "One shared queue for every project and mode: normal, Work Force, Work Light and prompts."}
     </small></span><input type="checkbox" checked={status?.settings.allowParallelExecutions ?? false} disabled={!status || busy} aria-labelledby={id}
       onChange={event => {
         const value = event.target.checked;
@@ -40,7 +40,7 @@ export function ExecutionConcurrencyPanel() {
       }} /></label>
     <p>{status?.settings.allowParallelExecutions
       ? fr ? "Plusieurs agents différents peuvent travailler en parallèle. Chaque projet organise la coordination de ses ressources et de ses fichiers." : "Different agents can run in parallel. Each project coordinates its resources and files."
-      : fr ? "Un seul agent ou prompt à la fois sur tout Cortex. Les autres attendent leur tour, quel que soit leur mode." : "Only one agent or prompt runs across Cortex. Others wait their turn, regardless of mode."}</p>
+      : fr ? "Un seul agent ou prompt à la fois sur tout Cortex. Les autres attendent leur tour ; Work Light ignore les créneaux occupés." : "Only one agent or prompt runs across Cortex. Others wait their turn; Work Light skips busy slots."}</p>
     <p>{fr ? "La désactivation laisse les exécutions en cours terminer. Les attentes de quotas et les horaires futurs ne réservent pas de créneau." : "Disabling lets active executions finish. Quota waits and future schedules do not reserve a slot."}</p>
     {status && <div role="status"><p>{fr ? "En cours" : "Active"} : {status.active.length} · {fr ? "Dans la file globale" : "In the global queue"} : {status.waiting.length}</p>
       {status.waiting.length > 0 && <ol tabIndex={0} aria-label={fr ? "File d’attente globale" : "Global queue"}>{status.waiting.map(entry => <li key={entry.id}>{entry.label} <small>({entry.source})</small></li>)}</ol>}</div>}
