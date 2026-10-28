@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "r
 import { ChevronDown, FileArchive, FolderInput, LoaderCircle, PanelLeftClose, PanelLeftOpen, Plus, Search } from "lucide-react";
 import { useTranslation } from "../../../i18n.tsx";
 import { AgentEngineStatus } from "../../agent/components/AgentEngineStatus.tsx";
+import { WorkForceModeButton } from "../../work_force/WorkForceModeButton.tsx";
 import {
   getActualLoadedAgentProject,
   loadAgentProject,
@@ -19,13 +20,16 @@ import {
   type Project
 } from "../../../services/projectApi.ts";
 import { ProjectCreationDialog } from "./ProjectCreationDialog.tsx";
-import { getNavigationIndex, initializeNavigation, updateBrowserUrl } from "../../shared/browserNavigation.ts";
+import { getCortexMode, getNavigationIndex, initializeNavigation, updateBrowserUrl } from "../../shared/browserNavigation.ts";
 import { type ProjectActivityStatus } from "./ProjectList.tsx";
 import { ProjectFolderList } from "./ProjectFolderList.tsx";
 import { ConfirmationDialog } from "./ConfirmationDialog.tsx";
 import { removeProjectDraft } from "../../agent/components/projectDraft.ts";
 
 interface ProjectDirectoryManagerProps {
+  onOpenWorkLight?: () => void;
+  onOpenWorkForce?: () => void;
+  onOpenPromptQueue?: () => void;
   activeProject: Project | null;
   deletedProject: { id: string } | null;
   isEditing: boolean;
@@ -70,6 +74,8 @@ function updateProjectUrl(
 }
 
 export function ProjectDirectoryManager({
+  onOpenWorkForce, onOpenWorkLight,
+  onOpenPromptQueue,
   activeProject,
   deletedProject,
   isEditing,
@@ -80,7 +86,7 @@ export function ProjectDirectoryManager({
   onBeforeProjectChange,
   creationRequest
 }: ProjectDirectoryManagerProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [saveMessage, setSaveMessage] = useState("");
   const [error, setError] = useState("");
@@ -257,6 +263,9 @@ export function ProjectDirectoryManager({
 
   useEffect(() => {
     const handlePopState = (event: PopStateEvent): void => {
+      // App owns mode changes and their unsaved-editor guard. Do not start a
+      // project request for a workspace that is about to be hidden.
+      if (getCortexMode()) return;
       if (isRestoringNavigationRef.current) {
         isRestoringNavigationRef.current = false;
         event.stopImmediatePropagation();
@@ -543,6 +552,9 @@ export function ProjectDirectoryManager({
         aria-label={t("sidebar.aria")}
       >
         <header className="project-sidebar__header">
+          {onOpenWorkLight && <WorkForceModeButton light onClick={onOpenWorkLight} />}
+          {onOpenWorkForce && <WorkForceModeButton onClick={onOpenWorkForce} />}
+          {onOpenPromptQueue && <button className="prompt-mode-link" type="button" onClick={onOpenPromptQueue}>{language === "fr" ? "Chats et prompts" : "Chats and prompts"}<Plus size={16} aria-hidden="true" /></button>}
           <p className="project-sidebar__eyebrow">{t("sidebar.workspace")}</p>
           <div className="project-sidebar__title-row">
             <h2>{t("sidebar.projects")}</h2>

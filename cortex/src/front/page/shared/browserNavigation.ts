@@ -1,5 +1,10 @@
 const INDEX_KEY = "cortexNavigationIndex";
 
+export function getCortexMode(): "prompts" | "work-force" | "work-light" | null {
+  const mode = new URL(window.location.href).searchParams.get("mode");
+  return mode === "prompts" || mode === "work-force" || mode === "work-light" ? mode : null;
+}
+
 export function getNavigationIndex(): number | null {
   const index: unknown = window.history.state?.[INDEX_KEY];
   return typeof index === "number" && Number.isFinite(index) ? index : null;

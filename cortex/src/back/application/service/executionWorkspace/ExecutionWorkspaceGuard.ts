@@ -49,10 +49,11 @@ interface Lease {
  */
 export class ExecutionWorkspaceGuard {
   private readonly active = new Map<string, Lease>();
-  private readonly context = new AsyncLocalStorage<Lease>();
+  private readonly context = new AsyncLocalStorage<Lease | undefined>();
   private readonly configuration: JsonConfigurationRepository;
 
   isProjectHeldOutsideCurrentRun(projectId: string): boolean {
+    if (this.projectManagesConcurrency?.()) return false;
     const current = this.context.getStore();
     return [...this.active.values()].some(lease => lease.projectId === projectId && lease !== current);
   }
@@ -61,7 +62,8 @@ export class ExecutionWorkspaceGuard {
 
   constructor(configurationFile: string, private readonly journalDirectory: string,
     private readonly verify: (workspace: ExecutionWorkspace, phase: "start" | "finish", recovery: boolean) => Promise<void> = verifyWorkspace,
-    private readonly readCheckpoint?: (checkpointId: string) => unknown) {
+    private readonly readCheckpoint?: (checkpointId: string) => unknown,
+    private readonly projectManagesConcurrency?: () => boolean) {
     this.configuration = new JsonConfigurationRepository(configurationFile);
   }
 
@@ -98,6 +100,7 @@ export class ExecutionWorkspaceGuard {
   }
 
   async recoveryProjectId(projectId: string): Promise<string | undefined> {
+    if (this.projectManagesConcurrency?.()) return undefined;
     const workspace = await this.workspace(projectId);
     if (!workspace || this.active.has(this.key(workspace))) return undefined;
     // A non-waiting probe lease prevents reconciliation racing with a new writer.
@@ -122,6 +125,7 @@ export class ExecutionWorkspaceGuard {
   }
 
   async run<T>(projectId: string, operation: () => Promise<T>): Promise<T> {
+    if (this.projectManagesConcurrency?.()) return this.context.run(undefined, operation);
     const inherited = this.context.getStore();
     if (inherited?.active && inherited.projectId === projectId) return operation();
     const workspace = await this.workspace(projectId);

@@ -10,25 +10,19 @@ import type {
 import { DEFAULT_AGENT_CONFIGURATION } from "../AgentProvider.ts";
 import { CliAgentProvider } from "../CliAgentProvider.ts";
 import { createCodexProgress } from "../ExecutionProgress.ts";
-import { resolveCodexCommand } from "../CodexCommand.ts";
+import { resolveCodexCommand, type CodexCommand } from "../CodexCommand.ts";
 
 export class CodexAgentProvider extends CliAgentProvider implements AgentProvider {
   readonly engine = "codex" as const;
   readonly label = "Codex";
-  private readonly command: string;
-  private readonly argumentPrefix: string[];
-
-  constructor(workingDirectory: string) {
+  constructor(workingDirectory: string, private readonly resolveCommand: () => CodexCommand = resolveCodexCommand) {
     super(workingDirectory);
-
-    const { command, args } = resolveCodexCommand();
-    this.command = command;
-    this.argumentPrefix = args;
   }
 
   async isAvailable(): Promise<boolean> {
-    return this.commandSucceeds(this.command, [
-      ...this.argumentPrefix,
+    const { command, args } = this.resolveCommand();
+    return this.commandSucceeds(command, [
+      ...args,
       "login",
       "status"
     ]);
@@ -38,6 +32,7 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     prompt: string,
     options: AgentExecutionOptions = {}
   ): Promise<AgentExecutionResult> {
+    const selectedCommand = this.resolveCommand();
     const interpretation = options.purpose === "interpretation";
     if (interpretation && options.sessionId) throw new Error("An interpretation must use its own session.");
     const configuration = interpretation ? { autopilot: false, allowAll: false } : options.configuration ?? DEFAULT_AGENT_CONFIGURATION;
@@ -45,6 +40,7 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     // internal multi-agent mode prevents a business instruction that asks to
     // launch the next step from consuming Codex collaboration threads.
     const args = ["exec", !interpretation && options.delegation === "bounded" ? "--enable" : "--disable", "multi_agent"];
+    if (!interpretation && options.skipGitRepoCheck) args.push("--skip-git-repo-check");
     if (!interpretation && options.delegation === "bounded") args.push("--config", "agents.max_threads=2");
     if (interpretation) {
       args.push("--skip-git-repo-check", "--disable", "apps", "--disable", "plugins", "--disable", "hooks", "--disable", "multi_agent_v2",
@@ -87,6 +83,8 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
       );
     }
 
+    if (!interpretation) for (const image of options.imagePaths ?? []) args.push("--image", image);
+
     let schemaDirectory: string | undefined;
     try {
       if (options.outputSchema) {
@@ -103,12 +101,12 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
       // system's command-line limit (E2BIG). Codex accepts `-` as an explicit
       // instruction to read the prompt from stdin, including resumed sessions.
       args.push("-");
-      const output = await this.runCommand(this.command, [
-        ...this.argumentPrefix,
+      const output = await this.runCommand(selectedCommand.command, [
+        ...selectedCommand.args,
         ...args
       ], undefined, options.workingDirectory, prompt, {
         signal: options.signal,
-        onProgress: createCodexProgress(options.onProgress)
+        onProgress: createCodexProgress(options.onProgress, options.onSessionId)
       });
       const result = parseCodexJsonOutput(output, options.sessionId);
       if (options.profile) result.profile = { ...options.profile, observedCapabilities: observedCapabilities(output) };

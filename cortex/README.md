@@ -2,6 +2,90 @@
 
 Cortex is a local application for creating, visualizing, and running Codex, Claude, or GitHub Copilot agent workflows. The React frontend is served by an Express API that reads agent configurations directly from saved projects.
 
+**Settings → General → Allow simultaneous executions** controls the shared
+execution queue for the whole Cortex instance. Disable it to run one complete
+agent or prompt at a time across normal workflows, Work Force, Work Light, chats and internal
+AI tasks. Ready requests share FIFO order; mission, interpretation and final
+checks retain the same reservation. Work Force rejoins at the end after each
+agent. Future schedules, quota waits and external-event waits hold no slot.
+Quotas and Work Force end times are checked again after a queue wait. Pending
+requests can be cancelled; stopping Work Force removes a pending request while
+letting an already granted agent finish.
+
+The setting persists in `config.json` as
+`executionConcurrency.allowParallelExecutions` and defaults to `false` (one
+execution at a time). Enabled mode admits different agents together;
+the same configured agent is never admitted twice simultaneously. Each project
+then owns repository/resource coordination: the shared workspace reservation and
+its publication checks are delegated to the project, while agent execution
+policies and checks still apply. Disabling the setting drains active jobs before
+admitting another. A single Cortex server process must own the instance. The
+authenticated `/api/execution-queue` endpoint exposes active and waiting entries;
+`PUT /api/execution-queue/settings` changes the setting.
+
+**Work Force**, accessible from the project sidebar, repeatedly runs a manually
+ordered selection of agents from any saved projects. Select agents, drag their
+rows using the handle on the left, optionally choose a local start and/or end
+date/time, then start or schedule the loop. Every agent requires both Codex
+reserves: by default 30% remaining over five hours and 8% over the week. These
+mandatory thresholds are independent of the normal workflow rule and can be
+changed in Settings → General → Work Force, or on the Work Force page. A refused
+or unavailable quota reading is retried every five minutes, keeping the next
+agent in place. Execution is sequential and wraps back to the first agent.
+
+Manual stop and the planned end let the current agent finish and prevent further
+launches. Start and end dates are independent, stored as UTC instants and shown
+in the browser's time zone. The server must stay running; closing the page is
+fine. Configuration, pending schedules, quota waits and the next position survive
+restarts. An interrupted active agent or a failed/waiting agent pauses the loop
+for review before manual restart. Agents reuse their configured engine, model,
+instructions, workspace policy and quality checks, with separate Work Force
+conversations and audits. Normal workflow edges do not launch extra agents.
+The latest 20 execution results are visible on the page; full audits remain in
+each project's history. Stop the loop before changing the list or schedule.
+
+While the loop is active (including quota waits), the sidebar's **Work Force**
+button turns red and normal-mode agent starts are suspended, regardless of the
+parallel-execution setting. Only agents selected in Work Force are launched by
+the agent loop. Normal cron occurrences are recorded as skipped, without quota
+probes or later catch-up. Automatic workflow wakes and downstream dossiers wait
+until Work Force stops. New manual normal-agent starts are also refused while
+the loop is active; an agent already admitted can finish its mission and checks.
+Existing schedules are preserved and resume at their next occurrence after the
+loop stops. Before a planned future start they remain eligible; at the planned
+end the priority remains in effect only until the active Work Force agent drains.
+The lightweight `/api/work-force/status` read used by the button does not query
+Codex quotas or start inference.
+
+**Chats et prompts** adds durable prompt queues alongside workflows: prepare
+several independent Codex conversations by writing a first message. Titles,
+working directories and models are selected automatically. Defaults can be
+changed in the dedicated Settings menu and apply to future chats. A compact
+composer selector also offers the live Codex catalog and each model's supported
+reasoning levels. Each queued prompt keeps the profile selected when it was sent.
+The composer accepts images and documents through the paperclip, file dropping
+or image pasting. Attachments remain with queued prompts and survive restarts;
+images are sent through Codex's native image input and original document paths
+are supplied for the engine to read using its local tools.
+The clock beside the paperclip optionally sets a local date (today by default)
+and time. The stored UTC instant prevents early execution; due prompts still
+respect quotas and conversation order. Waiting schedules can be changed or
+removed, survive restarts, and require the Cortex server to remain running.
+Prompts run
+sequentially inside each chat; different chats can run in parallel (two by
+default) when the global simultaneous-execution setting allows it. Otherwise,
+prompts, normal agents and Work Force all share the same serial execution queue.
+Future schedules and quota waits do not reserve a slot; quotas are checked again
+when the prompt actually reaches the front of the global queue.
+Every automatic departure requires both Codex reserves to meet the
+configured thresholds, including when the global workflow quota toggle is off.
+The defaults are 50% remaining over five hours and 10% over the week. Queued work
+retries automatically as reserves recover. Sending below either threshold opens
+a popup with the observed reserves: keep the prompt queued or explicitly force
+this attempt. Forcing preserves conversation order and execution capacity;
+the next prompt still needs sufficient reserves. See the [prompt queue guide](docs/prompt-queue.md)
+for preparation, concurrency, model selection, persistence and recovery.
+
 Scheduled monitoring agents can dispatch independent, durable dossiers within the same project. Cortex identifies asynchronous branches from the project instructions when loading its graph; no separate automation configuration is needed. Dossiers and replies appear below their entry agent, with persistent deduplication and conditional follow-up. See the [workflow guide and real-estate example](docs/workflow-automations.md).
 
 In **Settings → General**, enable the Codex quota launch rule to require at least **50% remaining over five hours** and **10% remaining over the week**. Both thresholds are configurable from 0 to 100% and persist in `config.json` under `codexQuota`. The rule is disabled by default. It applies to all projects and engines, manual agent launches, scheduled workflows, and automatic resumes; already running workflows finish normally. These percentages describe the Codex subscription reserve, not raw token counts or API credits.
@@ -9,6 +93,16 @@ In **Settings → General**, enable the Codex quota launch rule to require at le
 Cortex queries its server's authenticated Codex CLI using [`account/rateLimits/read`](https://learn.chatgpt.com/docs/app-server#6-rate-limits-chatgpt), without starting an inference turn. The settings button checks that same account and displays the observation time. Missing, invalid, expired, or unavailable five-hour/weekly windows block launches while the rule is enabled. Cron occurrences are skipped with a reason until the next scheduled occurrence; waiting workflows and queued dossiers retain their state and retry automatically. Denied attempts reuse the refusal for up to 60 seconds, while every permitted launch requires a fresh reading. Disabling the rule takes effect on the next attempt.
 
 The Codex model selector reads the deployed CLI's [`model/list`](https://learn.chatgpt.com/docs/app-server#list-models-modellist) catalog in the selected project's directory, including pagination and model-specific reasoning efforts. It displays the CLI version and configured default, and can refresh after a Codex upgrade. Discovery and execution resolve the same executable on the Cortex server; the browser's local Codex installation is irrelevant. No model names are hard-coded for Codex. Missing catalogs show an error and retry action; previously saved model/effort values are preserved and identified when absent from the current catalog. Changing models clears an incompatible effort only as part of that explicit user action. Discovery starts no inference turn; final account access is checked when a real execution runs.
+
+## Automatic Codex updates
+
+Cortex automatically checks for a stable Codex CLI update on startup and every
+six hours. It installs verified releases in its own `data/codex-runtime` folder
+and waits for running executions before activation. Discovery, execution, quota
+reads and plugins use the same active runtime. Failed updates retain the previous
+version and retry automatically; the model picker shows progress and offers a
+manual recheck through its refresh button. Existing queued model choices remain
+unchanged. See the [prompt queue guide](docs/prompt-queue.md) for details.
 
 ## Prerequisites
 
@@ -310,6 +404,15 @@ explicit action; the server never resumes interrupted work automatically. The
 engine must still be able to access any saved session. A reset or project edit
 invalidates the checkpoint.
 
+Codex terminal `turn.failed` and `error` events provide the displayed failure;
+older tool diagnostics from stderr do not replace that cause. A model capacity
+failure gets at most two retries, after 5 and 15 seconds, using the same model
+and the same durable mission conversation to reconcile and finish existing
+work. Read-only interpretation may retry in a fresh isolated session. Other
+failures and business turns without a durable session are not replayed.
+Cancellation also interrupts the retry wait. Streamed mission session IDs are
+saved on failure so explicit recovery can continue them after a server restart.
+
 Automatic workflows follow selected branches and loops until completion, with
 a default maximum of 100 agent executions per run. Each agent launch executes at
 most four instances concurrently. Agent engine executions have no time limit and
@@ -434,3 +537,35 @@ The password protects the application, but remote deployments must still use HTT
 - `src/back/infrastructure`: Express HTTP server;
 - `src/shared`: shared contracts and algorithms;
 - `docs`: manual acceptance test campaigns.
+
+## Work Light
+
+**Work Light** runs one selected agent at each cron occurrence. Choose existing
+agents from the sidebar, drag them into order, then configure one or more advanced
+cron rules and an IANA time zone (Europe/Paris by default). Enable the mode after
+saving. For A/B/C at 12:00 and 20:00, the rotation is A, B, C, A across days.
+Completion does not trigger the next agent: it waits for the next slot.
+
+Each slot uses the global execution queue with immediate admission. An occupied
+serial queue, the same agent already running, a previous Work Light run still
+active, or insufficient/unknown quota skips the slot and retains the next agent.
+There is no off-schedule catch-up. The default minimum reserves are 30% over five
+hours and 8% weekly, editable separately under Settings → General → Work Light
+or on its page. Status and preview reads do not query quotas or invoke a model.
+
+The cursor advances only after success. Failures, external waits and interrupted
+runs pause for review. Configuration, cursor and minute claims persist across
+restarts; offline slots and the startup minute are skipped. Coincident cron rules
+share one absolute UTC-minute claim, including daylight-saving transitions.
+Activation starts from the next future slot; stopping lets the current agent finish.
+Reordering while stopped preserves the next agent by identity when still selected.
+
+Work Force and Work Light cannot be armed together. While Work Light is active,
+normal-mode starts, cron schedules, automatic dossiers and workflow wakeups are
+suspended. Existing normal runs may finish. Chats/prompts still follow global
+concurrency rules. The sidebar button turns red while Work Light is active.
+The server must stay running and its clock must be synchronized for timely slots.
+
+API: /api/work-light with /status, /agents, /configuration, /settings, /preview,
+/start and /stop. Editing the list/schedule requires a stopped mode. Histories of
+the last 20 executions and 40 evaluated slots are visible on the Work Light page.

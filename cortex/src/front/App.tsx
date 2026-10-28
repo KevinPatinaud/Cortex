@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { LogOut } from "lucide-react";
 import { AgentProjectWorkspace } from "./page/agent/components/AgentProjectWorkspace.tsx";
 import { LoginPage } from "./page/authentication/LoginPage.tsx";
@@ -8,9 +8,17 @@ import type { AgentProject } from "./services/agentApi.ts";
 import type { Project } from "./services/projectApi.ts";
 import { getAuthenticationStatus, logout } from "./services/authApi.ts";
 import { useTranslation } from "./i18n.tsx";
+import { getCortexMode, getNavigationIndex, initializeNavigation, updateBrowserUrl } from "./page/shared/browserNavigation.ts";
+import { usePromptDrafts } from "./page/prompt_queue/usePromptDrafts.ts";
+import "./page/prompt_queue/promptQueue.css";
 
 const AgentProjectEditor = lazy(() => import("./page/agent/components/AgentProjectEditor.tsx")
   .then((module) => ({ default: module.AgentProjectEditor })));
+const PromptQueueWorkspace = lazy(() => import("./page/prompt_queue/PromptQueueWorkspace.tsx")
+  .then(module => ({ default: module.PromptQueueWorkspace })));
+const WorkLightWorkspace = lazy(() => import("./page/work_light/WorkLightWorkspace.tsx").then(module => ({ default: module.WorkLightWorkspace })));
+const WorkForceWorkspace = lazy(() => import("./page/work_force/WorkForceWorkspace.tsx")
+  .then(module => ({ default: module.WorkForceWorkspace })));
 
 interface ProjectSelection {
   project: Project;
@@ -20,12 +28,16 @@ interface ProjectSelection {
 
 export function App() {
   const { t } = useTranslation();
+  const promptDrafts = usePromptDrafts();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [hasConnectionError, setHasConnectionError] = useState(false);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [isAuthenticationRequired, setIsAuthenticationRequired] = useState(false);
   const [selection, setSelection] = useState<ProjectSelection | null>(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [promptMode, setPromptMode] = useState(() => new URL(window.location.href).searchParams.get("mode") === "prompts");
+  const [workLightMode, setWorkLightMode] = useState(() => new URL(window.location.href).searchParams.get("mode") === "work-light");
+  const [workForceMode, setWorkForceMode] = useState(() => new URL(window.location.href).searchParams.get("mode") === "work-force");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [creationRequest, setCreationRequest] = useState(0);
   const [deletedProject, setDeletedProject] = useState<{ id: string } | null>(null);
@@ -34,6 +46,50 @@ export function App() {
   >({});
   const confirmProjectChange = useCallback(() => !hasUnsavedChanges ||
     window.confirm(t("editor.leaveWithDraftConfirm")), [hasUnsavedChanges, t]);
+  const navigation = useRef({ url: window.location.href, index: getNavigationIndex(), mode: getCortexMode() });
+  const restoringMode = useRef(false);
+  const confirmModeChange = useRef(confirmProjectChange);
+  confirmModeChange.current = confirmProjectChange;
+  useEffect(() => {
+    initializeNavigation();
+    navigation.current = { url: window.location.href, index: getNavigationIndex(), mode: getCortexMode() };
+  }, [selection?.project.id, isEditing, promptMode, workForceMode, workLightMode]);
+  function changeMode(prompts: boolean, workForce = false, workLight = false) {
+    if (!confirmProjectChange()) return;
+    setPromptMode(prompts);
+    setWorkForceMode(workForce); setWorkLightMode(workLight);
+    const url = new URL(window.location.href);
+    if (workLight) { url.searchParams.set("mode", "work-light"); url.searchParams.delete("chat"); }
+    else if (workForce) { url.searchParams.set("mode", "work-force"); url.searchParams.delete("chat"); }
+    else if (prompts) url.searchParams.set("mode", "prompts");
+    else { url.searchParams.delete("mode"); url.searchParams.delete("chat"); }
+    updateBrowserUrl(url);
+    navigation.current = { url: window.location.href, index: getNavigationIndex(), mode: getCortexMode() };
+  }
+  useEffect(() => {
+    const sync = (event: PopStateEvent) => {
+      if (restoringMode.current) {
+        restoringMode.current = false;
+        event.stopImmediatePropagation();
+        return;
+      }
+      const mode = getCortexMode();
+      const previous = navigation.current;
+      if (mode !== previous.mode && !confirmModeChange.current()) {
+        event.stopImmediatePropagation();
+        const nextIndex = getNavigationIndex();
+        if (previous.index !== null && nextIndex !== null && previous.index !== nextIndex) {
+          restoringMode.current = true;
+          window.history.go(previous.index - nextIndex);
+        } else updateBrowserUrl(new URL(previous.url));
+        return;
+      }
+      navigation.current = { url: window.location.href, index: getNavigationIndex(), mode };
+      setPromptMode(mode === "prompts"); setWorkForceMode(mode === "work-force"); setWorkLightMode(mode === "work-light");
+    };
+    window.addEventListener("popstate", sync, true);
+    return () => window.removeEventListener("popstate", sync, true);
+  }, []);
   const refreshContent = useCallback((content: AgentProject) => {
     setProjectActivity(current => {
       if (content.workflowInstance?.status === "running" || content.agents.some(agent => agent.executionStatus === "running")) {
@@ -77,12 +133,15 @@ export function App() {
   }, [connectionAttempt]);
 
   useEffect(() => {
+    if (workLightMode) { document.title = "Work Light · Cortex"; return; }
+    if (workForceMode) { document.title = "Work Force · Cortex"; return; }
+    if (promptMode) { document.title = "Chats et prompts · Cortex"; return; }
     const projectName = selection?.project.directoryPath
       .split(/[\\/]/)
       .filter(Boolean)
       .at(-1);
     document.title = projectName ? `${projectName} · Cortex` : "Cortex";
-  }, [selection?.project.directoryPath]);
+  }, [selection?.project.directoryPath, promptMode, workForceMode, workLightMode]);
 
   if (hasConnectionError) {
     return (
@@ -118,6 +177,18 @@ export function App() {
     });
   }
 
+  if (workLightMode) return <Suspense fallback={<main className="login-page" aria-busy="true"><p role="status">{t("common.loading")}</p></main>}>
+    <WorkLightWorkspace onNormal={() => changeMode(false)} onPrompts={() => changeMode(true)} onWorkForce={() => changeMode(false, true)} />
+  </Suspense>;
+
+  if (workForceMode) return <Suspense fallback={<main className="login-page" aria-busy="true"><p role="status">{t("common.loading")}</p></main>}>
+    <WorkForceWorkspace onWorkLight={() => changeMode(false, false, true)} onNormal={() => changeMode(false)} onPrompts={() => changeMode(true)} />
+  </Suspense>;
+
+  if (promptMode) return <Suspense fallback={<main className="login-page" aria-busy="true"><p role="status">{t("common.loading")}</p></main>}>
+    <PromptQueueWorkspace onWorkflows={() => changeMode(false)} draftState={promptDrafts} />
+  </Suspense>;
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">{t("navigation.skipToContent")}</a>
@@ -139,6 +210,9 @@ export function App() {
         </button>
       )}
       <ProjectDirectoryManager
+        onOpenWorkLight={() => changeMode(false, false, true)}
+        onOpenWorkForce={() => changeMode(false, true)}
+        onOpenPromptQueue={() => changeMode(true)}
         activeProject={selection?.project ?? null}
         deletedProject={deletedProject}
         isEditing={isEditing}

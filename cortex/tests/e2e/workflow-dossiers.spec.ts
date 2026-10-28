@@ -183,13 +183,13 @@ test("blocked negotiation requests clarification, resumes the same dossier and w
   for (const job of await jobs(request, project.projectId)) await request.post(`/api/automations/${project.projectId}/jobs/${job.id}/cancel`);
 });
 
-test("a Gmail response wakes only the linked dossier in the unified project", async ({ request }) => {
+test("a Gmail response wakes only the linked dossier in the unified project", async ({ request, baseURL }) => {
   const project = await create(request);
   const id = project.projectId;
   await request.post(`/api/agents/projects/${id}/workflow/run`, { data: {} });
   await expect.poll(async () => (await jobs(request, id)).filter(job => job.status === "waiting").length).toBe(2);
   const [linked, other] = await jobs(request, id);
-  const headers = { Origin: "http://127.0.0.1:4317" };
+  const headers = { Origin: new URL(baseURL!).origin };
   await request.post("/api/gmail/configure", { headers, data: { installed: { client_id: "test.apps.googleusercontent.com", client_secret: "test" } } });
   const connection = await (await request.post("/api/gmail/connect", { headers, data: { projectId: id } })).json();
   const state = new URL(connection.url).searchParams.get("state")!;

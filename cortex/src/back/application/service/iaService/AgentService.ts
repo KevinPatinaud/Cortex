@@ -14,6 +14,7 @@ import type { CodexModelCatalog } from "../../../../shared/CodexModel.ts";
 import type { CodexPluginCatalog } from "../../../../shared/CodexPlugin.ts";
 import type { ExecutionProfile } from "../../../../shared/ExecutionQuality.ts";
 import { ValidationError } from "../../error/ValidationError.ts";
+import type { GlobalExecutionQueue } from "../executionQueue/GlobalExecutionQueue.ts";
 import type {
   McpConnectionEngine,
   McpConnectionSummary,
@@ -56,7 +57,17 @@ export class AgentService {
       const signal = options.signal
         ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
       signal.throwIfAborted();
-      return await execute({ ...options, signal });
+      const operation = async () => {
+        signal.throwIfAborted();
+        await options.beforeStart?.();
+        signal.throwIfAborted();
+        return execute({ ...options, signal,
+          ...(this.executionQueue && !this.executionQueue.allowsParallelExecutions() ? { delegation: "none" as const } : {}) });
+      };
+      return this.executionQueue
+        ? await this.executionQueue.run({ source: options.executionSource ?? "internal", label: options.executionLabel ?? "Tâche Cortex",
+          key: options.executionKey, signal, onQueued: () => options.onProgress?.("En attente dans la file globale de Cortex…") }, operation)
+        : await operation();
     } finally {
       this.executionControllers.delete(controller);
     }
@@ -67,7 +78,8 @@ export class AgentService {
     private readonly configurationService: AgentConfigurationService,
     private readonly mcpConfigurationService?: McpConfigurationService,
     private readonly codexPluginService?: CodexPluginService,
-    private readonly codexModelService?: CodexModelService
+    private readonly codexModelService?: CodexModelService,
+    readonly executionQueue?: GlobalExecutionQueue
   ) {}
 
   getCodexModels(workingDirectory?: string): Promise<CodexModelCatalog> {

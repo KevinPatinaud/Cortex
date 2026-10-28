@@ -1,3 +1,5 @@
+import type { CodexEngineUpdateStatus } from "./CodexEngineUpdate.ts";
+
 export interface CodexModel {
   model: string;
   displayName: string;
@@ -7,6 +9,7 @@ export interface CodexModel {
 }
 
 export interface CodexModelCatalog {
+  engineUpdate?: CodexEngineUpdateStatus;
   declaredApps?: string[];
   configuredReasoningEffort?: string | null;
   availableSkills?: string[];

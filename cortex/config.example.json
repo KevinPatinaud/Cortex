@@ -1,5 +1,6 @@
 {
   "projects": [],
+  "executionConcurrency": { "allowParallelExecutions": false },
   "projectOrganization": {
     "folders": [],
     "projectFolders": {}
@@ -8,6 +9,12 @@
     "enabled": false,
     "minimumFiveHourRemainingPercent": 50,
     "minimumWeeklyRemainingPercent": 10
+  },
+  "workForce": {
+    "configuration": { "agents": [], "startsAt": null, "endsAt": null },
+    "settings": { "minimumFiveHourRemainingPercent": 30, "minimumWeeklyRemainingPercent": 8 },
+    "runtime": { "armed": false, "phase": "stopped", "cursor": 0, "completedCycles": 0,
+      "nextCheckAt": null, "reason": null, "active": null, "history": [] }
   },
   "agentOrders": {},
   "agentWorkflows": {},

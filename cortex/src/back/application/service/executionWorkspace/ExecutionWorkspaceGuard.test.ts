@@ -30,6 +30,24 @@ function waitingCheckpoint() {
     }] }] };
 }
 
+test("explicit project-managed parallelism allows different agents to share a repository without overwriting the shared journal", async () => {
+  let verificationCalls = 0;
+  const f = await fixture(async () => { verificationCalls++; });
+  try {
+    const guard = new ExecutionWorkspaceGuard(f.configuration, f.journals, async () => { verificationCalls++; }, undefined, () => true);
+    let active = 0, maximum = 0;
+    let release!: () => void;
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    const first = guard.run("a", async () => { active++; maximum = Math.max(maximum, active); await guard.markStarted(); await wait; active--; });
+    await guard.run("b", async () => { active++; maximum = Math.max(maximum, active); await guard.markStarted(); release(); active--; });
+    await first;
+    assert.equal(maximum, 2); assert.equal(verificationCalls, 0);
+    assert.equal(await guard.recoveryProjectId("b"), undefined);
+    assert.equal(guard.hasActiveExecutions(), false);
+    await assert.rejects(readFile(f.journals), { code: "ENOENT" });
+  } finally { await f.close(); }
+});
+
 test("projects selecting the same execution repository share a lease even without an explicit workspace mapping", async () => {
   const f = await fixture();
   try {

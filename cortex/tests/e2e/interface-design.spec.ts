@@ -73,9 +73,11 @@ test("branching, joins and skipped levels stay readable after resizing and expan
   await expectClearConnections(page);
   const activeCard = page.locator('[data-workflow-agent-id="source"] .agent-card');
   await activeCard.scrollIntoViewIfNeeded();
-  const before = await activeCard.boundingBox();
+  // Hover may scroll a tall card into view on mobile. Measure its document
+  // position so browser scrolling cannot masquerade as a layout shift.
+  const before = await activeCard.evaluate(element => element.getBoundingClientRect().top + window.scrollY);
   await activeCard.hover();
-  expect((await activeCard.boundingBox())!.y).toBe(before!.y);
+  expect(await activeCard.evaluate(element => element.getBoundingClientRect().top + window.scrollY)).toBe(before);
   await page.mouse.move(0, 0);
   await card.evaluate((element) => { element.style.minHeight = ""; });
   await expectClearConnections(page);

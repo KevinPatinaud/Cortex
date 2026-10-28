@@ -34,6 +34,18 @@ Cortex poursuit cinq objectifs principaux :
 
 ## Fonctionnement actuel
 
+### Mode chats et prompts
+
+Le bouton **Chats et prompts** ajoute des files persistantes à l’ordonnanceur :
+écrire directement un premier message pour créer un chat avec un titre, un
+dossier et un modèle choisis automatiquement. Le menu **Paramètres** permet de
+modifier ces valeurs par défaut. Les prompts d’un même chat sont exécutés dans l’ordre en
+reprenant leur conversation Codex ; plusieurs chats peuvent avancer en parallèle.
+Chaque lancement automatique exige au moins 50 % de réserve sur cinq heures et
+10 % sur la semaine par défaut. Ces seuils et la concurrence sont configurables.
+Une réserve insuffisante met les départs en attente jusqu’à leur récupération.
+Consulter le [guide des files de prompts](cortex/docs/prompt-queue.md).
+
 ### 1. Chargement d’un projet
 
 L’utilisateur enregistre un répertoire local dans Cortex. Le projet est reconnu

@@ -1,4 +1,5 @@
-import { ExecutionWorkspaceGuard } from "../../../application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
+import { ExecutionWorkspaceGuard, ExecutionWorkspaceBusyError } from "../../../application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
+import { WORK_FORCE_NORMAL_SUSPENDED_REASON } from "../../../../shared/WorkForce.ts";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +11,8 @@ import { createDefaultAgentToolRegistry } from "../../../application/service/iaS
 import { McpConfigurationService } from "../../../application/service/iaService/McpConfigurationService.ts";
 import { CodexPluginService } from "../../../application/service/iaService/CodexPluginService.ts";
 import { CodexModelService } from "../../../application/service/iaService/CodexModelService.ts";
+import { CodexUpdateService } from "../../../application/service/iaService/CodexUpdateService.ts";
+import { codexRuntimeDirectory } from "../../../application/service/iaService/CodexCommand.ts";
 import { CodexQuotaService } from "../../../application/service/iaService/CodexQuotaService.ts";
 import { readCodexRateLimits } from "../../../application/service/iaService/CodexRateLimits.ts";
 import { ClaudeAgentProvider } from "../../../application/service/iaService/providers/ClaudeAgentProvider.ts";
@@ -33,6 +36,13 @@ import {
   readSecureCookie
 } from "../middleware/PasswordAuthentication.ts";
 import { createCortexApplication } from "./CortexApplication.ts";
+import { PromptQueueService } from "../../../application/service/promptQueue/PromptQueueService.ts";
+import { SqlitePromptQueueRepository } from "../../promptQueue/SqlitePromptQueueRepository.ts";
+import { WorkLightService } from "../../../application/service/workLight/WorkLightService.ts";
+import { WORK_LIGHT_NORMAL_SUSPENDED_REASON } from "../../../../shared/WorkLight.ts";
+import { WorkForceService } from "../../../application/service/workForce/WorkForceService.ts";
+import { ConfiguredWorkForceAgents } from "../../../application/service/workForce/ConfiguredWorkForceAgents.ts";
+import { GlobalExecutionQueue } from "../../../application/service/executionQueue/GlobalExecutionQueue.ts";
 
 const port = readPort(process.env.PORT);
 const host = process.env.HOST?.trim() || "127.0.0.1";
@@ -65,12 +75,16 @@ const codexPluginService = new CodexPluginService();
 const agentConfigurationService = new AgentConfigurationService(
   configurationFile
 );
+const executionQueue = new GlobalExecutionQueue(configurationFile);
+await executionQueue.status();
+let codexIsBusy = () => false;
+const codexUpdates = new CodexUpdateService(codexRuntimeDirectory(), () => codexIsBusy());
 const agentService = new AgentService([
   new CodexAgentProvider(workspaceDirectory),
   new ClaudeAgentProvider(workspaceDirectory),
   new CopilotAgentProvider(agentToolRegistry, mcpConfigurationService)
 ], agentConfigurationService, mcpConfigurationService, codexPluginService,
-new CodexModelService(workspaceDirectory));
+new CodexModelService(workspaceDirectory, undefined, codexUpdates), executionQueue);
 const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(
   configurationFile,
@@ -85,6 +99,9 @@ const workflowAuditRepository = new SqliteWorkflowAuditRepository(
   auditDatabaseFile
 );
 const workflowAuditService = new WorkflowAuditService(workflowAuditRepository);
+const codexQuota = new CodexQuotaService(configurationFile, () => readCodexRateLimits(workspaceDirectory));
+const promptQueueRepository = new SqlitePromptQueueRepository(path.join(workspaceDirectory, "data", "prompt-queue.sqlite"));
+const promptQueue = new PromptQueueService(promptQueueRepository, agentService, codexQuota, 15_000, path.join(workspaceDirectory, "data", "prompt-chats"));
 const agentUseCase = new AgentUseCase(
   agentService,
   projectUseCase,
@@ -94,31 +111,47 @@ const agentUseCase = new AgentUseCase(
     maxWorkflowExecutions: readPositiveSetting("CORTEX_MAX_WORKFLOW_EXECUTIONS", 100)
   },
   undefined,
-  new CodexQuotaService(configurationFile, () => readCodexRateLimits(workspaceDirectory)),
+  codexQuota,
   new ExecutionWorkspaceGuard(configurationFile, path.join(workspaceDirectory, "data", "execution-workspaces"),
-    undefined, checkpointId => workflowAuditRepository.getCheckpoint(checkpointId)?.state),
-  new ExecutionQualityService(configurationFile, path.join(workspaceDirectory, "data", "execution-quality"))
+    undefined, checkpointId => workflowAuditRepository.getCheckpoint(checkpointId)?.state,
+    () => executionQueue.allowsParallelExecutions()),
+  new ExecutionQualityService(configurationFile, path.join(workspaceDirectory, "data", "execution-quality")), executionQueue
 );
+const workForce = new WorkForceService(configurationFile, new ConfiguredWorkForceAgents(projectUseCase, agentUseCase), codexQuota);
+const workLight = new WorkLightService(configurationFile, new ConfiguredWorkForceAgents(projectUseCase, agentUseCase, "work-light"), codexQuota);
+await workForce.status();
+await workLight.status();
+const normalSuspensionReason = () => workLight.isActive() ? WORK_LIGHT_NORMAL_SUSPENDED_REASON : WORK_FORCE_NORMAL_SUSPENDED_REASON;
+const normalExecutionsSuspended = () => workForce.isActive() || workLight.isActive();
+executionQueue.setAdmissionGuard(entry => {
+  if (entry.source === "normal" && normalExecutionsSuspended()) throw new ExecutionWorkspaceBusyError(normalSuspensionReason());
+});
 const workflowScheduler = new WorkflowScheduler(
   projectUseCase,
   agentUseCase,
   () => new Date(),
-  workflowAuditService
+  workflowAuditService,
+  normalExecutionsSuspended, normalSuspensionReason
 );
 
 const automationRepository = new SqliteWorkflowAutomationRepository(auditDatabaseFile);
-const automations = new WorkflowAutomationService(automationRepository, agentUseCase, projectUseCase, workflowAuditService);
+const automations = new WorkflowAutomationService(automationRepository, agentUseCase, projectUseCase, workflowAuditService, 4, normalExecutionsSuspended, normalSuspensionReason);
 const gmail = new GmailService(
   path.join(workspaceDirectory, "data", "gmail", "connection.sqlite"),
   process.env.CORTEX_GMAIL_REDIRECT_URI?.trim() || `http://127.0.0.1:${port}/api/gmail/callback`,
   agentUseCase
 );
 const app = createCortexApplication({
-  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations
+  projectUseCase, agentUseCase, workflowScheduler, authentication, clientDirectory, gmail, automations, promptQueue, codexUpdates, workForce, workLight, executionQueue
 });
+codexIsBusy = () => agentService.hasActiveExecutions() || agentUseCase.hasActiveExecutions();
 
-const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase);
+const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase, 1000, normalExecutionsSuspended);
 const httpServer = app.listen(port, host, () => {
+  codexUpdates.start();
+  promptQueue.start();
+  void workLight.start().catch(error => console.error("Unable to start Work Light:", error));
+  void workForce.start().catch(error => console.error("Unable to start Work Force:", error));
   workflowWaitScheduler.start();
   gmail.start();
   const browserHost = host === "0.0.0.0" || host === "::"
@@ -139,9 +172,14 @@ let shuttingDown = false;
 async function shutdown(): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
+  executionQueue.stop();
+  codexUpdates.stop();
   workflowScheduler.stop();
   workflowWaitScheduler.stop();
   const automationsStopped = automations.stop();
+  const promptQueueStopped = promptQueue.stop();
+  const workForceStopped = workForce.stop();
+  const workLightStopped = workLight.stop();
   void gmail.stop();
   agentUseCase.cancelAllExecutions();
   agentService.cancelAllExecutions();
@@ -162,6 +200,10 @@ async function shutdown(): Promise<void> {
   await closed;
   await gmail.close();
   await automationsStopped;
+  await promptQueueStopped;
+  await workForceStopped;
+  await workLightStopped;
+  promptQueueRepository.close();
   automationRepository.close();
   workflowAuditRepository.close();
   clearTimeout(deadline);

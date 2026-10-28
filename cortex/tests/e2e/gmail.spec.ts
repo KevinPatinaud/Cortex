@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 
-test("Gmail thread binding and automatic workflow wake without a workspace banner", async ({ page, request }, testInfo) => {
+test("Gmail thread binding and automatic workflow wake without a workspace banner", async ({ page, request, baseURL }, testInfo) => {
   const name = `Gmail ${randomUUID().slice(0, 8)}`;
   const { project } = await (await request.post("/api/projects/create", { data: { name, engine: "codex", description: "Gmail test." } })).json();
   const base = `/api/agents/projects/${project.id}`;
@@ -10,7 +10,7 @@ test("Gmail thread binding and automatic workflow wake without a workspace banne
   ] } });
   await request.post(`${base}/workflow/run`, { data: {} });
   // The fixture replaces Google traffic; no real mailbox is used.
-  const headers = { Origin: "http://127.0.0.1:4317" };
+  const headers = { Origin: new URL(baseURL!).origin };
   expect((await request.post("/api/gmail/configure", { headers, data: {
     installed: { client_id: "test.apps.googleusercontent.com", client_secret: "test" }
   } })).ok()).toBe(true);

@@ -8,7 +8,7 @@ export function createTextProgress(onProgress?: (text: string) => void) {
 }
 
 /** Codex emits newline-delimited events, sometimes split across stdout chunks. */
-export function createCodexProgress(onProgress?: (text: string) => void) {
+export function createCodexProgress(onProgress?: (text: string) => void, onSessionId?: (sessionId: string) => void) {
   let pending = "";
   return (chunk: string): void => {
     pending += chunk;
@@ -18,6 +18,8 @@ export function createCodexProgress(onProgress?: (text: string) => void) {
       pending = pending.slice(newline + 1);
       try {
         const event = JSON.parse(line);
+        const sessionId = event.thread_id ?? event.session_id;
+        if (typeof sessionId === "string" && sessionId.trim()) onSessionId?.(sessionId);
         const text = event.item?.type === "agent_message"
           ? event.item.text ?? event.item.content
           : "";
