@@ -72,13 +72,14 @@ export class ResultInterpretationService {
   async interpret(prompt: string, schema: Record<string, unknown>, policy: ExecutionPolicy,
     missionProfile: ExecutionProfile | undefined, fallbackModel: string | undefined, signal: AbortSignal,
     onProgress: (message: string) => void, onProfile: (profile: ExecutionProfile) => void,
-    onTrace?: import("../iaService/AgentProvider.ts").AgentExecutionOptions["onTrace"]) {
+    onTrace?: import("../iaService/AgentProvider.ts").AgentExecutionOptions["onTrace"],
+    onUsage?: import("../iaService/AgentProvider.ts").AgentExecutionOptions["onUsage"]) {
     const directory = await mkdtemp(path.join(tmpdir(), "cortex-result-interpretation-"));
     try {
       return await this.agents.execute("codex", prompt, {
         purpose: "interpretation", model: policy.interpretationModel || missionProfile?.model || fallbackModel,
         reasoningEffort: policy.interpretationReasoningEffort || "low", workingDirectory: directory,
-        persistSession: false, readOnly: true, delegation: "none", outputSchema: schema, signal, onProgress, onProfile, onTrace
+        persistSession: false, readOnly: true, delegation: "none", outputSchema: schema, signal, onProgress, onProfile, onTrace, onUsage
       });
     } finally {
       const canonical = await realpath(directory);

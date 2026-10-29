@@ -18,6 +18,9 @@ test("trace pages survive interruption and restart, stay scoped, and follow inse
       input: { workflowParameterValues: {}, additionalInstructions: "", upstreamItems: [] }, prompt: "task" });
     for (let index = 0; index < 205; index++) audit.recordExecutionTrace(runId, executionId, { kind: "message", content: `Message ${index}` });
     audit.recordExecutionTrace(runId, executionId, { kind: "message", content: " " });
+    audit.recordExecutionUsage(executionId, "mission", { inputTokens: 100, outputTokens: 20, totalTokens: 120 });
+    audit.recordExecutionUsage(executionId, "mission", { inputTokens: 30, outputTokens: 10, totalTokens: 40 });
+    audit.recordExecutionUsage(executionId, "interpretation", { inputTokens: 5, outputTokens: 2, totalTokens: 7 });
     const first = repository.getExecutionTrace("p", runId, executionId, 0, 100)!;
     assert.equal(first.items.length, 100);
     assert.equal(first.items[0].content, "Message 0");
@@ -27,6 +30,10 @@ test("trace pages survive interruption and restart, stay scoped, and follow inse
     repository.close();
     repository = new SqliteWorkflowAuditRepository(file);
     assert.equal(repository.getRun("p", runId)?.executions[0].status, "interrupted");
+    const usage = repository.getRun("p", runId)?.executions[0].usage;
+    assert.equal(usage?.mission?.totalTokens, 160);
+    assert.equal(usage?.interpretation?.totalTokens, 7);
+    assert.equal(usage?.total.totalTokens, 167);
     const second = repository.getExecutionTrace("p", runId, executionId, first.nextAfterId!, 100)!;
     const last = repository.getExecutionTrace("p", runId, executionId, second.nextAfterId!, 100)!;
     assert.equal(last.nextAfterId, null);

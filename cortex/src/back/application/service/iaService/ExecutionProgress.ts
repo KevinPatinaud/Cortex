@@ -1,4 +1,5 @@
 import { boundedExecutionTrace, type ExecutionTraceInput } from "../../../../shared/ExecutionTrace.ts";
+import { codexTokenUsage, claudeTokenUsage, type TokenUsage } from "../../../../shared/TokenUsage.ts";
 type TraceReporter = (entry: ExecutionTraceInput) => void;
 
 /** Keep live previews bounded; the journal is retained separately. */
@@ -11,7 +12,7 @@ export function createTextProgress(onProgress?: (text: string) => void) {
 }
 
 /** Codex emits newline-delimited events, sometimes split across stdout chunks. */
-export function createCodexProgress(onProgress?: (text: string) => void, onSessionId?: (sessionId: string) => void, onTrace?: TraceReporter) {
+export function createCodexProgress(onProgress?: (text: string) => void, onSessionId?: (sessionId: string) => void, onTrace?: TraceReporter, onUsage?: (usage: TokenUsage) => void) {
   let pending = "";
   return (chunk: string): void => {
     pending += chunk;
@@ -21,6 +22,10 @@ export function createCodexProgress(onProgress?: (text: string) => void, onSessi
       pending = pending.slice(newline + 1);
       try {
         const event = JSON.parse(line);
+        if (event.type === "turn.completed" || event.type === "turn.failed") {
+          const usage = codexTokenUsage(event.usage);
+          if (usage) onUsage?.(usage);
+        }
         const sessionId = event.thread_id ?? event.session_id;
         if (typeof sessionId === "string" && sessionId.trim()) onSessionId?.(sessionId);
         const text = event.item?.type === "agent_message"
@@ -48,7 +53,7 @@ export function createCodexProgress(onProgress?: (text: string) => void, onSessi
   };
 }
 
-export function createClaudeProgress(onProgress?: (text: string) => void, onTrace?: TraceReporter) {
+export function createClaudeProgress(onProgress?: (text: string) => void, onTrace?: TraceReporter, onUsage?: (usage: TokenUsage) => void) {
   let pending = "";
   let lastMessage = "";
   const reportText = createTextProgress(onProgress);
@@ -60,6 +65,10 @@ export function createClaudeProgress(onProgress?: (text: string) => void, onTrac
       pending = pending.slice(newline + 1);
       try {
         const message = JSON.parse(line);
+        if (message.type === "result") {
+          const usage = claudeTokenUsage(message.usage);
+          if (usage) onUsage?.(usage);
+        }
         if (onTrace && ["assistant", "user"].includes(message.type)) {
           for (const block of message.message?.content ?? []) {
             if (block.type === "text" && message.type === "assistant" && typeof block.text === "string") {

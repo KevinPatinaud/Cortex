@@ -12,6 +12,7 @@ import type { WorkflowEvent } from "../../../../shared/WorkflowWait.ts";
 import type { ExecutionProfile } from "../../../../shared/ExecutionQuality.ts";
 import type { ExecutionProcessing } from "../../../../shared/ResultProcessing.ts";
 import { boundedExecutionTrace, type ExecutionTraceInput, type ExecutionTracePage } from "../../../../shared/ExecutionTrace.ts";
+import { tokenUsage, type ExecutionUsagePhase, type TokenUsage } from "../../../../shared/TokenUsage.ts";
 
 export interface WorkflowAuditSnapshot {
   engine: AgentEngine;
@@ -67,6 +68,7 @@ export interface WorkflowCheckpointRecord {
 }
 
 export interface WorkflowAuditRepository {
+  addExecutionUsage(executionId: string, phase: ExecutionUsagePhase, usage: TokenUsage): void;
   getExecutionTrace(projectId: string, runId: string, executionId: string, afterId: number, limit: number): ExecutionTracePage | null;
   setExecutionProcessing?(executionId: string, processing: ExecutionProcessing): void;
   setExecutionProfile?(executionId: string, profile: ExecutionProfile): void;
@@ -111,6 +113,10 @@ export interface WorkflowAuditRepository {
 
 export class WorkflowAuditService {
   constructor(private readonly repository: WorkflowAuditRepository, private readonly checkpointScope?: string) {}
+  recordExecutionUsage(executionId: string, phase: ExecutionUsagePhase, usage: TokenUsage): void {
+    const normalized = tokenUsage(usage.inputTokens, usage.outputTokens, usage.cachedInputTokens, usage.cacheWriteInputTokens, usage.reasoningOutputTokens);
+    if (normalized) this.repository.addExecutionUsage(executionId, phase, normalized);
+  }
   recordExecutionTrace(runId: string, executionId: string, entry: ExecutionTraceInput): void {
     if (entry.content.trim()) this.repository.addEvent(runId, executionId, "agent.trace", boundedExecutionTrace(entry));
   }

@@ -26,6 +26,7 @@ import {
 import { parseAgentResponse } from "../../../../shared/AgentResponse.ts";
 import { ExecutionAssessmentView } from "./ExecutionAssessmentView.tsx";
 import { ExecutionTraceJournal } from "./ExecutionTraceJournal.tsx";
+import { ExecutionTokenUsage } from "./ExecutionTokenUsage.tsx";
 import {
   exportWorkflowAuditRun,
   getWorkflowAuditRun,
@@ -626,6 +627,7 @@ function AuditExecution({
       )}
 
       <ExecutionAssessmentView assessment={parsedResponse?.assessment} />
+      <ExecutionTokenUsage execution={execution} />
       <ExecutionTraceJournal key={execution.id} projectId={projectId} runId={execution.runId} executionId={execution.id}
         running={execution.status === "running"} formatDate={formatDate} />
       <details className="workflow-audit__technical" open={execution.status === "failed"}>

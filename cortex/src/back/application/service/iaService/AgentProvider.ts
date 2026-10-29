@@ -21,6 +21,8 @@ export interface AgentExecutionOptions {
   purpose?: "mission" | "interpretation";
   delegation?: "none" | "bounded";
   onProfile?: (profile: ExecutionProfile) => void;
+  /** A new usage delta for this invocation, not a cumulative session snapshot. */
+  onUsage?: (usage: import("../../../../shared/TokenUsage.ts").TokenUsage) => void;
   profile?: ExecutionProfile;
   signal?: AbortSignal;
   onProgress?: (progress: string) => void;
@@ -42,6 +44,7 @@ export interface AgentExecutionOptions {
 }
 
 export interface AgentExecutionResult {
+  usage?: import("../../../../shared/TokenUsage.ts").TokenUsage;
   profile?: ExecutionProfile;
   answer: string;
   sessionId?: string;

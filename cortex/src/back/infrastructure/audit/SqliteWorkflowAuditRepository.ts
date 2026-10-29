@@ -6,6 +6,7 @@ import type { ExecutionProfile } from "../../../shared/ExecutionQuality.ts";
 import type { ExecutionProcessing } from "../../../shared/ResultProcessing.ts";
 import type { WorkflowEvent } from "../../../shared/WorkflowWait.ts";
 import type { ExecutionTraceInput, ExecutionTracePage } from "../../../shared/ExecutionTrace.ts";
+import { addTokenUsage, type ExecutionTokenUsage, type ExecutionUsagePhase, type TokenUsage } from "../../../shared/TokenUsage.ts";
 import type {
   WorkflowAuditAgentExecution,
   WorkflowAuditExecutionInput,
@@ -40,6 +41,7 @@ interface RunRow {
 }
 
 interface ExecutionRow {
+  usage_json: string | null;
   processing_json: string | null;
   profile_json: string | null;
   id: string;
@@ -89,6 +91,15 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
 
   close(): void {
     this.database.close();
+  }
+  addExecutionUsage(executionId: string, phase: ExecutionUsagePhase, delta: TokenUsage): void {
+    this.database.transaction(() => {
+      const row = this.database.prepare("SELECT usage_json FROM agent_executions WHERE id = ?").get(executionId) as { usage_json: string | null } | undefined;
+      if (!row) return;
+      const previous: ExecutionTokenUsage | undefined = row.usage_json ? JSON.parse(row.usage_json) : undefined;
+      const usage = { ...previous, [phase]: addTokenUsage(previous?.[phase], delta), total: addTokenUsage(previous?.total, delta) };
+      this.database.prepare("UPDATE agent_executions SET usage_json = ? WHERE id = ?").run(JSON.stringify(usage), executionId);
+    })();
   }
   setExecutionProfile(executionId: string, profile: ExecutionProfile): void {
     this.database.prepare("UPDATE agent_executions SET profile_json = ?, model = COALESCE(?, model), reasoning_effort = COALESCE(?, reasoning_effort) WHERE id = ?")
@@ -552,6 +563,7 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
     const executionColumns = this.database.prepare("PRAGMA table_info(agent_executions)").all() as Array<{ name: string }>;
     if (!executionColumns.some(column => column.name === "profile_json")) this.database.exec("ALTER TABLE agent_executions ADD COLUMN profile_json TEXT;");
     if (!executionColumns.some(column => column.name === "processing_json")) this.database.exec("ALTER TABLE agent_executions ADD COLUMN processing_json TEXT;");
+    if (!executionColumns.some(column => column.name === "usage_json")) this.database.exec("ALTER TABLE agent_executions ADD COLUMN usage_json TEXT;");
     const runColumns = this.database.prepare(
       "PRAGMA table_info(workflow_runs)"
     ).all() as Array<{ name: string }>;
@@ -639,6 +651,7 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
 
   private toAgentExecution(row: ExecutionRow): WorkflowAuditAgentExecution {
     return {
+      ...(row.usage_json ? { usage: JSON.parse(row.usage_json) } : {}),
       id: row.id,
       runId: row.run_id,
       agentId: row.agent_id,

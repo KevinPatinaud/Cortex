@@ -1163,6 +1163,10 @@ export class AgentUseCase {
           const recordTrace = (entry: import("../../../shared/ExecutionTrace.ts").ExecutionTraceInput) => {
             if (auditContext && auditExecutionId) this.workflowAuditService?.recordExecutionTrace(auditContext.runId, auditExecutionId, entry);
           };
+          const recordUsage = (phase: import("../../../shared/TokenUsage.ts").ExecutionUsagePhase, usage: import("../../../shared/TokenUsage.ts").TokenUsage) => {
+            if (auditExecutionId) this.workflowAuditService?.recordExecutionUsage(auditExecutionId, phase, usage);
+          };
+          let receivedMissionUsage = false;
 
           try {
             if (policy && !processing) await this.executionQuality!.preflight(policy, workingDirectory, signal);
@@ -1189,13 +1193,15 @@ export class AgentUseCase {
                 onProfile: profile => { if (auditExecutionId) this.workflowAuditService?.setExecutionProfile(auditExecutionId, profile); },
                 signal,
                 onProgress,
-                onTrace: entry => recordTrace({ ...entry, phase: "mission" })
+                onTrace: entry => recordTrace({ ...entry, phase: "mission" }),
+                onUsage: usage => { receivedMissionUsage = true; recordUsage("mission", usage); }
               }
             );
             const pool = this.workflowExecutionPools.get(normalizedProjectId);
-            const result = processing
+            const result: import("../service/iaService/AgentProvider.ts").AgentExecutionResult = processing
               ? { answer: processing.mission.response, sessionId: processing.mission.sessionId, profile: processing.mission.profile }
               : pool ? await pool.execute(signal, execute) : await execute();
+            if (!receivedMissionUsage && result.usage) recordUsage("mission", result.usage);
             rawResponse = result.answer;
             returnedSessionId = result.sessionId;
             if (twoPhase) {
@@ -1239,12 +1245,15 @@ export class AgentUseCase {
                 onProgress("Interprétation du résultat de la mission…");
                 recordTrace({ kind: "status", content: "Interprétation du résultat de la mission…", phase: "interpretation" });
                 recordProcessing();
+                let receivedInterpretationUsage = false;
                 const interpret = () => interpreter.interpret(interpretationPrompt, responseSchema, policy!, processing!.mission.profile,
                   agent.model || policy?.defaultModel || undefined, signal,
                   () => onProgress("Interprétation du résultat de la mission…"),
                   profile => { processing!.interpretation.profile = profile; recordProcessing(); },
-                  entry => recordTrace({ ...entry, phase: "interpretation" }));
+                  entry => recordTrace({ ...entry, phase: "interpretation" }),
+                  usage => { receivedInterpretationUsage = true; recordUsage("interpretation", usage); });
                 const interpreted = pool ? await pool.execute(signal, interpret) : await interpret();
+                if (!receivedInterpretationUsage && interpreted.usage) recordUsage("interpretation", interpreted.usage);
                 processing.interpretation = { ...processing.interpretation, response: interpreted.answer,
                   sessionId: interpreted.sessionId, ...(interpreted.profile ? { profile: interpreted.profile } : {}) };
                 recordProcessing();

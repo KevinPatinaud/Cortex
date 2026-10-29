@@ -10,6 +10,16 @@ for new executions only. Private reasoning events are excluded. Individual entri
 over 64,000 characters retain their first part with an explicit truncation label.
 Journal pages load only when expanded; long tool outputs expand separately.
 
+The **Token usage** section records engine-reported input, output and available
+cache/reasoning counters per attempt, with mission and interpretation subtotals.
+Cached input and reasoning output are not added twice; Claude's separate cache
+input categories are normalized into its total input. Codex turn usage and
+Copilot per-call events exclude lifetime session/context snapshots. Usage received
+before a failure or cancellation remains stored; incomplete attempts are marked
+partial. Missing counters and older executions show unavailable, never an assumed
+zero. Retrying only a saved interpretation does not count the earlier mission
+again. JSON audit exports include the recorded usage.
+
 **Settings → General → Allow simultaneous executions** controls the shared
 execution queue for the whole Cortex instance. Disable it to run one complete
 agent or prompt at a time across normal workflows, Work Force, Work Light, chats and internal

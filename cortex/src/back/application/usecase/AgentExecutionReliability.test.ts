@@ -510,6 +510,7 @@ test("cancellation aborts active providers, skips queued instances and audits ca
     workerCalls++;
     options.onProgress?.("Reading project files");
     options.onTrace?.({ kind: "message", content: "Reading project files" });
+    options.onUsage?.({ inputTokens: 40, outputTokens: 10, totalTokens: 50 });
     options.onProgress?.("");
     providerStarted();
     return new Promise((_resolve, reject) => options.signal!.addEventListener("abort", () => reject(options.signal!.reason), { once: true }));
@@ -534,6 +535,7 @@ test("cancellation aborts active providers, skips queued instances and audits ca
     assert.equal(auditRun.status, "cancelled");
     const worker = useCase.getWorkflowAuditRun("project", auditRun.id, true).executions.find(execution => execution.agentId === agentId("worker"))!;
     assert.equal(worker.trace![0].content, "Reading project files");
+    assert.equal(worker.usage?.total.totalTokens, 50);
     const latest = await useCase.loadProject("project");
     assert.equal(latest.agents[1].executionStatus, "cancelled");
   } finally { f.repository.close(); }

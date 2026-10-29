@@ -11,6 +11,7 @@ import type {
 import { DEFAULT_AGENT_CONFIGURATION } from "../AgentProvider.ts";
 import { CliAgentProcessError, CliAgentProvider } from "../CliAgentProvider.ts";
 import { createCodexProgress } from "../ExecutionProgress.ts";
+import { addTokenUsage, type TokenUsage } from "../../../../../shared/TokenUsage.ts";
 import { resolveCodexCommand, type CodexCommand } from "../CodexCommand.ts";
 
 export class CodexAgentProvider extends CliAgentProvider implements AgentProvider {
@@ -34,9 +35,17 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
     options: AgentExecutionOptions = {}
   ): Promise<AgentExecutionResult> {
     let currentPrompt = prompt;
-    let currentOptions = options;
+    let usage: TokenUsage | undefined;
+    const trackedOptions = { ...options, onUsage: (delta: TokenUsage) => {
+      usage = addTokenUsage(usage, delta);
+      options.onUsage?.(delta);
+    } };
+    let currentOptions = trackedOptions;
     for (let attempt = 0; ; attempt++) {
-      try { return await this.askOnce(currentPrompt, currentOptions); }
+      try {
+        const result = await this.askOnce(currentPrompt, currentOptions);
+        return { ...result, ...(usage ? { usage } : {}) };
+      }
       catch (error) {
         options.signal?.throwIfAborted();
         const interpretation = options.purpose === "interpretation";
@@ -48,7 +57,7 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
         options.onProgress?.(`Le modèle Codex est temporairement saturé. Reprise ${attempt + 1}/2 dans ${milliseconds / 1000} secondes, avec le même modèle.`);
         options.onTrace?.({ kind: "status", content: `Le modèle Codex est temporairement saturé. Reprise ${attempt + 1}/2 dans ${milliseconds / 1000} secondes, avec le même modèle.` });
         await this.waitForCapacity(milliseconds, options.signal);
-        currentOptions = interpretation ? options : { ...options, sessionId: error.sessionId, imagePaths: undefined };
+        currentOptions = interpretation ? trackedOptions : { ...trackedOptions, sessionId: error.sessionId, imagePaths: undefined };
         currentPrompt = interpretation ? prompt : "The preceding turn stopped because the selected model was temporarily at capacity. Continue only the unfinished work in this same conversation. First reconcile the current files, running tools and any completed external actions with the saved mission state. Do not repeat completed actions or start a new subject. Finish the original requested task and its validation.";
       }
     }
@@ -128,20 +137,27 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
       // system's command-line limit (E2BIG). Codex accepts `-` as an explicit
       // instruction to read the prompt from stdin, including resumed sessions.
       args.push("-");
+      let reportedUsage = false;
+      const reportUsage = (usage: TokenUsage) => { reportedUsage = true; options.onUsage?.(usage); };
+      const readUnreportedUsage = (raw: string) => {
+        if (!reportedUsage) createCodexProgress(undefined, undefined, undefined, reportUsage)(raw + "\n");
+      };
       let output: string;
       try { output = await this.runCommand(selectedCommand.command, [
         ...selectedCommand.args,
         ...args
       ], undefined, options.workingDirectory, prompt, {
         signal: options.signal,
-        onProgress: createCodexProgress(options.onProgress, options.onSessionId, options.onTrace)
+        onProgress: createCodexProgress(options.onProgress, options.onSessionId, options.onTrace, reportUsage)
       }); } catch (error) {
         if (error instanceof CliAgentProcessError) {
+          readUnreportedUsage(error.output);
           const failure = codexFailure(error.output, options.sessionId);
           if (failure) throw failure;
         }
         throw error;
       }
+      readUnreportedUsage(output);
       const failure = codexFailure(output, options.sessionId);
       if (failure) throw failure;
       const result = parseCodexJsonOutput(output, options.sessionId);

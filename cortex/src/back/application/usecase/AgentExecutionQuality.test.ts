@@ -290,14 +290,18 @@ test("a natural mission runs without the Cortex contract; an isolated low-effort
       assert.equal(prompt, "TASK_0");
       assert.equal(options.outputSchema, undefined);
       options.onTrace?.({ kind: "message", content: "Rédaction de l’article" });
-      return { sessionId: "business-session", answer: original };
+      const usage = { inputTokens: 100, outputTokens: 20, cachedInputTokens: 80, totalTokens: 120 };
+      options.onUsage?.(usage);
+      return { sessionId: "business-session", answer: original, usage };
     }
     assert.equal(options.purpose, "interpretation"); assert.equal(options.reasoningEffort, "low");
     assert.equal(options.readOnly, true); assert.equal(options.persistSession, false);
     assert.equal(options.delegation, "none"); assert.equal(options.sessionId, undefined);
     assert.notEqual(options.workingDirectory, f.project.directoryPath); assert.match(prompt, /Article intégral/);
     options.onTrace?.({ kind: "message", content: "Classement du résultat" });
-    return { ...result(options), sessionId: "formatter-session" };
+    const usage = { inputTokens: 30, outputTokens: 10, cachedInputTokens: 0, totalTokens: 40 };
+    options.onUsage?.(usage);
+    return { ...result(options), sessionId: "formatter-session", usage };
   });
   await f.useCase.runWorkflow(f.project.id);
   assert.equal(calls.length, 2);
@@ -307,6 +311,9 @@ test("a natural mission runs without the Cortex contract; an isolated low-effort
   assert.equal(execution.processing?.mission.response, original);
   assert.equal(execution.processing?.interpretation.sessionId, "formatter-session");
   assert.equal(execution.processing?.interpretation.profile?.reasoningEffort, "low");
+  assert.equal(execution.usage?.mission?.totalTokens, 120);
+  assert.equal(execution.usage?.interpretation?.totalTokens, 40);
+  assert.equal(execution.usage?.total.totalTokens, 160);
   assert.equal(parseAgentResponse(execution.response!)?.items[0].content, original);
   const trace = f.useCase.getWorkflowAuditRun(f.project.id, run.id, true).executions[0].trace!;
   assert.deepEqual(trace.map(entry => [entry.kind, entry.phase, entry.content]), [
@@ -360,16 +367,26 @@ for (const scope of ["agent", "workflow"] as const) test(`${scope}: old native s
 test("a failed formatter survives restart and a normal run retries only interpretation", async t => {
   let missionCalls = 0, formatterCalls = 0;
   const f = await fixture(t, async (_prompt, options) => {
-    if (options.purpose === "mission") { missionCalls++; return { sessionId: "business", answer: "Publication déjà effectuée." }; }
+    if (options.purpose === "mission") {
+      missionCalls++; options.onUsage?.({ inputTokens: 100, outputTokens: 20, totalTokens: 120 });
+      return { sessionId: "business", answer: "Publication déjà effectuée." };
+    }
+    options.onUsage?.({ inputTokens: 10, outputTokens: 5, totalTokens: 15 });
     if (++formatterCalls === 1) throw new Error("Formatting failed");
     return result(options);
   });
   await assert.rejects(f.useCase.runWorkflow(f.project.id), /Formatting failed/);
   const failedRun = f.storage.listRuns(f.project.id, 10, 0).items[0];
   assert.equal(f.storage.getRun(f.project.id, failedRun.id)!.executions[0].processing?.interpretation.status, "failed");
+  assert.equal(f.storage.getRun(f.project.id, failedRun.id)!.executions[0].usage?.total.totalTokens, 135);
   const restarted = f.restart();
   await restarted.runWorkflow(f.project.id);
   assert.equal(missionCalls, 1); assert.equal(formatterCalls, 2);
+  const runs = f.storage.listRuns(f.project.id, 10, 0).items;
+  const allExecutions = runs.flatMap(run => f.storage.getRun(f.project.id, run.id)!.executions);
+  const retried = allExecutions.find(execution => execution.status === "succeeded")!;
+  assert.equal(retried.usage?.total.totalTokens, 15);
+  assert.equal(retried.usage?.mission, undefined);
 });
 
 test("quota exhaustion between passes checkpoints the delivery and never repeats its actions", async t => {

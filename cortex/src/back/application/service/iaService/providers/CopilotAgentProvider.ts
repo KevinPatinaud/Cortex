@@ -17,6 +17,7 @@ import {
 import { McpConfigurationService } from "../McpConfigurationService.ts";
 import { createTextProgress } from "../ExecutionProgress.ts";
 import { boundedExecutionTrace } from "../../../../../shared/ExecutionTrace.ts";
+import { addTokenUsage, tokenUsage, type TokenUsage } from "../../../../../shared/TokenUsage.ts";
 
 type CopilotSession = Awaited<ReturnType<CopilotClient["createSession"]>>;
 
@@ -57,6 +58,7 @@ export class CopilotAgentProvider implements AgentProvider {
     const client = this.createClient();
     let session: CopilotSession | undefined;
     let unsubscribe: (() => void) | undefined;
+    let usage: TokenUsage | undefined;
     const abort = (): void => { void session?.abort().catch(() => undefined); };
     options.signal?.addEventListener("abort", abort, { once: true });
 
@@ -96,7 +98,12 @@ export class CopilotAgentProvider implements AgentProvider {
       options.signal?.throwIfAborted();
       const reportText = createTextProgress(options.onProgress);
       unsubscribe = session.on((event) => {
-        if (event.type === "assistant.message_delta") {
+        if (event.type === "assistant.usage") {
+          // Per-call events are not replayed on resume. Ignore session/context totals.
+          const delta = tokenUsage(event.data.inputTokens, event.data.outputTokens, event.data.cacheReadTokens,
+            event.data.cacheWriteTokens, event.data.reasoningTokens);
+          if (delta) { usage = addTokenUsage(usage, delta); options.onUsage?.(delta); }
+        } else if (event.type === "assistant.message_delta") {
           reportText(event.data.deltaContent);
         } else if (event.type === "assistant.message") {
           options.onProgress?.(event.data.content.slice(-4_000));
@@ -117,6 +124,7 @@ export class CopilotAgentProvider implements AgentProvider {
 
       return {
         answer,
+        ...(usage ? { usage } : {}),
         sessionId: session.sessionId
       };
     } finally {

@@ -2,6 +2,31 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createCodexProgress, createClaudeProgress } from "./ExecutionProgress.ts";
 import type { ExecutionTraceInput } from "../../../../shared/ExecutionTrace.ts";
+import type { TokenUsage } from "../../../../shared/TokenUsage.ts";
+
+test("usage tracks turn events, never lifetime token-count or context snapshots", () => {
+  const usages: TokenUsage[] = [];
+  const report = createCodexProgress(undefined, undefined, undefined, usage => usages.push(usage));
+  const events = [
+    { type: "token_count", usage: { input_tokens: 999999, output_tokens: 999999 } },
+    { type: "turn.completed", usage: { input_tokens: 100, cached_input_tokens: 70, output_tokens: 20, reasoning_output_tokens: 5 } },
+    { type: "turn.completed" },
+    { type: "turn.failed", usage: { input_tokens: 10, output_tokens: 0 } }
+  ].map(event => JSON.stringify(event)).join("\n") + "\n";
+  report(events.slice(0, 155)); report(events.slice(155));
+  assert.deepEqual(usages.map(usage => usage.totalTokens), [120, 10]);
+  assert.equal(usages[0].cachedInputTokens, 70);
+});
+
+test("Claude uses the result aggregate once, including on error, instead of summing message snapshots", () => {
+  const usages: TokenUsage[] = [];
+  const report = createClaudeProgress(undefined, undefined, usage => usages.push(usage));
+  const usage = { input_tokens: 10, cache_read_input_tokens: 70, cache_creation_input_tokens: 20, output_tokens: 15 };
+  report(JSON.stringify({ type: "assistant", message: { content: [], usage } }) + "\n");
+  report(JSON.stringify({ type: "result", is_error: true, result: "Stopped", usage }) + "\n");
+  assert.equal(usages.length, 1);
+  assert.equal(usages[0].totalTokens, 115);
+});
 
 test("Codex session is reported from streamed events before a turn finishes, including split chunks", () => {
   const sessions: string[] = [], progress: string[] = [];

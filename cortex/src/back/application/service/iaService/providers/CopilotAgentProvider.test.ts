@@ -86,6 +86,22 @@ function runningSession(send: (emit: (event: unknown) => void) => Promise<string
   return { provider, handlers, wasAborted: () => aborted };
 }
 
+test("Copilot sums live per-call usage and ignores cumulative session/context snapshots", async () => {
+  const totals: number[] = [];
+  const { provider } = runningSession(async emit => {
+    emit({ type: "session.usage_info", data: { currentTokens: 90000, tokenLimit: 100000 } });
+    emit({ type: "assistant.usage", data: { model: "selected", inputTokens: 100, outputTokens: 20, cacheReadTokens: 80, reasoningTokens: 5 } });
+    emit({ type: "assistant.usage", data: { model: "selected", inputTokens: 30, outputTokens: 10, cacheReadTokens: 20, reasoningTokens: 2 } });
+    emit({ type: "assistant.usage", data: { model: "selected" } });
+    emit({ type: "assistant.message", data: { content: "Final" } });
+    emit({ type: "session.idle", data: {} });
+    return "message-id";
+  });
+  const result = await provider.ask("Run", { onUsage: usage => totals.push(usage.totalTokens) });
+  assert.deepEqual(totals, [120, 40]);
+  assert.deepEqual(result.usage, { inputTokens: 130, outputTokens: 30, totalTokens: 160, cachedInputTokens: 100, reasoningOutputTokens: 7 });
+});
+
 test("Copilot waits for completion beyond the old deadline without the SDK's timed wait", async (context) => {
   context.mock.timers.enable({ apis: ["setTimeout"] });
   const { provider, handlers } = runningSession(async (emit) => {

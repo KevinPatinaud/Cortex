@@ -5,6 +5,7 @@ import { CodexAgentProvider } from "./CodexAgentProvider.ts";
 import type { ExecutionProfile } from "../../../../../shared/ExecutionQuality.ts";
 import type { AgentExecutionOptions } from "../AgentProvider.ts";
 import { CliAgentProcessError } from "../CliAgentProvider.ts";
+import type { TokenUsage } from "../../../../../shared/TokenUsage.ts";
 
 class CapturingCodexAgentProvider extends CodexAgentProvider {
   capturedArgs: string[] = [];
@@ -73,6 +74,18 @@ const completedOutput = [
   { type: "item.completed", item: { type: "agent_message", text: "Completed remaining work" } },
   { type: "turn.completed" }
 ].map(event => JSON.stringify(event)).join("\n");
+
+test("token usage spans capacity retries in the current invocation without double counting parsed stdout", async () => {
+  const provider = new RecoveringCodexProvider(process.cwd());
+  const first = capacityOutput + "\n" + JSON.stringify({ type: "turn.failed", error: { message: "Selected model is at capacity", code: "server_overloaded" },
+    usage: { input_tokens: 10, cached_input_tokens: 6, output_tokens: 3, reasoning_output_tokens: 1 } });
+  provider.outputs = [new CliAgentProcessError(first, "", 1), completedOutput + "\n" + JSON.stringify({ type: "turn.completed",
+    usage: { input_tokens: 100, cached_input_tokens: 80, output_tokens: 12, reasoning_output_tokens: 5 } })];
+  const deltas: TokenUsage[] = [];
+  const result = await provider.ask("Mission", { persistSession: true, onUsage: usage => deltas.push(usage) });
+  assert.deepEqual(deltas.map(usage => usage.totalTokens), [13, 112]);
+  assert.deepEqual(result.usage, { inputTokens: 110, outputTokens: 15, totalTokens: 125, cachedInputTokens: 86, reasoningOutputTokens: 6 });
+});
 
 test("capacity resumes the same durable thread with the same model and schema instead of replaying the mission", async () => {
   const provider = new RecoveringCodexProvider(process.cwd());

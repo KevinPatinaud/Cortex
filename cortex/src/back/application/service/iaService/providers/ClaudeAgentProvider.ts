@@ -8,6 +8,8 @@ import type {
 import { DEFAULT_AGENT_CONFIGURATION } from "../AgentProvider.ts";
 import { CliAgentProvider } from "../CliAgentProvider.ts";
 import { createClaudeProgress } from "../ExecutionProgress.ts";
+import { addTokenUsage, type TokenUsage } from "../../../../../shared/TokenUsage.ts";
+import { CliAgentProcessError } from "../CliAgentProvider.ts";
 
 export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvider {
   readonly engine = "claude" as const;
@@ -54,14 +56,21 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
       args.push("--effort", options.reasoningEffort);
     }
 
-    const output = await this.runCommand(
+    let usage: TokenUsage | undefined;
+    const reportUsage = (delta: TokenUsage) => { usage = addTokenUsage(usage, delta); options.onUsage?.(delta); };
+    let output: string;
+    try { output = await this.runCommand(
       "claude",
       args,
       undefined,
       options.workingDirectory,
       prompt,
-      { signal: options.signal, onProgress: createClaudeProgress(options.onProgress, options.onTrace) }
-    );
+      { signal: options.signal, onProgress: createClaudeProgress(options.onProgress, options.onTrace, reportUsage) }
+    ); } catch (error) {
+      if (!usage && error instanceof CliAgentProcessError) createClaudeProgress(undefined, undefined, reportUsage)(error.output + "\n");
+      throw error;
+    }
+    if (!usage) createClaudeProgress(undefined, undefined, reportUsage)(output + "\n");
 
     const result = output.split(/\r?\n/).flatMap((line) => {
       try {
@@ -81,6 +90,7 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
 
     return {
       answer,
+      ...(usage ? { usage } : {}),
       ...(effectiveSessionId ? { sessionId: effectiveSessionId } : {})
     };
   }
