@@ -11,6 +11,7 @@ import type { AgentEngine } from "../iaService/AgentProvider.ts";
 import type { WorkflowEvent } from "../../../../shared/WorkflowWait.ts";
 import type { ExecutionProfile } from "../../../../shared/ExecutionQuality.ts";
 import type { ExecutionProcessing } from "../../../../shared/ResultProcessing.ts";
+import { boundedExecutionTrace, type ExecutionTraceInput, type ExecutionTracePage } from "../../../../shared/ExecutionTrace.ts";
 
 export interface WorkflowAuditSnapshot {
   engine: AgentEngine;
@@ -66,6 +67,7 @@ export interface WorkflowCheckpointRecord {
 }
 
 export interface WorkflowAuditRepository {
+  getExecutionTrace(projectId: string, runId: string, executionId: string, afterId: number, limit: number): ExecutionTracePage | null;
   setExecutionProcessing?(executionId: string, processing: ExecutionProcessing): void;
   setExecutionProfile?(executionId: string, profile: ExecutionProfile): void;
   listCheckpointProjectIds(): string[];
@@ -109,6 +111,12 @@ export interface WorkflowAuditRepository {
 
 export class WorkflowAuditService {
   constructor(private readonly repository: WorkflowAuditRepository, private readonly checkpointScope?: string) {}
+  recordExecutionTrace(runId: string, executionId: string, entry: ExecutionTraceInput): void {
+    if (entry.content.trim()) this.repository.addEvent(runId, executionId, "agent.trace", boundedExecutionTrace(entry));
+  }
+  getExecutionTrace(projectId: string, runId: string, executionId: string, afterId: number, limit: number): ExecutionTracePage | null {
+    return this.repository.getExecutionTrace(projectId, runId, executionId, afterId, limit);
+  }
   setExecutionProfile(executionId: string, profile: ExecutionProfile): void { this.repository.setExecutionProfile?.(executionId, profile); }
   setExecutionProcessing(executionId: string, processing: ExecutionProcessing): void { this.repository.setExecutionProcessing?.(executionId, processing); }
 

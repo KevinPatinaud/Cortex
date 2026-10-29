@@ -44,6 +44,8 @@ export interface WorkflowAuditExecutionInput {
 }
 
 export interface WorkflowAuditAgentExecution {
+  /** Included in JSON exports; the UI loads the journal separately in pages. */
+  trace?: import("./ExecutionTrace.ts").ExecutionTraceEntry[];
   processing?: ExecutionProcessing;
   profile?: ExecutionProfile;
   id: string;

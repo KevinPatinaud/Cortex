@@ -509,6 +509,7 @@ test("cancellation aborts active providers, skips queued instances and audits ca
     if (name === "entry") return response(["A", "B", "C"], ["worker"], true);
     workerCalls++;
     options.onProgress?.("Reading project files");
+    options.onTrace?.({ kind: "message", content: "Reading project files" });
     options.onProgress?.("");
     providerStarted();
     return new Promise((_resolve, reject) => options.signal!.addEventListener("abort", () => reject(options.signal!.reason), { once: true }));
@@ -529,9 +530,40 @@ test("cancellation aborts active providers, skips queued instances and audits ca
     assert.equal(useCase.isProjectRunning("project"), false);
     assert.equal(useCase.cancelProjectExecution("project"), false);
     assert.equal(useCase.hasActiveExecutions(), false);
-    assert.equal(f.repository.listRuns("project", 20, 0).items[0].status, "cancelled");
+    const auditRun = f.repository.listRuns("project", 20, 0).items[0];
+    assert.equal(auditRun.status, "cancelled");
+    const worker = useCase.getWorkflowAuditRun("project", auditRun.id, true).executions.find(execution => execution.agentId === agentId("worker"))!;
+    assert.equal(worker.trace![0].content, "Reading project files");
     const latest = await useCase.loadProject("project");
     assert.equal(latest.agents[1].executionStatus, "cancelled");
+  } finally { f.repository.close(); }
+});
+
+test("each parallel instance retains its own journal, including failed attempts and complete exports", async () => {
+  const f = fixture({ entry: ["worker"], worker: [] }, async (name, prompt, options) => {
+    if (name === "entry") return response(["INPUT_A", "INPUT_B"], ["worker"], true);
+    const input = prompt.includes("INPUT_A") ? "A" : "B";
+    options.onTrace?.({ kind: "message", content: `Working on ${input}` });
+    await new Promise(setImmediate);
+    options.onTrace?.({ kind: "tool", content: `Command for ${input}` });
+    if (input === "B") throw new Error("B failed after activity");
+    return response(["Done A"], []);
+  });
+  try {
+    const useCase = f.createUseCase();
+    await assert.rejects(useCase.runWorkflow("project"), /B failed/);
+    const run = f.repository.listRuns("project", 20, 0).items[0];
+    const detail = useCase.getWorkflowAuditRun("project", run.id, true);
+    const workers = detail.executions.filter(execution => execution.agentId === agentId("worker"));
+    assert.equal(workers.length, 2);
+    assert.equal(workers[0].status, "succeeded");
+    assert.equal(workers[1].status, "failed");
+    assert.deepEqual(workers.map(execution => execution.trace!.map(entry => [entry.content, entry.phase])), [
+      [["Working on A", "mission"], ["Command for A", "mission"]],
+      [["Working on B", "mission"], ["Command for B", "mission"]]
+    ]);
+    assert.throws(() => useCase.getWorkflowExecutionTrace("other-project", run.id, workers[0].id), /could not be found/);
+    assert.throws(() => useCase.getWorkflowExecutionTrace("project", run.id, workers[0].id, -1), /valid cursor/);
   } finally { f.repository.close(); }
 });
 

@@ -289,12 +289,14 @@ test("a natural mission runs without the Cortex contract; an isolated low-effort
     if (options.purpose === "mission") {
       assert.equal(prompt, "TASK_0");
       assert.equal(options.outputSchema, undefined);
+      options.onTrace?.({ kind: "message", content: "Rédaction de l’article" });
       return { sessionId: "business-session", answer: original };
     }
     assert.equal(options.purpose, "interpretation"); assert.equal(options.reasoningEffort, "low");
     assert.equal(options.readOnly, true); assert.equal(options.persistSession, false);
     assert.equal(options.delegation, "none"); assert.equal(options.sessionId, undefined);
     assert.notEqual(options.workingDirectory, f.project.directoryPath); assert.match(prompt, /Article intégral/);
+    options.onTrace?.({ kind: "message", content: "Classement du résultat" });
     return { ...result(options), sessionId: "formatter-session" };
   });
   await f.useCase.runWorkflow(f.project.id);
@@ -306,6 +308,12 @@ test("a natural mission runs without the Cortex contract; an isolated low-effort
   assert.equal(execution.processing?.interpretation.sessionId, "formatter-session");
   assert.equal(execution.processing?.interpretation.profile?.reasoningEffort, "low");
   assert.equal(parseAgentResponse(execution.response!)?.items[0].content, original);
+  const trace = f.useCase.getWorkflowAuditRun(f.project.id, run.id, true).executions[0].trace!;
+  assert.deepEqual(trace.map(entry => [entry.kind, entry.phase, entry.content]), [
+    ["message", "mission", "Rédaction de l’article"],
+    ["status", "interpretation", "Interprétation du résultat de la mission…"],
+    ["message", "interpretation", "Classement du résultat"]
+  ]);
 });
 
 test("the mission prompt is byte-for-byte authored text despite Cortex criteria, delegation and random-choice settings", async t => {

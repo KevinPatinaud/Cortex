@@ -134,6 +134,11 @@ const simulatedProvider: AgentProvider = {
         wait: { reason: "En attente de la confirmation de l’hôtel", eventKey: "hotel:demo", wakeAfterSeconds: null,
           deadlineAt: new Date(Date.now() + 3600_000).toISOString(), state: "Demande initiale déjà envoyée." } }) };
     }
+    if (prompt.includes("E2E_EXECUTION_TRACE") && options.persistSession) {
+      options.onTrace?.({ kind: "message", content: "Je commence par examiner les fichiers du projet." });
+      for (let index = 0; index < 105; index++) options.onTrace?.({ kind: "tool", content: `$ npm test --case=${index}\nRésultat du test ${index} : OK.\n${"long-output-".repeat(30)}` });
+      options.onTrace?.({ kind: "message", content: "Vérification terminée : tous les contrôles sont passés." });
+    }
     if (prompt.includes("E2E_FAIL")) throw new Error("Échec simulé du moteur.");
     if (prompt.includes("E2E_TWO_PASS")) {
       if (marker) await delay(1500, undefined, { signal: options.signal });

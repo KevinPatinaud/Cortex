@@ -24,6 +24,7 @@ export interface AgentExecutionOptions {
   profile?: ExecutionProfile;
   signal?: AbortSignal;
   onProgress?: (progress: string) => void;
+  onTrace?: (entry: import("../../../../shared/ExecutionTrace.ts").ExecutionTraceInput) => void;
   onSessionId?: (sessionId: string) => void;
   skipGitRepoCheck?: boolean;
   configuration?: AgentConfiguration;

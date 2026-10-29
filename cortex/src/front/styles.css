@@ -8153,6 +8153,82 @@ button:disabled {
   background: #fbfdff;
 }
 
+.workflow-audit__journal {
+  min-width: 0;
+  border-top: 1px solid rgb(73 113 174 / 15%);
+  background: #f6f9fd;
+}
+
+.workflow-audit__execution .workflow-audit__journal > summary {
+  display: flex;
+  min-height: auto;
+  padding: 0.85rem 1rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  cursor: pointer;
+  color: #355b87;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.workflow-audit__journal[open] > summary svg { transform: rotate(180deg); }
+
+.workflow-audit__journal-body {
+  min-width: 0;
+  padding: 0 1rem 1rem;
+  font-size: 0.8rem;
+}
+
+.workflow-audit__trace-list {
+  display: grid;
+  gap: 0.8rem;
+  max-height: 38rem;
+  margin: 1rem 0;
+  padding: 0.2rem;
+  overflow: auto;
+  list-style: none;
+}
+
+.workflow-audit__trace-list > li {
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid #dbe5f1;
+  border-radius: 0.6rem;
+  background: white;
+}
+
+.workflow-audit__trace-meta, .workflow-audit__trace-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+}
+
+.workflow-audit__trace-meta { color: #526983; font-size: 0.72rem; }
+.workflow-audit__execution .workflow-audit__trace-list summary {
+  display: flex;
+  min-height: auto;
+  padding: 0.5rem 0;
+  grid-template-columns: none;
+  justify-content: space-between;
+  gap: 0.5rem;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.workflow-audit__execution .workflow-audit__trace-list summary > span { min-width: 0; white-space: normal; }
+.workflow-audit__trace-list summary svg { flex-shrink: 0; }
+.workflow-audit__trace-list details[open] > summary svg { transform: rotate(180deg); }
+.workflow-audit__trace-list pre {
+  max-height: 24rem;
+  margin: 0.7rem 0 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.8rem;
+  line-height: 1.6;
+}
+.workflow-audit__trace-truncated { color: #855b1d; }
+
 .workflow-audit__execution .workflow-audit__technical > summary {
   display: flex;
   min-height: auto;

@@ -60,7 +60,7 @@ export class ClaudeAgentProvider extends CliAgentProvider implements AgentProvid
       undefined,
       options.workingDirectory,
       prompt,
-      { signal: options.signal, onProgress: createClaudeProgress(options.onProgress) }
+      { signal: options.signal, onProgress: createClaudeProgress(options.onProgress, options.onTrace) }
     );
 
     const result = output.split(/\r?\n/).flatMap((line) => {

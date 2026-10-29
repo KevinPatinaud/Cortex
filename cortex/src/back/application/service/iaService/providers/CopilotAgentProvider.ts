@@ -16,6 +16,7 @@ import {
 } from "../iaTools/AgentToolRegistry.ts";
 import { McpConfigurationService } from "../McpConfigurationService.ts";
 import { createTextProgress } from "../ExecutionProgress.ts";
+import { boundedExecutionTrace } from "../../../../../shared/ExecutionTrace.ts";
 
 type CopilotSession = Awaited<ReturnType<CopilotClient["createSession"]>>;
 
@@ -99,6 +100,10 @@ export class CopilotAgentProvider implements AgentProvider {
           reportText(event.data.deltaContent);
         } else if (event.type === "assistant.message") {
           options.onProgress?.(event.data.content.slice(-4_000));
+          options.onTrace?.(boundedExecutionTrace({ kind: "message", content: event.data.content }));
+        } else if (event.type === "tool.execution_start" || event.type === "tool.execution_complete") {
+          options.onTrace?.(boundedExecutionTrace({ kind: "tool", content: `${event.type}\n${JSON.stringify(event.data, null, 2)}` }));
+          options.onProgress?.("");
         } else {
           options.onProgress?.("");
         }

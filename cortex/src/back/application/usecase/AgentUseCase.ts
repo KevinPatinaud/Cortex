@@ -1160,6 +1160,9 @@ export class AgentUseCase {
             if (processing && auditExecutionId) this.workflowAuditService?.setExecutionProcessing(auditExecutionId, processing);
             this.persistWorkflowCheckpoint(normalizedProjectId);
           };
+          const recordTrace = (entry: import("../../../shared/ExecutionTrace.ts").ExecutionTraceInput) => {
+            if (auditContext && auditExecutionId) this.workflowAuditService?.recordExecutionTrace(auditContext.runId, auditExecutionId, entry);
+          };
 
           try {
             if (policy && !processing) await this.executionQuality!.preflight(policy, workingDirectory, signal);
@@ -1185,7 +1188,8 @@ export class AgentUseCase {
                 onSessionId: id => { returnedSessionId = id; },
                 onProfile: profile => { if (auditExecutionId) this.workflowAuditService?.setExecutionProfile(auditExecutionId, profile); },
                 signal,
-                onProgress
+                onProgress,
+                onTrace: entry => recordTrace({ ...entry, phase: "mission" })
               }
             );
             const pool = this.workflowExecutionPools.get(normalizedProjectId);
@@ -1233,11 +1237,13 @@ export class AgentUseCase {
                 signal.throwIfAborted();
                 processing.interpretation.status = "running";
                 onProgress("Interprétation du résultat de la mission…");
+                recordTrace({ kind: "status", content: "Interprétation du résultat de la mission…", phase: "interpretation" });
                 recordProcessing();
                 const interpret = () => interpreter.interpret(interpretationPrompt, responseSchema, policy!, processing!.mission.profile,
                   agent.model || policy?.defaultModel || undefined, signal,
                   () => onProgress("Interprétation du résultat de la mission…"),
-                  profile => { processing!.interpretation.profile = profile; recordProcessing(); });
+                  profile => { processing!.interpretation.profile = profile; recordProcessing(); },
+                  entry => recordTrace({ ...entry, phase: "interpretation" }));
                 const interpreted = pool ? await pool.execute(signal, interpret) : await interpret();
                 processing.interpretation = { ...processing.interpretation, response: interpreted.answer,
                   sessionId: interpreted.sessionId, ...(interpreted.profile ? { profile: interpreted.profile } : {}) };
@@ -1977,7 +1983,8 @@ export class AgentUseCase {
 
   getWorkflowAuditRun(
     projectId: string,
-    runId: string
+    runId: string,
+    includeTraces = false
   ): WorkflowAuditRunDetail {
     const normalizedProjectId = projectId.trim();
     const normalizedRunId = runId.trim();
@@ -1995,7 +2002,28 @@ export class AgentUseCase {
       throw new NotFoundError("The workflow audit run could not be found.");
     }
 
+    if (includeTraces) for (const execution of run.executions) {
+      execution.trace = [];
+      let afterId = 0;
+      do {
+        const page = this.getWorkflowExecutionTrace(normalizedProjectId, normalizedRunId, execution.id, afterId, 200);
+        execution.trace.push(...page.items);
+        if (page.nextAfterId === null) break;
+        afterId = page.nextAfterId;
+      } while (true);
+    }
+
     return run;
+  }
+
+  getWorkflowExecutionTrace(projectId: string, runId: string, executionId: string, afterId = 0, limit = 100): import("../../../shared/ExecutionTrace.ts").ExecutionTracePage {
+    if (!projectId.trim() || !runId.trim() || !executionId.trim() || !Number.isSafeInteger(afterId) || afterId < 0 ||
+      !Number.isSafeInteger(limit) || limit < 1 || limit > 200) {
+      throw new ValidationError("A project, run, execution, valid cursor and limit (1–200) are required.");
+    }
+    const page = this.workflowAuditService?.getExecutionTrace(projectId.trim(), runId.trim(), executionId.trim(), afterId, limit);
+    if (!page) throw new NotFoundError("The workflow audit execution could not be found.");
+    return page;
   }
 
   async saveProject(

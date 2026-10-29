@@ -2,6 +2,14 @@
 
 Cortex is a local application for creating, visualizing, and running Codex, Claude, or GitHub Copilot agent workflows. The React frontend is served by an Express API that reads agent configurations directly from saved projects.
 
+In project **History**, open an execution's **Execution journal** to consult its
+public agent messages and tool activity, in reception order with local timestamps.
+The journal persists in the audit database across failures, cancellation and
+server restarts; JSON audit exports include every recorded page. It is recorded
+for new executions only. Private reasoning events are excluded. Individual entries
+over 64,000 characters retain their first part with an explicit truncation label.
+Journal pages load only when expanded; long tool outputs expand separately.
+
 **Settings → General → Allow simultaneous executions** controls the shared
 execution queue for the whole Cortex instance. Disable it to run one complete
 agent or prompt at a time across normal workflows, Work Force, Work Light, chats and internal

@@ -5,6 +5,7 @@ import Database from "better-sqlite3";
 import type { ExecutionProfile } from "../../../shared/ExecutionQuality.ts";
 import type { ExecutionProcessing } from "../../../shared/ResultProcessing.ts";
 import type { WorkflowEvent } from "../../../shared/WorkflowWait.ts";
+import type { ExecutionTraceInput, ExecutionTracePage } from "../../../shared/ExecutionTrace.ts";
 import type {
   WorkflowAuditAgentExecution,
   WorkflowAuditExecutionInput,
@@ -168,6 +169,20 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
       this.now().toISOString(),
       payload
     );
+  }
+
+  getExecutionTrace(projectId: string, runId: string, executionId: string, afterId: number, limit: number): ExecutionTracePage | null {
+    const execution = this.database.prepare(`SELECT e.id FROM agent_executions e
+      JOIN workflow_runs r ON r.id = e.run_id WHERE r.project_id = ? AND r.id = ? AND e.id = ?`)
+      .get(projectId, runId, executionId);
+    if (!execution) return null;
+    const rows = this.database.prepare(`SELECT id, occurred_at, payload_json FROM audit_events
+      WHERE execution_id = ? AND type = 'agent.trace' AND id > ? ORDER BY id LIMIT ?`)
+      .all(executionId, afterId, limit + 1) as Array<{ id: number; occurred_at: string; payload_json: string }>;
+    const items = rows.slice(0, limit).map(row => ({
+      ...JSON.parse(row.payload_json) as ExecutionTraceInput, id: row.id, occurredAt: row.occurred_at
+    }));
+    return { items, nextAfterId: rows.length > limit ? items.at(-1)!.id : null };
   }
 
   startExecution(input: StartWorkflowAuditExecutionInput): string {
@@ -499,6 +514,8 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
 
       CREATE INDEX IF NOT EXISTS audit_events_run_occurred_idx
         ON audit_events(run_id, occurred_at, id);
+      CREATE INDEX IF NOT EXISTS audit_events_execution_trace_idx
+        ON audit_events(execution_id, id) WHERE type = 'agent.trace';
     `);
 
     for (const table of ["workflow_runs", "agent_executions"]) {

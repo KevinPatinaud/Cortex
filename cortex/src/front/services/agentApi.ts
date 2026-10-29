@@ -502,6 +502,13 @@ export function getWorkflowAuditRun(projectId: string, runId: string) {
   );
 }
 
+export function getWorkflowExecutionTrace(projectId: string, runId: string, executionId: string, afterId: number, signal?: AbortSignal) {
+  return requestJson<import("../../shared/ExecutionTrace.ts").ExecutionTracePage>(
+    `/api/agents/projects/${encodeURIComponent(projectId)}/audit/runs/${encodeURIComponent(runId)}/executions/${encodeURIComponent(executionId)}/trace?afterId=${afterId}`,
+    { signal }
+  );
+}
+
 export function exportWorkflowAuditRun(
   projectId: string,
   runId: string

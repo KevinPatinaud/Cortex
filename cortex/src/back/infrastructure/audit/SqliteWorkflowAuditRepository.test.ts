@@ -5,6 +5,36 @@ import path from "node:path";
 import test from "node:test";
 import Database from "better-sqlite3";
 import { SqliteWorkflowAuditRepository } from "./SqliteWorkflowAuditRepository.ts";
+import { WorkflowAuditService } from "../../application/service/workflowAudit/WorkflowAuditService.ts";
+
+test("trace pages survive interruption and restart, stay scoped, and follow insertion order even at equal timestamps", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-trace-"));
+  const file = path.join(directory, "audit.sqlite");
+  let repository = new SqliteWorkflowAuditRepository(file, () => new Date("2026-10-29T10:00:00Z"));
+  try {
+    const audit = new WorkflowAuditService(repository);
+    const runId = audit.createRun({ projectId: "p", trigger: "manual", scope: "workflow", parameterValues: {}, workflowSnapshot: null });
+    const executionId = audit.startExecution({ runId, agentId: "a", agentName: "A", threadId: "t", engine: "codex",
+      input: { workflowParameterValues: {}, additionalInstructions: "", upstreamItems: [] }, prompt: "task" });
+    for (let index = 0; index < 205; index++) audit.recordExecutionTrace(runId, executionId, { kind: "message", content: `Message ${index}` });
+    audit.recordExecutionTrace(runId, executionId, { kind: "message", content: " " });
+    const first = repository.getExecutionTrace("p", runId, executionId, 0, 100)!;
+    assert.equal(first.items.length, 100);
+    assert.equal(first.items[0].content, "Message 0");
+    assert.notEqual(first.nextAfterId, null);
+    assert.equal(repository.getExecutionTrace("other-project", runId, executionId, 0, 100), null);
+    assert.equal(repository.getExecutionTrace("p", "other-run", executionId, 0, 100), null);
+    repository.close();
+    repository = new SqliteWorkflowAuditRepository(file);
+    assert.equal(repository.getRun("p", runId)?.executions[0].status, "interrupted");
+    const second = repository.getExecutionTrace("p", runId, executionId, first.nextAfterId!, 100)!;
+    const last = repository.getExecutionTrace("p", runId, executionId, second.nextAfterId!, 100)!;
+    assert.equal(last.nextAfterId, null);
+    assert.equal(last.items.length, 5);
+    assert.equal(last.items.at(-1)!.content, "Message 204");
+    assert.equal(new Set([...first.items, ...second.items, ...last.items].map(item => item.id)).size, 205);
+  } finally { repository.close(); await rm(directory, { recursive: true, force: true }); }
+});
 
 test("partial attempts affect run outcome until that same thread is actually completed", () => {
   const repository = new SqliteWorkflowAuditRepository(":memory:");

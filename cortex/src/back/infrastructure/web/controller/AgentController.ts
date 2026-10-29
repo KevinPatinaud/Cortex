@@ -198,13 +198,22 @@ export function createAgentController(
     ) => {
       const run = agentUseCase.getWorkflowAuditRun(
         request.params.projectId,
-        request.params.runId
+        request.params.runId,
+        true
       );
       response.setHeader(
         "Content-Disposition",
         `attachment; filename="cortex-audit-${run.id}.json"`
       );
       response.type("application/json").send(JSON.stringify(run, null, 2));
+    }, agentErrorMappings.getWorkflowAuditRun)
+  );
+
+  router.get(
+    "/projects/:projectId/audit/runs/:runId/executions/:executionId/trace",
+    asyncRoute<unknown, { projectId: string; runId: string; executionId: string }>(async (request, response) => {
+      response.json(agentUseCase.getWorkflowExecutionTrace(request.params.projectId, request.params.runId,
+        request.params.executionId, Number(request.query.afterId ?? 0), Number(request.query.limit ?? 100)));
     }, agentErrorMappings.getWorkflowAuditRun)
   );
 

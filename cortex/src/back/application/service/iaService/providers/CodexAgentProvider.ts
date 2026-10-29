@@ -46,6 +46,7 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
           (!interpretation && (!options.persistSession || !error.sessionId))) throw error;
         const milliseconds = [5_000, 15_000][attempt];
         options.onProgress?.(`Le modèle Codex est temporairement saturé. Reprise ${attempt + 1}/2 dans ${milliseconds / 1000} secondes, avec le même modèle.`);
+        options.onTrace?.({ kind: "status", content: `Le modèle Codex est temporairement saturé. Reprise ${attempt + 1}/2 dans ${milliseconds / 1000} secondes, avec le même modèle.` });
         await this.waitForCapacity(milliseconds, options.signal);
         currentOptions = interpretation ? options : { ...options, sessionId: error.sessionId, imagePaths: undefined };
         currentPrompt = interpretation ? prompt : "The preceding turn stopped because the selected model was temporarily at capacity. Continue only the unfinished work in this same conversation. First reconcile the current files, running tools and any completed external actions with the saved mission state. Do not repeat completed actions or start a new subject. Finish the original requested task and its validation.";
@@ -133,7 +134,7 @@ export class CodexAgentProvider extends CliAgentProvider implements AgentProvide
         ...args
       ], undefined, options.workingDirectory, prompt, {
         signal: options.signal,
-        onProgress: createCodexProgress(options.onProgress, options.onSessionId)
+        onProgress: createCodexProgress(options.onProgress, options.onSessionId, options.onTrace)
       }); } catch (error) {
         if (error instanceof CliAgentProcessError) {
           const failure = codexFailure(error.output, options.sessionId);

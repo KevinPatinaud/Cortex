@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { parseAgentResponse } from "../../../../shared/AgentResponse.ts";
 import { ExecutionAssessmentView } from "./ExecutionAssessmentView.tsx";
+import { ExecutionTraceJournal } from "./ExecutionTraceJournal.tsx";
 import {
   exportWorkflowAuditRun,
   getWorkflowAuditRun,
@@ -442,6 +443,7 @@ export function WorkflowAuditPanel({
                         return (
                           <div className="workflow-audit__flow-step" key={execution.id}>
                             <AuditExecution
+                              projectId={projectId}
                               execution={execution}
                               index={index + 1}
                               occurrence={executionOccurrences.get(execution.id)}
@@ -492,6 +494,7 @@ export function WorkflowAuditPanel({
 }
 
 function AuditExecution({
+  projectId,
   execution,
   index,
   occurrence,
@@ -500,6 +503,7 @@ function AuditExecution({
   unselectedNextAgentNames,
   formatDate
 }: {
+  projectId: string;
   execution: WorkflowAuditAgentExecution;
   index: number;
   occurrence?: { number: number; total: number };
@@ -622,6 +626,8 @@ function AuditExecution({
       )}
 
       <ExecutionAssessmentView assessment={parsedResponse?.assessment} />
+      <ExecutionTraceJournal key={execution.id} projectId={projectId} runId={execution.runId} executionId={execution.id}
+        running={execution.status === "running"} formatDate={formatDate} />
       <details className="workflow-audit__technical" open={execution.status === "failed"}>
         <summary>
           <span>{t("audit.technicalDetails")}</span>
