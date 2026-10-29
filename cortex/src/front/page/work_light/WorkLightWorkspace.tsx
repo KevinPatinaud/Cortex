@@ -18,7 +18,7 @@ export function WorkLightWorkspace({ onNormal, onPrompts, onWorkForce }: { onNor
     description: language === "fr" ? "Un seul agent à chaque créneau, dans l’ordre de votre liste. Après le dernier, la liste recommence." : "One agent at each slot, in list order. The list wraps after the last agent.",
     status: "Work Light", settings: base.settings.replace("Work Force", "Work Light"), selectionLocked: base.selectionLocked.replace("Work Force", "Work Light"),
     phases: { ...base.phases, scheduled: language === "fr" ? "En attente du prochain créneau" : "Waiting for the next slot" } };
-  const slotCopy = language === "fr" ? { title: "Créneaux de lancement", edit: "Configurer les créneaux", help: "Un agent par créneau. Quotas insuffisants ou file occupée : créneau ignoré, même agent au prochain créneau. Aucun rattrapage. Les agents du mode normal sont suspendus tant que Work Light est actif. Arrêtez Work Force avant de l’activer.", next: "Prochains créneaux", log: "Derniers créneaux", skipped: "Ignoré", started: "Lancé" } : { title: "Launch slots", edit: "Configure slots", help: "One agent per slot. Low quota or busy queue: skip the slot, keep the same agent for the next one. No catch-up. Normal-mode agents are suspended while Work Light is active. Stop Work Force before enabling it.", next: "Upcoming slots", log: "Recent slots", skipped: "Skipped", started: "Started" };
+  const slotCopy = language === "fr" ? { title: "Créneaux de lancement", edit: "Configurer les créneaux", help: "Un agent ajouté à chaque créneau si les quotas le permettent, même si Cortex est occupé. Il attend son tour lorsque les exécutions simultanées sont désactivées. Work Force et le mode normal peuvent rester actifs. Les quotas sont revérifiés au lancement. Les créneaux manqués hors ligne ne sont pas rattrapés.", next: "Prochains créneaux", log: "Derniers créneaux", skipped: "Ignoré", started: "Lancé", queued: "Dans la file d’attente" } : { title: "Launch slots", edit: "Configure slots", help: "One agent joins at each slot if quotas allow, even when Cortex is busy. It waits its turn when simultaneous executions are disabled. Work Force and normal mode can stay active. Quotas are checked again at launch. Offline slots are not replayed.", next: "Upcoming slots", log: "Recent slots", skipped: "Skipped", started: "Started", queued: "Queued" };
   const [overview, setOverview] = useState<WorkLightOverview | null>(null);
   const [catalog, setCatalog] = useState<WorkForceCatalog>({ agents: [], errors: [] });
   const [selected, setSelected] = useState<WorkForceAgentRef[]>([]);
@@ -91,7 +91,8 @@ export function WorkLightWorkspace({ onNormal, onPrompts, onWorkForce }: { onNor
       <section className="work-force__status work-force__card" aria-label={copy.status}>
         <div><span className={`work-force__badge work-force__badge--${runtime!.phase}`} role="status">{copy.phases[runtime!.phase]}</span>
           {runtime!.reason && <p>{runtime!.reason}</p>}
-          {runtime!.active && <p><strong>{copy.current} :</strong> {runtime!.active.agent.name} · {runtime!.active.agent.projectName}</p>}
+          {runtime!.activeExecutions.map(execution => <p key={`${execution.agent.agentId}-${execution.startedAt}`}><strong>{copy.current} :</strong> {execution.agent.name} · {execution.agent.projectName}</p>)}
+          {runtime!.pending.length > 0 && <p>{slotCopy.queued} : {runtime!.pending.length}</p>}
           {!runtime!.active && next && <p><strong>{copy.next} :</strong> {nextInfo?.name ?? next.agentId} {nextInfo && `· ${nextInfo.projectName}`}</p>}
           {runtime!.armed && overview.nextRuns[0] && <p>{slotCopy.next} : {format(overview.nextRuns[0])} · {overview.configuration.timezone}</p>}
           {runtime!.phase === "stopping" && <p>{copy.stopping}</p>}
@@ -146,7 +147,7 @@ export function WorkLightWorkspace({ onNormal, onPrompts, onWorkForce }: { onNor
         </section>
       </div>
       <details className="work-force__card"><summary>{copy.settings}</summary><WorkForceSettingsPanel light /></details>
-      {runtime!.occurrences.length > 0 && <section className="work-force__card"><h2>{slotCopy.log}</h2><ol className="work-force__history">{runtime!.occurrences.map(item => <li key={item.at}><time dateTime={item.at}>{format(item.at)}</time> · {item.outcome === "started" ? slotCopy.started : slotCopy.skipped}{item.reason && <p>{item.reason}</p>}</li>)}</ol></section>}
+      {runtime!.occurrences.length > 0 && <section className="work-force__card"><h2>{slotCopy.log}</h2><ol className="work-force__history">{runtime!.occurrences.map(item => <li key={item.at}><time dateTime={item.at}>{format(item.at)}</time> · {item.outcome === "queued" ? slotCopy.queued : item.outcome === "started" ? slotCopy.started : slotCopy.skipped}{item.reason && <p>{item.reason}</p>}</li>)}</ol></section>}
       {scheduleOpen && <WorkflowScheduleDialog projectId="work-light" projectName="Work Light" parameterValues={{}} scheduleOnly heading={slotCopy.title} description={slotCopy.help}
         schedule={{ cron: crons[0], crons, timezone, configured: true, enabled: true, running: false, nextRunAt: overview.nextRuns[0] ?? null, lastRunAt: null, lastRunStatus: null, lastRunError: null, parameterValues: {} }}
         previewSchedule={previewWorkLight} onCancel={() => setScheduleOpen(false)} onSaved={() => setScheduleOpen(false)}

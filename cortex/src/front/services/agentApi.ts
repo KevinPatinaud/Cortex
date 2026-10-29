@@ -132,7 +132,7 @@ export interface WorkflowSchedule {
   nextRunAt: string | null;
   running: boolean;
   lastRunAt: string | null;
-  lastRunStatus: "waiting" | "succeeded" | "failed" | "skipped" | "cancelled" | "interrupted" | null;
+  lastRunStatus: "queued" | "waiting" | "succeeded" | "failed" | "skipped" | "cancelled" | "interrupted" | null;
   lastRunError: string | null;
   parameterValues: WorkflowParameterValues;
 }

@@ -44,16 +44,20 @@ conversations and audits. Normal workflow edges do not launch extra agents.
 The latest 20 execution results are visible on the page; full audits remain in
 each project's history. Stop the loop before changing the list or schedule.
 
-While the loop is active (including quota waits), the sidebar's **Work Force**
-button turns red and normal-mode agent starts are suspended, regardless of the
-parallel-execution setting. Only agents selected in Work Force are launched by
-the agent loop. Normal cron occurrences are recorded as skipped, without quota
-probes or later catch-up. Automatic workflow wakes and downstream dossiers wait
-until Work Force stops. New manual normal-agent starts are also refused while
-the loop is active; an agent already admitted can finish its mission and checks.
-Existing schedules are preserved and resume at their next occurrence after the
-loop stops. Before a planned future start they remain eligible; at the planned
-end the priority remains in effect only until the active Work Force agent drains.
+Work Force, Work Light and normal schedules can remain enabled together. Each
+keeps its own timing and quota thresholds. Work Force requests its next agent
+only after its previous agent completes, joining behind already waiting requests.
+Work Light and normal schedules enqueue each eligible occurrence at its configured
+time, even while Cortex is busy. With parallel executions enabled, different
+agents can run together; otherwise all modes share the FIFO. Further occurrences
+of the same normal workflow wait for the earlier workflow to finish, while its
+successor agents still take individual turns alongside other modes. Quotas are
+checked before admission and again at actual launch. A quota refusal releases
+the turn; scheduled modes wait for their next occurrence, and Work Force retries
+after five minutes. Disabling a normal schedule cancels its pending occurrences.
+The sidebar's **Work Force** button turns red while its loop is active, including
+quota waits. Normal manual runs, workflow wakes and downstream dossiers remain
+eligible throughout.
 The lightweight `/api/work-force/status` read used by the button does not query
 Codex quotas or start inference.
 
@@ -546,24 +550,29 @@ cron rules and an IANA time zone (Europe/Paris by default). Enable the mode afte
 saving. For A/B/C at 12:00 and 20:00, the rotation is A, B, C, A across days.
 Completion does not trigger the next agent: it waits for the next slot.
 
-Each slot uses the global execution queue with immediate admission. An occupied
-serial queue, the same agent already running, a previous Work Light run still
-active, or insufficient/unknown quota skips the slot and retains the next agent.
-There is no off-schedule catch-up. The default minimum reserves are 30% over five
+Each slot with sufficient quota joins the global execution queue. An occupied
+serial queue or the same agent already running delays execution beyond the slot;
+later slots still enqueue their own next agents. Different agents can overlap
+when simultaneous executions are enabled. Insufficient/unknown quota skips the
+slot and retains the next agent. Quotas are checked again after queue waits; a
+refused launch releases its turn. The default minimum reserves are 30% over five
 hours and 8% weekly, editable separately under Settings → General → Work Light
 or on its page. Status and preview reads do not query quotas or invoke a model.
 
-The cursor advances only after success. Failures, external waits and interrupted
-runs pause for review. Configuration, cursor and minute claims persist across
+The cursor advances when an occurrence reserves its agent, so pending slots
+rotate through the selection. Refused or cancelled requests restore the next
+agent to retry. Failures, external waits and interrupted runs pause for review.
+Configuration, cursor and minute claims persist across
 restarts; offline slots and the startup minute are skipped. Coincident cron rules
 share one absolute UTC-minute claim, including daylight-saving transitions.
-Activation starts from the next future slot; stopping lets the current agent finish.
+Activation starts from the next future slot; stopping cancels pending requests
+and lets already running agents finish. Pending requests are marked interrupted
+after a server restart and are not silently replayed.
 Reordering while stopped preserves the next agent by identity when still selected.
 
-Work Force and Work Light cannot be armed together. While Work Light is active,
-normal-mode starts, cron schedules, automatic dossiers and workflow wakeups are
-suspended. Existing normal runs may finish. Chats/prompts still follow global
-concurrency rules. The sidebar button turns red while Work Light is active.
+Work Force, Work Light, normal schedules, automatic dossiers, workflow wakeups
+and chats/prompts share the global concurrency rules. The sidebar button turns
+red while Work Light is active.
 The server must stay running and its clock must be synchronized for timely slots.
 
 API: /api/work-light with /status, /agents, /configuration, /settings, /preview,

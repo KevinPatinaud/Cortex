@@ -1,5 +1,4 @@
-import { ExecutionWorkspaceGuard, ExecutionWorkspaceBusyError } from "../../../application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
-import { WORK_FORCE_NORMAL_SUSPENDED_REASON } from "../../../../shared/WorkForce.ts";
+import { ExecutionWorkspaceGuard } from "../../../application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
 import { spawn } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,7 +38,6 @@ import { createCortexApplication } from "./CortexApplication.ts";
 import { PromptQueueService } from "../../../application/service/promptQueue/PromptQueueService.ts";
 import { SqlitePromptQueueRepository } from "../../promptQueue/SqlitePromptQueueRepository.ts";
 import { WorkLightService } from "../../../application/service/workLight/WorkLightService.ts";
-import { WORK_LIGHT_NORMAL_SUSPENDED_REASON } from "../../../../shared/WorkLight.ts";
 import { WorkForceService } from "../../../application/service/workForce/WorkForceService.ts";
 import { ConfiguredWorkForceAgents } from "../../../application/service/workForce/ConfiguredWorkForceAgents.ts";
 import { GlobalExecutionQueue } from "../../../application/service/executionQueue/GlobalExecutionQueue.ts";
@@ -121,21 +119,16 @@ const workForce = new WorkForceService(configurationFile, new ConfiguredWorkForc
 const workLight = new WorkLightService(configurationFile, new ConfiguredWorkForceAgents(projectUseCase, agentUseCase, "work-light"), codexQuota);
 await workForce.status();
 await workLight.status();
-const normalSuspensionReason = () => workLight.isActive() ? WORK_LIGHT_NORMAL_SUSPENDED_REASON : WORK_FORCE_NORMAL_SUSPENDED_REASON;
-const normalExecutionsSuspended = () => workForce.isActive() || workLight.isActive();
-executionQueue.setAdmissionGuard(entry => {
-  if (entry.source === "normal" && normalExecutionsSuspended()) throw new ExecutionWorkspaceBusyError(normalSuspensionReason());
-});
 const workflowScheduler = new WorkflowScheduler(
   projectUseCase,
   agentUseCase,
   () => new Date(),
   workflowAuditService,
-  normalExecutionsSuspended, normalSuspensionReason
+  undefined, undefined, executionQueue
 );
 
 const automationRepository = new SqliteWorkflowAutomationRepository(auditDatabaseFile);
-const automations = new WorkflowAutomationService(automationRepository, agentUseCase, projectUseCase, workflowAuditService, 4, normalExecutionsSuspended, normalSuspensionReason);
+const automations = new WorkflowAutomationService(automationRepository, agentUseCase, projectUseCase, workflowAuditService, 4);
 const gmail = new GmailService(
   path.join(workspaceDirectory, "data", "gmail", "connection.sqlite"),
   process.env.CORTEX_GMAIL_REDIRECT_URI?.trim() || `http://127.0.0.1:${port}/api/gmail/callback`,
@@ -146,7 +139,7 @@ const app = createCortexApplication({
 });
 codexIsBusy = () => agentService.hasActiveExecutions() || agentUseCase.hasActiveExecutions();
 
-const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase, 1000, normalExecutionsSuspended);
+const workflowWaitScheduler = new WorkflowWaitScheduler(agentUseCase, 1000);
 const httpServer = app.listen(port, host, () => {
   codexUpdates.start();
   promptQueue.start();

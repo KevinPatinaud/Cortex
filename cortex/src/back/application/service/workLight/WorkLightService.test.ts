@@ -29,13 +29,14 @@ function harness(file: string) {
   const calls: string[] = [], queue = new GlobalExecutionQueue(file);
   const registry: WorkForceAgents = { async catalog() { return { agents, errors: [] }; }, async prepare(ref) {
     const agent = agents.find(item => item.agentId === ref.agentId)!;
+    const controller = new AbortController(); let finish = () => {};
     return { agent, runner: { async run(control) {
-      return queue.run({ source: "work-light", label: agent.name, key: agent.agentId, waitForSlot: control.waitForSlot }, async () => {
+      return queue.run({ source: "work-light", label: agent.name, key: agent.agentId, signal: controller.signal, waitForSlot: control.waitForSlot }, async () => {
         await control.beforeStart?.(); await control.onStarted?.(); calls.push(agent.name); active++; maximum = Math.max(maximum, active);
-        try { if (slow) await new Promise<void>(resolve => { release = resolve; }); if (failure) throw new Error("mission failed"); return { answer: "Result " + agent.name, waiting }; }
+        try { if (slow) await new Promise<void>(resolve => { release = finish = resolve; }); if (failure) throw new Error("mission failed"); return { answer: "Result " + agent.name, waiting }; }
         finally { active--; }
       });
-    }, cancel() { release(); } } };
+    }, cancel() { controller.abort(); finish(); } } };
   } };
   const quota = { async getStatus(): Promise<CodexQuotaStatus> { reads++; if (offline) throw new Error("offline"); return {
     available: true, checkedAt: new Date(clock).toISOString(), fiveHour: { remainingPercent: five, resetsAt: null }, weekly: { remainingPercent: weekly, resetsAt: null }, error: null }; } };
@@ -54,7 +55,7 @@ test("round robin launches exactly one agent at daily 12 and 20 slots, wraps, de
   }
   assert.deepEqual(h.calls, ["A", "B", "C", "A"]);
   const state = await h.service.overview(); assert.equal(state.runtime.cursor, 1); assert.equal(state.runtime.completedCycles, 1); assert.equal(h.maximum(), 1);
-  assert.equal(state.runtime.occurrences.length, 4); assert.equal(h.reads(), 4);
+  assert.equal(state.runtime.occurrences.length, 4); assert.equal(h.reads(), 8);
 }));
 test("both quota reserves are mandatory; skipped slots retain cursor and quota recovery never catches up", async () => fixture(async h => {
   await configure(h); await h.service.arm();
@@ -69,20 +70,26 @@ test("unknown quota skips one slot and status/overview never probe quotas", asyn
   await configure(h); await h.service.arm(); await h.service.overview(); await h.service.status(); assert.equal(h.reads(), 0);
   h.offline(); h.at("2026-10-28T11:00:00Z"); await h.service.tick(); assert.equal(h.reads(), 1); assert.equal((await h.service.overview()).runtime.armed, true); assert.deepEqual(h.calls, []);
 }));
-test("a long execution skips later slots, stop drains it and the next agent waits for a fresh slot", async () => fixture(async h => {
+test("later slots queue behind a long execution; stop cancels queued slots and drains the active agent", async () => fixture(async h => {
   await configure(h); h.slow(); await h.service.arm(); h.at("2026-10-28T11:00:00Z"); const run = h.service.tick(); await until(() => h.calls.length === 1);
-  h.at("2026-10-28T19:00:00Z"); await h.service.tick(); assert.equal((await h.service.overview()).runtime.occurrences[0].outcome, "skipped");
+  h.at("2026-10-28T19:00:00Z"); const queued = h.service.tick();
+  await until(async () => (await h.queue.status()).waiting.length === 1);
+  assert.equal((await h.service.overview()).runtime.occurrences[0].outcome, "queued");
   assert.equal((await h.service.disarm()).runtime.phase, "stopping"); assert.equal(h.service.isActive(), true);
-  h.release(); await run; assert.equal(h.service.isActive(), false); assert.equal((await h.service.overview()).runtime.cursor, 1);
+  h.release(); await Promise.all([run, queued]); assert.equal(h.service.isActive(), false); assert.equal((await h.service.overview()).runtime.cursor, 1);
   await h.service.arm(); await h.service.tick(); assert.deepEqual(h.calls, ["A"]);
 }));
-test("busy serial queue skips atomically instead of waiting off-slot, parallel mode admits different agents only", async () => fixture(async h => {
+test("busy slots wait beyond their minute, parallel mode admits different agents and serializes the same agent", async () => fixture(async h => {
   await configure(h); await h.service.arm();
   let release!: () => void; const block = h.queue.run({ source: "prompt", label: "Blocker", key: "other" }, () => new Promise<void>(resolve => { release = resolve; }));
-  await until(() => Boolean(release)); h.at("2026-10-28T11:00:00Z"); await h.service.tick(); assert.deepEqual(h.calls, []); assert.equal((await h.queue.status()).waiting.length, 0);
-  await h.queue.saveSettings({ allowParallelExecutions: true }); h.at("2026-10-28T19:00:00Z"); await h.service.tick(); assert.deepEqual(h.calls, ["A"]); release(); await block;
+  await until(() => Boolean(release)); h.at("2026-10-28T11:00:00Z"); const first = h.service.tick();
+  await until(async () => (await h.queue.status()).waiting.length === 1); assert.deepEqual(h.calls, []);
+  h.at("2026-10-28T11:05:00Z"); await h.queue.saveSettings({ allowParallelExecutions: true }); await first;
+  assert.deepEqual(h.calls, ["A"]); release(); await block;
   const same = h.queue.run({ source: "prompt", label: "B", key: "B" }, () => new Promise<void>(resolve => { release = resolve; }));
-  await until(async () => (await h.queue.status()).active.length === 1); h.at("2026-10-29T11:00:00Z"); await h.service.tick(); assert.deepEqual(h.calls, ["A"]); release(); await same;
+  await until(async () => (await h.queue.status()).active.length === 1); h.at("2026-10-29T11:00:00Z"); const second = h.service.tick();
+  await until(async () => (await h.queue.status()).waiting.length === 1); assert.deepEqual(h.calls, ["A"]);
+  release(); await Promise.all([same, second]); assert.deepEqual(h.calls, ["A", "B"]);
 }));
 test("restart preserves next agent and skips offline slots and the minute of startup without replay", async () => fixture(async (h, file) => {
   await configure(h); await h.service.arm(); h.at("2026-10-28T11:00:00Z"); await h.service.tick(); await h.service.stop();
@@ -105,12 +112,13 @@ for (const externalWait of [false, true]) test("failure or external wait pauses 
   const view = await h.service.overview(); assert.equal(view.runtime.phase, "failed"); assert.equal(view.runtime.cursor, 0); assert.equal(view.runtime.armed, false);
   h.at("2026-10-28T19:00:00Z"); await h.service.tick(); assert.deepEqual(h.calls, ["A"]);
 }));
-test("mutual exclusion is atomic for concurrent arm requests, also with a future Work Force window", async () => fixture(async (h, file) => {
+test("Work Force and Work Light can be armed together, including concurrent requests and future windows", async () => fixture(async (h, file) => {
   const force = new WorkForceService(file, h.registry, h.quota, h.now);
   try { await configure(h); await force.saveConfiguration({ agents: refs, startsAt: "2026-11-01T11:00:00Z", endsAt: null });
-    const result = await Promise.allSettled([h.service.arm(), force.arm()]); assert.equal(result.filter(item => item.status === "fulfilled").length, 1);
-    await h.service.disarm(); await force.disarm(); await force.arm(); await assert.rejects(h.service.arm(), /Work Force/);
-    await force.disarm(); await h.service.arm(); await assert.rejects(force.arm(), /Work Light/);
+    const result = await Promise.allSettled([h.service.arm(), force.arm()]); assert.equal(result.filter(item => item.status === "fulfilled").length, 2);
+    assert.equal((await h.service.status()).armed, true); assert.equal((await force.status()).armed, true);
+    await h.service.disarm(); assert.equal((await force.status()).armed, true); await h.service.arm();
+    await force.disarm(); assert.equal((await h.service.status()).armed, true); await force.arm();
   } finally { await force.stop(); }
 }));
 test("editing preserves the next agent by identity, quota settings stay independent and invalid schedules fail", async () => fixture(async (h, file) => {
@@ -128,14 +136,33 @@ test("cron preview merges coincident slots and follows Europe/Paris daylight sav
   assert.deepEqual(preview.nextRuns.slice(0, 2), ["2026-10-24T10:00:00.000Z", "2026-10-25T11:00:00.000Z"]);
   const view = await configure(h, ["0 12,20 * * *", "0 12 * * *"]); assert.equal(new Set(view.nextRuns).size, 5);
 }));
-for (const stop of [false, true]) test("a delayed quota read cannot start after its minute or a manual stop: " + stop, async () => fixture(async (h, file) => {
+for (const stop of [false, true]) test("a delayed quota read can launch after its minute but never after a manual stop: " + stop, async () => fixture(async (h, file) => {
   let release!: () => void, entered = false;
-  const service = new WorkLightService(file, h.registry, { async getStatus() { entered = true; await new Promise<void>(resolve => { release = resolve; }); return h.quota.getStatus(); } }, h.now);
+  const service = new WorkLightService(file, h.registry, { async getStatus() { if (!entered) { entered = true; await new Promise<void>(resolve => { release = resolve; }); } return h.quota.getStatus(); } }, h.now);
   try {
     await service.saveConfiguration({ agents: refs, crons: ["0 12,20 * * *"], timezone: "Europe/Paris" }); await service.arm();
     h.at("2026-10-28T11:00:00Z"); const run = service.tick(); await until(() => entered);
     if (stop) await service.disarm(); else h.at("2026-10-28T11:01:00Z");
-    release(); await run; assert.deepEqual(h.calls, []);
-    const view = await service.overview(); assert.equal(view.runtime.cursor, 0); assert.equal(view.runtime.occurrences[0].outcome, "skipped");
+    release(); await run; assert.deepEqual(h.calls, stop ? [] : ["A"]);
+    const view = await service.overview(); assert.equal(view.runtime.cursor, stop ? 0 : 1); assert.equal(view.runtime.occurrences[0].outcome, stop ? "skipped" : "started");
   } finally { release?.(); await service.stop(); }
+}));
+
+test("every eligible occurrence queues a different rotation entry, deduplicates its minute and rechecks quota at launch", async () => fixture(async h => {
+  await configure(h, ["* * * * *"]); await h.service.arm();
+  let release!: () => void;
+  const block = h.queue.run({ source: "normal", label: "Blocker" }, () => new Promise<void>(resolve => { release = resolve; }));
+  await until(() => Boolean(release));
+  h.at("2026-10-28T11:00:00Z"); const first = h.service.tick();
+  await until(async () => (await h.queue.status()).waiting.length === 1);
+  await h.service.tick();
+  h.at("2026-10-28T11:01:00Z"); const second = h.service.tick();
+  await until(async () => (await h.queue.status()).waiting.length === 2);
+  assert.deepEqual((await h.queue.status()).waiting.map(entry => entry.label), ["A", "B"]);
+  h.quotas(0, 0); release(); await Promise.all([block, first, second]);
+  assert.deepEqual(h.calls, []);
+  assert.equal((await h.queue.status()).waiting.length, 0);
+  assert.deepEqual((await h.service.overview()).runtime.occurrences.map(item => item.outcome), ["skipped", "skipped"]);
+  h.quotas(30, 8); h.at("2026-10-28T11:02:00Z"); await h.service.tick();
+  assert.deepEqual(h.calls, ["A"]);
 }));

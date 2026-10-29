@@ -16,10 +16,16 @@ export interface ExecutionAdmission {
   onQueued?: () => void;
   /** Refuse atomically when a reservation cannot start immediately. */
   waitForSlot?: boolean;
+  /** Wait for an earlier workflow occurrence without blocking its own agents. */
+  ready?: () => boolean;
+  /** Transfer this admission to the first agent; successors obtain their own turns. */
+  handoffToAgent?: boolean;
 }
-interface Lease { entry: CortexExecutionEntry; active: boolean; parallel: boolean }
+interface Lease { entry: CortexExecutionEntry; active: boolean; parallel: boolean; handoffToAgent?: boolean }
 interface Pending {
   entry: CortexExecutionEntry;
+  ready?: () => boolean;
+  handoffToAgent?: boolean;
   signal?: AbortSignal;
   resolve(lease: Lease): void;
   reject(reason: unknown): void;
@@ -66,10 +72,23 @@ export class GlobalExecutionQueue {
   }
   isInsideExecution(): boolean { return this.context.getStore()?.active === true; }
   hasExecutions(): boolean { return this.active.size > 0 || this.waiting.length > 0; }
+  notifyReady(): void { this.drain(); }
   setAdmissionGuard(guard: (entry: CortexExecutionEntry) => void): void { this.admissionGuard = guard; }
 
   async run<T>(options: ExecutionAdmission, operation: () => Promise<T>): Promise<T> {
     const parent = this.context.getStore();
+    if (parent?.active && parent.handoffToAgent && options.key) {
+      parent.handoffToAgent = false;
+      if (![...this.active].some(lease => lease !== parent && lease.entry.key === options.key)) {
+        Object.assign(parent.entry, { source: options.source, key: options.key, label: options.label, projectId: options.projectId });
+        try {
+          options.signal?.throwIfAborted();
+          this.admissionGuard?.(parent.entry);
+          return await operation();
+        } finally { this.release(parent); }
+      }
+      this.release(parent);
+    }
     if (parent?.active && (!options.key || options.key === parent.entry.key)) {
       options.signal?.throwIfAborted();
       return operation();
@@ -85,7 +104,7 @@ export class GlobalExecutionQueue {
       (entry.key && [...this.active].some(lease => lease.entry.key === entry.key))))
       throw new ExecutionSlotUnavailableError("Créneau ignoré : la file globale de Cortex est occupée.");
     const lease = await new Promise<Lease>((resolve, reject) => {
-      const pending: Pending = { entry, signal: options.signal, resolve, reject, cancel: () => {
+      const pending: Pending = { entry, ready: options.ready, handoffToAgent: options.handoffToAgent, signal: options.signal, resolve, reject, cancel: () => {
         const index = this.waiting.indexOf(pending);
         if (index < 0) return;
         this.waiting.splice(index, 1);
@@ -107,10 +126,13 @@ export class GlobalExecutionQueue {
       this.admissionGuard?.(lease.entry);
       return await this.context.run(lease, operation);
     } finally {
-      lease.active = false;
-      this.active.delete(lease);
-      this.drain();
+      this.release(lease);
     }
+  }
+  private release(lease: Lease): void {
+    lease.active = false;
+    this.active.delete(lease);
+    this.drain();
   }
   private drain(): void {
     if (this.closed) return;
@@ -118,11 +140,12 @@ export class GlobalExecutionQueue {
       if (!this.settings.allowParallelExecutions && this.active.size > 0) break;
       const pending = this.waiting[index];
       if (pending.signal?.aborted) { pending.cancel(); continue; }
+      if (pending.ready && !pending.ready()) { index++; continue; }
       if (pending.entry.key && [...this.active].some(lease => lease.entry.key === pending.entry.key)) { index++; continue; }
       this.waiting.splice(index, 1);
       pending.signal?.removeEventListener("abort", pending.cancel);
       const lease: Lease = { entry: { ...pending.entry, startedAt: new Date().toISOString() }, active: true,
-        parallel: this.settings.allowParallelExecutions };
+        parallel: this.settings.allowParallelExecutions, handoffToAgent: pending.handoffToAgent };
       this.active.add(lease);
       pending.resolve(lease);
     }

@@ -12,8 +12,10 @@ import { serverTimezone } from "./CronExpression.ts";
 import type { WorkflowScheduleConfiguration } from "../projectService/ProjectService.ts";
 import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
 import { ExecutionWorkspaceBusyError } from "../executionWorkspace/ExecutionWorkspaceGuard.ts";
+import { GlobalExecutionQueue } from "../executionQueue/GlobalExecutionQueue.ts";
+import { setTimeout as delay } from "node:timers/promises";
 
-test("Work Force skips normal occurrences without probing quotas or changing schedules, then resumes without catch-up", async () => {
+test("an explicitly suspended scheduler preserves schedules and resumes without catch-up", async () => {
   let suspended = true, calls = 0;
   const now = new Date("2026-10-28T10:00:05Z"), repository = new SqliteWorkflowAuditRepository(":memory:");
   const configuration = { cron: "* * * * *", timezone: "UTC", enabled: true, parameterValues: { retained: "yes" } };
@@ -33,6 +35,46 @@ test("Work Force skips normal occurrences without probing quotas or changing sch
     scheduler.checkDueSchedules(new Date(now.getTime()+60000)); await new Promise(setImmediate);
     assert.equal(calls, 1); assert.equal((await scheduler.getSchedule("normal")).lastRunStatus, "succeeded");
   } finally { scheduler.stop(); repository.close(); }
+});
+
+test("normal occurrences queue while busy, deduplicate each minute and retain later occurrences of the same project", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "cortex-scheduled-queue-"));
+  const queue = new GlobalExecutionQueue(path.join(directory, "config.json"));
+  const repository = new SqliteWorkflowAuditRepository(":memory:");
+  const now = new Date("2026-10-29T10:00:00Z"), calls: string[] = [];
+  let running = false, release!: () => void, quota = true;
+  const projects = { getProjects: async () => [{ id: "normal" }], getWorkflowScheduleConfiguration: async () => ({ cron: "* * * * *", timezone: "UTC", enabled: true, parameterValues: {} }) } as unknown as ProjectUseCase;
+  const agents = { isProjectRunning: () => running, assertScheduledQuota: async () => { if (!quota) throw new CodexQuotaBlockedError("quota"); },
+    runWorkflow: async (_id: string, _values: unknown, _trigger: unknown, options: { scheduledAt: string }) => {
+      running = true;
+      try {
+        await queue.run({ source: "normal", key: "agent", label: "Normal" }, async () => {
+          if (!quota) throw new CodexQuotaBlockedError("quota"); calls.push(options.scheduledAt);
+        });
+      } finally { running = false; }
+    }
+  } as unknown as AgentUseCase;
+  const scheduler = new WorkflowScheduler(projects, agents, () => now, new WorkflowAuditService(repository), undefined, undefined, queue);
+  const until = async (check: () => Promise<boolean>) => { for (let i = 0; i < 200; i++) { if (await check()) return; await delay(5); } assert.fail("Schedule queue did not settle"); };
+  const blocker = queue.run({ source: "work-force", label: "Work Force" }, () => new Promise<void>(resolve => { release = resolve; }));
+  try {
+    await until(async () => Boolean(release)); await scheduler.start();
+    await until(async () => (await queue.status()).waiting.length === 1);
+    scheduler.checkDueSchedules(now);
+    scheduler.checkDueSchedules(new Date(now.getTime() + 60000));
+    await until(async () => (await queue.status()).waiting.length === 2);
+    assert.equal((await scheduler.getSchedule("normal")).lastRunStatus, "queued");
+    assert.deepEqual(calls, []); release(); await blocker;
+    await until(async () => (await scheduler.getSchedule("normal")).lastRunStatus === "succeeded");
+    assert.deepEqual(calls, [now.toISOString(), new Date(now.getTime() + 60000).toISOString()]);
+    quota = false; scheduler.checkDueSchedules(new Date(now.getTime() + 120000));
+    await until(async () => (await scheduler.getSchedule("normal")).lastRunStatus === "skipped");
+    assert.equal((await queue.status()).waiting.length, 0); assert.equal(calls.length, 2);
+  } finally {
+    release?.(); await blocker; scheduler.stop(); queue.stop(); repository.close();
+    assert.equal(path.dirname(path.resolve(directory)), path.resolve(os.tmpdir()));
+    assert.ok(path.basename(directory).startsWith("cortex-scheduled-queue-")); await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("a slot recovers only previously started work, never launches its own new task afterwards", async () => {

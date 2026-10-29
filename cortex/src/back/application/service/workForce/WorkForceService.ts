@@ -113,8 +113,6 @@ export class WorkForceService {
       await this.initialize();
       const overview = await this.repository.runExclusive(async () => {
         if (this.state.runtime.armed) return this.overview();
-        const light = (await this.repository.read()).workLight as { runtime?: { armed?: boolean; active?: unknown } } | undefined;
-        if (light?.runtime?.armed || light?.runtime?.active) throw new ValidationError("Arrêtez Work Light avant d’activer Work Force.");
         if (this.shuttingDown || this.inFlight) throw new ValidationError("Un agent est encore en cours de terminaison.");
         if (!this.state.configuration.agents.length) throw new ValidationError("Sélectionnez au moins un agent.");
         const { startsAt, endsAt } = this.state.configuration;

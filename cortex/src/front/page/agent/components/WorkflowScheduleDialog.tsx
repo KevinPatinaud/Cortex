@@ -323,7 +323,7 @@ export function WorkflowScheduleDialog({
           {schedule.lastRunAt && schedule.lastRunStatus && (
             <p className={`schedule-dialog__last-run schedule-dialog__last-run--${schedule.lastRunStatus}`}>
               {t(
-                schedule.lastRunStatus === "waiting" ? "schedule.lastRunWaiting" : schedule.lastRunStatus === "succeeded"
+                schedule.lastRunStatus === "queued" ? "schedule.lastRunQueued" : schedule.lastRunStatus === "waiting" ? "schedule.lastRunWaiting" : schedule.lastRunStatus === "succeeded"
                   ? "schedule.lastRunSucceeded"
                   : schedule.lastRunStatus === "failed"
                     ? "schedule.lastRunFailed"

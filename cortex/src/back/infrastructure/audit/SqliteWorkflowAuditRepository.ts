@@ -566,7 +566,7 @@ export class SqliteWorkflowAuditRepository implements WorkflowAuditRepository {
     const interruptedAt = this.now().toISOString();
     this.database.prepare(`UPDATE scheduled_occurrences
       SET status = 'interrupted', error = 'Cortex stopped before the scheduled execution completed.'
-      WHERE status = 'running'`).run();
+      WHERE status IN ('running', 'queued')`).run();
     this.database.prepare(`
       UPDATE agent_executions
       SET status = 'interrupted',

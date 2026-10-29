@@ -197,11 +197,15 @@ test("scheduled occurrence claims are unique and retain interrupted state after 
   const first = new SqliteWorkflowAuditRepository(databaseFile);
   assert.equal(first.claimScheduledOccurrence("project", occurrence), true);
   assert.equal(first.claimScheduledOccurrence("project", occurrence), false);
+  assert.equal(first.claimScheduledOccurrence("queued-project", occurrence), true);
+  first.completeScheduledOccurrence("queued-project", occurrence, "queued");
   first.close();
   const second = new SqliteWorkflowAuditRepository(databaseFile);
   try {
     assert.equal(second.claimScheduledOccurrence("project", occurrence), false);
     assert.equal(second.getLatestScheduledOccurrence("project")?.status, "interrupted");
+    assert.equal(second.getLatestScheduledOccurrence("queued-project")?.status, "interrupted");
+    assert.equal(second.claimScheduledOccurrence("queued-project", occurrence), false);
     assert.equal(second.claimScheduledOccurrence("other-project", occurrence), true);
   } finally {
     second.close();

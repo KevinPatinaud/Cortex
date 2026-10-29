@@ -89,6 +89,7 @@ export interface RunAgentInput {
 }
 
 export interface AgentStartControl {
+  label?: string;
   waitForSlot?: boolean;
   beforeStart?: () => Promise<void>;
   onQueued?: () => void;
@@ -478,9 +479,11 @@ export class AgentUseCase {
 
   usesGlobalExecutionQueue(): boolean { return Boolean(this.executionQueue); }
 
+  async assertScheduledQuota(): Promise<void> { await this.codexQuota?.assertMayStart(); }
+
   async runWorkForceAgent(runner: AgentUseCase, projectId: string, agentId: string, control?: AgentStartControl): Promise<AgentRunOutput> {
     if (!this.executionQueue && this.isProjectRunning(projectId)) throw new ExecutionWorkspaceBusyError("Ce projet est déjà en cours d’exécution.");
-    const key = this.getAgentExecutionKey(projectId, agentId);
+    const key = `${this.getAgentExecutionKey(projectId, agentId)}:${randomUUID()}`;
     this.workForceRunners.set(key, runner);
     try { return await runner.runAgent(projectId, { agentId }, undefined, false, control); }
     finally { this.workForceRunners.delete(key); }
@@ -820,8 +823,9 @@ export class AgentUseCase {
     const previous = { ...this.getAgentExecution(normalized, agentId) };
     let started = false;
     try {
+      await this.codexQuota?.assertMayStart();
       return await this.executionQueue.run({ source: this.isolated?.kind ?? "normal", waitForSlot: control?.waitForSlot,
-        key, projectId: normalized, label: this.loadedProjects.get(normalized)?.project.agents.find(agent => agent.id === agentId)?.name ?? agentId,
+        key, projectId: normalized, label: control?.label ?? this.loadedProjects.get(normalized)?.project.agents.find(agent => agent.id === agentId)?.name ?? agentId,
         signal, onQueued: () => {
           this.setAgentExecution(normalized, agentId, { ...previous, status: "running", progress: "En attente dans la file globale de Cortex…" });
           control?.onQueued?.();
@@ -840,6 +844,7 @@ export class AgentUseCase {
     } finally {
       this.pendingGlobalExecutions.delete(key);
       if (!started) this.setAgentExecution(normalized, agentId, previous);
+      this.executionQueue.notifyReady();
     }
   }
 
@@ -1661,6 +1666,7 @@ export class AgentUseCase {
       this.runningWorkflows.delete(normalizedProjectId);
       this.workflowControllers.delete(normalizedProjectId);
       this.workflowExecutionPools.delete(normalizedProjectId);
+      this.executionQueue?.notifyReady();
     }
   }
 

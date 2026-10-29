@@ -8,7 +8,7 @@ import "./workForceSettings.css";
 export function WorkForceSettingsPanel({ light = false }: { light?: boolean }) {
   const { language } = useTranslation();
   const base = language === "fr" ? fr : en;
-  const copy = light ? { ...base, settings: base.settings.replace("Work Force", "Work Light"), settingsIndependent: base.settingsIndependent.replace("Work Force", "Work Light"), settingsSaved: base.settingsSaved.replace("Work Force", "Work Light"), quotaHelp: language === "fr" ? "Les deux réserves doivent être atteintes au créneau. Sinon, il est ignoré et le même agent attend le prochain créneau." : "Both reserves must be met at the slot. Otherwise it is skipped and the same agent waits for the next slot." } : base;
+  const copy = light ? { ...base, settings: base.settings.replace("Work Force", "Work Light"), settingsIndependent: base.settingsIndependent.replace("Work Force", "Work Light"), settingsSaved: base.settingsSaved.replace("Work Force", "Work Light"), quotaHelp: language === "fr" ? "Les deux réserves sont vérifiées au créneau et au lancement effectif. Si elles sont insuffisantes, la demande est ignorée et l’agent attend un prochain créneau." : "Both reserves are checked at the slot and at actual launch. If insufficient, the request is skipped and the agent waits for a future slot." } : base;
   const id = useId();
   const [fiveHour, setFiveHour] = useState(""), [weekly, setWeekly] = useState("");
   const [loaded, setLoaded] = useState(false), [busy, setBusy] = useState(false);

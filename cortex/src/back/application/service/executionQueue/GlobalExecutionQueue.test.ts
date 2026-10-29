@@ -112,3 +112,34 @@ test("settings persist independently of project, quota and workflow configuratio
   for (const allowParallelExecutions of [null,1,"false",undefined]) await assert.rejects(queue.saveSettings({allowParallelExecutions}));
   restored.stop();
 }));
+
+test("a scheduled admission transfers its turn to the first agent and successors rejoin after other modes", async () => fixture(async queue => {
+  const first = gate(), order: string[] = [];
+  let running = false;
+  const workflow = (name: string) => queue.run({ source: "normal", label: name, key: "workflow:project",
+    handoffToAgent: true, ready: () => !running }, async () => {
+    running = true;
+    try {
+      await queue.run({ source: "normal", label: name + " A", key: "a" }, async () => { order.push(name + " A"); if (name === "one") await first.promise; });
+      await queue.run({ source: "normal", label: name + " B", key: "b" }, async () => { order.push(name + " B"); });
+    } finally { running = false; }
+  });
+  const one = workflow("one"); await until(() => order.length === 1);
+  const two = workflow("two");
+  const light = queue.run({ source: "work-light", label: "light", key: "light" }, async () => { order.push("light"); });
+  await until(async () => (await queue.status()).waiting.length === 2);
+  first.resolve(); await Promise.all([one, two, light]);
+  assert.deepEqual(order, ["one A", "light", "one B", "two A", "two B"]);
+}));
+
+test("a workflow cannot transfer a parallel slot to an agent already running in another mode", async () => fixture(async queue => {
+  await queue.saveSettings({ allowParallelExecutions: true });
+  const wait = gate(), order: string[] = [];
+  const force = queue.run({ source: "work-force", label: "force", key: "same" }, async () => { order.push("force"); await wait.promise; });
+  await until(() => order.length === 1);
+  const scheduled = queue.run({ source: "normal", label: "schedule", handoffToAgent: true }, () =>
+    queue.run({ source: "normal", label: "normal", key: "same" }, async () => { order.push("normal"); }));
+  await until(async () => (await queue.status()).waiting.length === 1);
+  assert.equal((await queue.status()).active.length, 1);
+  wait.resolve(); await Promise.all([force, scheduled]); assert.deepEqual(order, ["force", "normal"]);
+}));

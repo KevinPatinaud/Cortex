@@ -26,12 +26,9 @@ import { SqliteWorkflowAutomationRepository } from "../../src/back/infrastructur
 import { PromptQueueService } from "../../src/back/application/service/promptQueue/PromptQueueService.ts";
 import { SqlitePromptQueueRepository } from "../../src/back/infrastructure/promptQueue/SqlitePromptQueueRepository.ts";
 import { WorkLightService } from "../../src/back/application/service/workLight/WorkLightService.ts";
-import { WORK_LIGHT_NORMAL_SUSPENDED_REASON } from "../../src/shared/WorkLight.ts";
 import { WorkForceService } from "../../src/back/application/service/workForce/WorkForceService.ts";
 import { ConfiguredWorkForceAgents } from "../../src/back/application/service/workForce/ConfiguredWorkForceAgents.ts";
 import { GlobalExecutionQueue } from "../../src/back/application/service/executionQueue/GlobalExecutionQueue.ts";
-import { ExecutionWorkspaceBusyError } from "../../src/back/application/service/executionWorkspace/ExecutionWorkspaceGuard.ts";
-import { WORK_FORCE_NORMAL_SUSPENDED_REASON } from "../../src/shared/WorkForce.ts";
 
 // This fixture uses the real HTTP application and storage, exclusively inside
 // its own temporary directory. It never discovers installed engines or tools.
@@ -191,15 +188,10 @@ let workLightTime: number | null = null;
 const workLight = new WorkLightService(path.join(directory, "config.json"), new ConfiguredWorkForceAgents(projectUseCase, agentUseCase, "work-light"), codexQuota, () => workLightTime ?? Date.now(), 100);
 await workForce.status();
 await workLight.status();
-const normalExecutionsSuspended = () => workForce.isActive() || workLight.isActive();
-const normalSuspensionReason = () => workLight.isActive() ? WORK_LIGHT_NORMAL_SUSPENDED_REASON : WORK_FORCE_NORMAL_SUSPENDED_REASON;
-executionQueue.setAdmissionGuard(entry => {
-  if (entry.source === "normal" && normalExecutionsSuspended()) throw new ExecutionWorkspaceBusyError(normalSuspensionReason());
-});
-const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => new Date(), audit, normalExecutionsSuspended, normalSuspensionReason);
-const waitScheduler = new WorkflowWaitScheduler(agentUseCase, 100, normalExecutionsSuspended);
+const workflowScheduler = new WorkflowScheduler(projectUseCase, agentUseCase, () => new Date(), audit, undefined, undefined, executionQueue);
+const waitScheduler = new WorkflowWaitScheduler(agentUseCase, 100);
 const automationStore = new SqliteWorkflowAutomationRepository(path.join(directory, "automation.sqlite"));
-const automations = new WorkflowAutomationService(automationStore, agentUseCase, projectUseCase, audit, 4, normalExecutionsSuspended, normalSuspensionReason);
+const automations = new WorkflowAutomationService(automationStore, agentUseCase, projectUseCase, audit, 4);
 let failNextDispatch = false;
 const enqueue = automationStore.enqueue.bind(automationStore);
 automationStore.enqueue = (...args) => {

@@ -24,8 +24,8 @@ export function WorkForceModeButton({ onClick, light = false }: { onClick(): voi
   }, [light]);
   const name = light ? "Work Light" : "Work Force";
   const description = language === "fr"
-    ? `${name} actif : les agents du mode normal sont suspendus.`
-    : `${name} is active: normal-mode agents are suspended.`;
+    ? `${name} actif : les autres modes restent disponibles selon les règles de simultanéité et leurs quotas.`
+    : `${name} is active: other modes remain available under the concurrency setting and their own quotas.`;
   return <button className={`prompt-mode-link${active ? " prompt-mode-link--work-force-active" : ""}`}
     type="button" onClick={onClick} aria-label={name} aria-pressed={active}
     title={active ? description : name}>

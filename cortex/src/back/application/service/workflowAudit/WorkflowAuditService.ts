@@ -56,7 +56,7 @@ export interface CompleteWorkflowAuditExecutionInput {
 
 export interface ScheduledOccurrence {
   scheduledAt: string;
-  status: "running" | "waiting" | "succeeded" | "failed" | "skipped" | "cancelled" | "interrupted";
+  status: "queued" | "running" | "waiting" | "succeeded" | "failed" | "skipped" | "cancelled" | "interrupted";
   error: string | null;
 }
 

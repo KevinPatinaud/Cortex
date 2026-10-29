@@ -4,7 +4,6 @@ import type { CodexQuotaStatus } from "../../../../shared/CodexQuota.ts";
 import { JsonConfigurationRepository } from "../configuration/JsonConfigurationRepository.ts";
 import { ValidationError } from "../../error/ValidationError.ts";
 import { ExecutionWorkspaceBusyError } from "../executionWorkspace/ExecutionWorkspaceGuard.ts";
-import { ExecutionSlotUnavailableError } from "../executionQueue/GlobalExecutionQueue.ts";
 import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
 import { quotaDenial } from "../iaService/CodexQuotaService.ts";
 import { cronMatchesDate, getNextCronOccurrence, normalizeCronExpression, normalizeScheduleTimezone, serverTimezone } from "../workflowScheduler/CronExpression.ts";
@@ -12,8 +11,9 @@ import { validateConfiguration as validateAgents, validateSettings } from "../wo
 import type { WorkForceAgents, WorkForceRunner } from "../workForce/WorkForceService.ts";
 
 interface Stored { configuration: WorkLightConfiguration; settings: WorkForceSettings; runtime: WorkLightRuntime }
+interface Slot { minute: number; cancelled: boolean; runner?: WorkForceRunner; ref?: import("../../../../shared/WorkForce.ts").WorkForceAgentRef; execution?: WorkForceExecution; promise?: Promise<void> }
 const emptyRuntime = (): WorkLightRuntime => ({ armed: false, phase: "stopped", cursor: 0, completedCycles: 0,
-  lastEvaluatedMinute: -1, reason: null, active: null, history: [], occurrences: [] });
+  lastEvaluatedMinute: -1, reason: null, active: null, activeExecutions: [], pending: [], history: [], occurrences: [] });
 
 /** One durable claim per absolute UTC minute. Missed minutes are never replayed.
  * A claim precedes any effects; an unfinished execution pauses after restart. */
@@ -24,8 +24,9 @@ export class WorkLightService {
   private initialized: Promise<void> | null = null;
   private commands: Promise<unknown> = Promise.resolve();
   private timer: NodeJS.Timeout | null = null;
-  private inFlight: Promise<void> | null = null;
-  private runner: WorkForceRunner | null = null;
+  private readonly slots = new Map<number, Slot>();
+  private admissions: Promise<void> = Promise.resolve();
+  private retryMinute: number | null = null;
   private shuttingDown = false;
   private previewCache: { key: string; runs: string[] } | null = null;
   private quotaStatus: CodexQuotaStatus | null = null;
@@ -44,10 +45,17 @@ export class WorkLightService {
       const runtime = this.state.runtime;
       // A process coming online partway through a minute must not replay its slot.
       runtime.lastEvaluatedMinute = Math.max(runtime.lastEvaluatedMinute, this.minute());
-      if (runtime.active) {
-        runtime.history = [{ ...runtime.active, finishedAt: new Date(this.now()).toISOString(), outcome: "interrupted",
-          error: "Le serveur a été arrêté pendant cet agent. Vérifiez son résultat avant de reprendre." } satisfies WorkForceExecution, ...runtime.history].slice(0, 20);
-        Object.assign(runtime, { armed: false, phase: "interrupted", active: null, reason: runtime.history[0].error });
+      const interrupted = runtime.activeExecutions.length ? runtime.activeExecutions : runtime.active ? [runtime.active] : [];
+      const retry = interrupted[0]?.agent ?? runtime.pending[0]?.agent;
+      if (retry) runtime.cursor = Math.max(0, this.state.configuration.agents.findIndex(ref => workForceAgentKey(ref) === workForceAgentKey(retry)));
+      runtime.pending = [];
+      runtime.occurrences = runtime.occurrences.map(item => item.outcome === "queued" ? { ...item, outcome: "skipped", reason: "Attente interrompue par le redémarrage de Cortex." } : item);
+      if (interrupted.length) {
+        runtime.history = [...interrupted.map(execution => ({ ...execution, finishedAt: new Date(this.now()).toISOString(), outcome: "interrupted" as const,
+          error: "Le serveur a été arrêté pendant cet agent. Vérifiez son résultat avant de reprendre." })), ...runtime.history].slice(0, 20);
+        Object.assign(runtime, { armed: false, phase: "interrupted", active: null, activeExecutions: [], reason: runtime.history[0].error });
+      } else if (runtime.phase !== "failed" && runtime.phase !== "interrupted") {
+        runtime.phase = runtime.armed ? "scheduled" : "stopped";
       }
       if (stored) await this.persist();
     })();
@@ -79,7 +87,7 @@ export class WorkLightService {
   saveConfiguration(input: unknown): Promise<WorkLightOverview> {
     return this.command(async () => {
       await this.initialize();
-      if (this.isActive() || this.inFlight) throw new ValidationError("Arrêtez Work Light avant de modifier sa liste ou ses créneaux.");
+      if (this.isActive() || this.slots.size) throw new ValidationError("Arrêtez Work Light avant de modifier sa liste ou ses créneaux.");
       const configuration = validateConfiguration(input);
       const catalog = await this.catalog(), keys = new Set(catalog.agents.map(workForceAgentKey));
       if (configuration.agents.some(ref => !keys.has(workForceAgentKey(ref)))) throw new ValidationError("Un agent sélectionné n’existe plus. Actualisez la liste.");
@@ -100,9 +108,7 @@ export class WorkLightService {
       await this.initialize();
       return this.repository.runExclusive(async () => {
         if (this.state.runtime.armed) return this.overview();
-        const force = (await this.repository.read()).workForce as { runtime?: { armed?: boolean; active?: unknown } } | undefined;
-        if (force?.runtime?.armed || force?.runtime?.active) throw new ValidationError("Arrêtez Work Force avant d’activer Work Light.");
-        if (this.shuttingDown || this.inFlight) throw new ValidationError("Un agent est encore en cours de terminaison.");
+        if (this.shuttingDown || this.slots.size) throw new ValidationError("Un agent est encore en cours de terminaison.");
         if (!this.state.configuration.agents.length) throw new ValidationError("Sélectionnez au moins un agent.");
         const previous = structuredClone(this.state.runtime);
         Object.assign(this.state.runtime, { armed: true, phase: "scheduled", reason: null,
@@ -115,7 +121,7 @@ export class WorkLightService {
     return this.command(async () => {
       await this.initialize(); Object.assign(this.state.runtime, { armed: false,
         phase: this.state.runtime.active ? "stopping" : "stopped", reason: null });
-      if (!this.state.runtime.active) this.runner?.cancel();
+      this.cancelPending();
       await this.persist(); return this.overview();
     });
   }
@@ -128,8 +134,9 @@ export class WorkLightService {
   async stop(): Promise<void> {
     this.shuttingDown = true;
     if (this.timer) clearInterval(this.timer);
-    this.timer = null; this.runner?.cancel();
-    await this.commands; await this.inFlight;
+    this.timer = null;
+    for (const slot of this.slots.values()) { slot.cancelled = true; slot.runner?.cancel(); }
+    await this.commands; await Promise.all([...this.slots.values()].map(slot => slot.promise));
   }
   async tick(): Promise<void> {
     let launched: Promise<void> | null = null;
@@ -140,65 +147,98 @@ export class WorkLightService {
       const matches = this.state.configuration.crons.some(cron => cronMatchesDate(cron, new Date(minute * 60_000), this.state.configuration.timezone));
       runtime.lastEvaluatedMinute = minute;
       if (!matches) return;
-      if (this.inFlight) { this.occurrence(minute, "skipped", "Créneau ignoré : l’agent Work Light précédent est encore en cours."); await this.persist(); return; }
       this.occurrence(minute, "skipped", "Créneau réservé. Aucun rattrapage après redémarrage.");
       await this.persist(); // Never run an agent if the claim could not be written.
-      this.inFlight = this.execute(minute).finally(() => { this.inFlight = null; this.runner = null; });
-      launched = this.inFlight;
+      const slot: Slot = { minute, cancelled: false };
+      this.slots.set(minute, slot);
+      slot.promise = this.execute(slot).finally(() => { this.slots.delete(minute); });
+      launched = slot.promise;
     });
     await launched;
   }
-  private occurrence(minute: number, outcome: "started" | "skipped", reason: string | null): void {
+  private occurrence(minute: number, outcome: "queued" | "started" | "skipped", reason: string | null): void {
     const at = new Date(minute * 60_000).toISOString(), runtime = this.state.runtime;
     runtime.occurrences = [{ at, outcome, reason }, ...runtime.occurrences.filter(item => item.at !== at)].slice(0, 40);
     if (!runtime.active) runtime.reason = reason;
   }
-  private async execute(minute: number): Promise<void> {
+  private syncRuntime(): void {
     const runtime = this.state.runtime;
-    const assertSlot = () => {
-      if (this.shuttingDown || !runtime.armed || this.minute() !== minute)
-        throw new ExecutionSlotUnavailableError("Créneau ignoré : lancement arrêté ou créneau dépassé.");
+    runtime.active = runtime.activeExecutions[0] ?? null;
+    if (runtime.phase === "failed" || runtime.phase === "interrupted") return;
+    runtime.phase = runtime.active ? runtime.armed ? "running" : "stopping" : runtime.armed ? runtime.pending.length ? "queued" : "scheduled" : "stopped";
+  }
+  private cancelPending(): void {
+    const runtime = this.state.runtime, first = runtime.pending[0];
+    if (first) runtime.cursor = Math.max(0, this.state.configuration.agents.findIndex(ref => workForceAgentKey(ref) === workForceAgentKey(first.agent)));
+    for (const slot of this.slots.values()) if (!slot.execution) { slot.cancelled = true; slot.runner?.cancel(); }
+  }
+  private async checkQuota(): Promise<void> {
+    try { this.quotaStatus = await this.quota.getStatus(); }
+    catch { this.quotaStatus = { available: false, checkedAt: new Date(this.now()).toISOString(), fiveHour: null, weekly: null, error: "Quotas Codex indisponibles." }; }
+    const reason = quotaDenial({ enabled: true, ...this.state.settings }, this.quotaStatus);
+    if (reason) throw new CodexQuotaBlockedError(reason);
+  }
+  private async execute(slot: Slot): Promise<void> {
+    const runtime = this.state.runtime, { minute } = slot, at = new Date(minute * 60_000).toISOString();
+    // Admit occurrences in schedule order, while their agents may run independently.
+    const previous = this.admissions;
+    let release!: () => void;
+    this.admissions = new Promise<void>(resolve => { release = resolve; });
+    const assertAllowed = () => {
+      if (this.shuttingDown || !runtime.armed || slot.cancelled)
+        throw new DOMException("Lancement Work Light arrêté.", "AbortError");
     };
     try {
-      assertSlot();
-      const { agent, runner } = await this.agents.prepare(this.state.configuration.agents[runtime.cursor]);
-      this.runner = runner; assertSlot();
-      await runner.run({ waitForSlot: false,
+      await previous;
+      assertAllowed();
+      await this.checkQuota();
+      assertAllowed();
+      slot.ref = this.state.configuration.agents[runtime.cursor];
+      const { agent, runner } = await this.agents.prepare(slot.ref);
+      slot.runner = runner; assertAllowed();
+      runtime.pending.push({ at, agent: slot.ref });
+      runtime.cursor = (runtime.cursor + 1) % this.state.configuration.agents.length;
+      this.retryMinute = null;
+      this.occurrence(minute, "queued", null); this.syncRuntime(); await this.persist();
+      assertAllowed();
+      const execution = runner.run({
         beforeStart: async () => {
-          assertSlot();
-          try { this.quotaStatus = await this.quota.getStatus(); }
-          catch { this.quotaStatus = { available: false, checkedAt: new Date(this.now()).toISOString(), fiveHour: null, weekly: null, error: "Quotas Codex indisponibles." }; }
-          assertSlot();
-          const reason = quotaDenial({ enabled: true, ...this.state.settings }, this.quotaStatus);
-          if (reason) throw new CodexQuotaBlockedError(reason);
+          assertAllowed(); await this.checkQuota(); assertAllowed();
         },
         onStarted: async () => {
-          assertSlot();
-          runtime.active = { agent, startedAt: new Date(this.now()).toISOString(), finishedAt: null, outcome: "running", error: null, answer: null };
-          runtime.phase = "running"; runtime.reason = null;
+          assertAllowed();
+          runtime.pending = runtime.pending.filter(item => item.at !== at);
+          slot.execution = { agent, startedAt: new Date(this.now()).toISOString(), finishedAt: null, outcome: "running", error: null, answer: null };
+          runtime.activeExecutions.push(slot.execution); this.syncRuntime(); runtime.reason = null;
           this.occurrence(minute, "started", null); await this.persist();
         }
-      }).then(result => {
-        runtime.active!.answer = result.answer;
-        if (result.waiting) throw new Error("Cet agent attend un événement externe. Consultez son résultat avant de reprendre Work Light.");
       });
-      runtime.history = [{ ...runtime.active!, finishedAt: new Date(this.now()).toISOString(), outcome: "succeeded" } satisfies WorkForceExecution, ...runtime.history].slice(0, 20);
-      runtime.active = null;
-      runtime.cursor = (runtime.cursor + 1) % this.state.configuration.agents.length;
-      if (!runtime.cursor) runtime.completedCycles++;
-      runtime.phase = runtime.armed ? "scheduled" : "stopped";
-      runtime.reason = null;
-      await this.persist();
+      release();
+      const result = await execution;
+      slot.execution!.answer = result.answer;
+      if (result.waiting) throw new Error("Cet agent attend un événement externe. Consultez son résultat avant de reprendre Work Light.");
+      runtime.history = [{ ...slot.execution!, finishedAt: new Date(this.now()).toISOString(), outcome: "succeeded" } satisfies WorkForceExecution, ...runtime.history].slice(0, 20);
+      if (workForceAgentKey(slot.ref) === workForceAgentKey(this.state.configuration.agents.at(-1)!)) runtime.completedCycles++;
     } catch (error) {
       const reason = error instanceof Error ? error.message : "L’exécution de Work Light a échoué.";
-      if (!runtime.active && (error instanceof CodexQuotaBlockedError || error instanceof ExecutionSlotUnavailableError || error instanceof ExecutionWorkspaceBusyError)) {
-        this.occurrence(minute, "skipped", reason);
-        runtime.phase = runtime.armed ? "scheduled" : "stopped";
-      } else {
-        if (runtime.active) runtime.history = [{ ...runtime.active, finishedAt: new Date(this.now()).toISOString(),
-          outcome: this.shuttingDown ? "interrupted" : "failed", error: reason } satisfies WorkForceExecution, ...runtime.history].slice(0, 20);
-        Object.assign(runtime, { active: null, armed: false, phase: this.shuttingDown ? "interrupted" : "failed", reason });
+      if (slot.ref && !slot.cancelled && (this.retryMinute === null || minute < this.retryMinute)) {
+        runtime.cursor = this.state.configuration.agents.findIndex(ref => workForceAgentKey(ref) === workForceAgentKey(slot.ref!));
+        this.retryMinute = minute;
       }
+      if (!slot.execution && (slot.cancelled || this.shuttingDown || error instanceof CodexQuotaBlockedError || error instanceof ExecutionWorkspaceBusyError)) {
+        this.occurrence(minute, "skipped", reason);
+      } else {
+        if (slot.execution) runtime.history = [{ ...slot.execution, finishedAt: new Date(this.now()).toISOString(),
+          outcome: this.shuttingDown ? "interrupted" : "failed", error: reason } satisfies WorkForceExecution, ...runtime.history].slice(0, 20);
+        Object.assign(runtime, { armed: false, phase: this.shuttingDown ? "interrupted" : "failed", reason });
+        this.cancelPending();
+        if (slot.ref) runtime.cursor = this.state.configuration.agents.findIndex(ref => workForceAgentKey(ref) === workForceAgentKey(slot.ref!));
+      }
+    } finally {
+      release();
+      runtime.pending = runtime.pending.filter(item => item.at !== at);
+      runtime.activeExecutions = runtime.activeExecutions.filter(item => item !== slot.execution);
+      this.syncRuntime();
       await this.persist();
     }
   }

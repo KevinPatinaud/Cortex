@@ -2,6 +2,8 @@ import { ExecutionWorkspaceBusyError } from "../executionWorkspace/ExecutionWork
 import { WORK_FORCE_NORMAL_SUSPENDED_REASON } from "../../../../shared/WorkForce.ts";
 import { isExecutionCancelled } from "../workflowExecution/WorkflowExecution.ts";
 import { CodexQuotaBlockedError } from "../../error/CodexQuotaBlockedError.ts";
+import path from "node:path";
+import type { GlobalExecutionQueue } from "../executionQueue/GlobalExecutionQueue.ts";
 import type { AgentUseCase } from "../../usecase/AgentUseCase.ts";
 import type { ProjectUseCase } from "../../usecase/ProjectUseCase.ts";
 import { NotFoundError } from "../../error/NotFoundError.ts";
@@ -17,6 +19,7 @@ import {
 } from "./CronExpression.ts";
 
 export type WorkflowScheduleLastRunStatus =
+  | "queued"
   | "waiting"
   | "succeeded"
   | "failed"
@@ -66,6 +69,7 @@ export class WorkflowScheduler {
   private readonly handledMinuteKeys = new Map<string, string>();
   private timer: NodeJS.Timeout | null = null;
   private started = false;
+  private readonly pendingRuns = new Map<string, Set<AbortController>>();
 
   constructor(
     private readonly projectUseCase: ProjectUseCase,
@@ -73,7 +77,8 @@ export class WorkflowScheduler {
     private readonly now: () => Date = () => new Date(),
     private readonly workflowAuditService?: WorkflowAuditService,
     private readonly isSuspended: () => boolean = () => false,
-    private readonly suspensionReason: () => string = () => WORK_FORCE_NORMAL_SUSPENDED_REASON
+    private readonly suspensionReason: () => string = () => WORK_FORCE_NORMAL_SUSPENDED_REASON,
+    private readonly executionQueue?: GlobalExecutionQueue
   ) {}
 
   async start(): Promise<void> {
@@ -111,6 +116,8 @@ export class WorkflowScheduler {
   }
 
   stop(): void {
+    for (const controllers of this.pendingRuns.values()) for (const controller of controllers)
+      controller.abort(new DOMException("Le planificateur s’arrête.", "AbortError"));
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
@@ -179,6 +186,8 @@ export class WorkflowScheduler {
     );
     this.schedules.set(normalizedProjectId, schedule);
     this.configuredProjects.add(normalizedProjectId);
+    if (!schedule.enabled) for (const controller of this.pendingRuns.get(normalizedProjectId) ?? [])
+      controller.abort(new DOMException("Planification désactivée.", "AbortError"));
 
     return this.toOutput(normalizedProjectId, schedule);
   }
@@ -226,7 +235,7 @@ export class WorkflowScheduler {
         continue;
       }
 
-      if (runtime.running || (this.agentUseCase.isNormalProjectRunning?.(projectId) ?? this.agentUseCase.isProjectRunning(projectId)) || this.agentUseCase.hasWorkflowWaits?.(projectId)) {
+      if ((!this.executionQueue && (runtime.running || (this.agentUseCase.isNormalProjectRunning?.(projectId) ?? this.agentUseCase.isProjectRunning(projectId)))) || this.agentUseCase.hasWorkflowWaits?.(projectId)) {
         const reason = "The previous workflow execution is still running.";
         runtime.lastRunAt = new Date(date);
         runtime.lastRunStatus = "skipped";
@@ -257,13 +266,19 @@ export class WorkflowScheduler {
     scheduledAt: string,
     parameterValues: Record<string, string>
   ): Promise<void> {
+    const controller = new AbortController();
+    const pending = this.pendingRuns.get(projectId) ?? new Set<AbortController>();
+    this.pendingRuns.set(projectId, pending);
+    pending.add(controller);
     try {
+      await this.agentUseCase.assertScheduledQuota?.();
+      controller.signal.throwIfAborted();
       if (this.isSuspended()) throw new ExecutionWorkspaceBusyError(this.suspensionReason());
-      const projectExists = (await this.projectUseCase.getProjects()).some(
+      const project = (await this.projectUseCase.getProjects()).find(
         (project) => project.id === projectId
       );
 
-      if (!projectExists) {
+      if (!project) {
         this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "skipped", "The project no longer exists.");
         this.schedules.delete(projectId);
         this.configuredProjects.delete(projectId);
@@ -293,7 +308,22 @@ export class WorkflowScheduler {
         }
         return;
       }
-      const result = await this.agentUseCase.runWorkflow(projectId, parameterValues, "scheduled", { scheduledAt });
+      const execute = async () => {
+        controller.signal.throwIfAborted();
+        if (this.agentUseCase.hasWorkflowWaits?.(projectId)) throw new ExecutionWorkspaceBusyError("Ce workflow attend un événement externe.");
+        this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "running");
+        if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) runtime.lastRunStatus = null;
+        return this.agentUseCase.runWorkflow(projectId, parameterValues, "scheduled", { scheduledAt });
+      };
+      const result = this.executionQueue ? await this.executionQueue.run({
+        source: "normal", projectId, key: `scheduled:${projectId}`, label: `Planification ${path.basename(project.directoryPath ?? projectId)} · ${scheduledAt}`,
+        signal: controller.signal, handoffToAgent: true,
+        ready: () => !(this.agentUseCase.isNormalProjectRunning?.(projectId) ?? this.agentUseCase.isProjectRunning(projectId)),
+        onQueued: () => {
+          this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, "queued");
+          if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) runtime.lastRunStatus = "queued";
+        }
+      }, execute) : await execute();
       const status = result?.status === "waiting" ? "waiting" : "succeeded";
       this.workflowAuditService?.completeScheduledOccurrence(projectId, scheduledAt, status);
       if (this.getMinuteKey(runtime.lastRunAt!) === scheduledAt) runtime.lastRunStatus = status;
@@ -307,12 +337,14 @@ export class WorkflowScheduler {
       }
       if (error instanceof ExecutionWorkspaceBusyError) this.workflowAuditService?.recordSkippedRun({ projectId,
         trigger: "scheduled", scope: "workflow", parameterValues, workflowSnapshot: null }, message);
-      if (!(error instanceof CodexQuotaBlockedError || error instanceof ExecutionWorkspaceBusyError)) console.error(
+      if (!(error instanceof CodexQuotaBlockedError || error instanceof ExecutionWorkspaceBusyError || isExecutionCancelled(error))) console.error(
         `Scheduled workflow execution failed for project ${projectId}:`,
         error
       );
     } finally {
-      runtime.running = false;
+      pending.delete(controller);
+      if (!pending.size) this.pendingRuns.delete(projectId);
+      runtime.running = pending.size > 0;
     }
   }
 

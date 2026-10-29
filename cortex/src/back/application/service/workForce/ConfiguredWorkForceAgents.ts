@@ -29,12 +29,19 @@ export class ConfiguredWorkForceAgents implements WorkForceAgents {
     if (!agent?.prompt.trim()) throw new ValidationError("L’agent Work Force est absent ou ses instructions sont vides.");
     const runner = this.agents.createWorkForceRunner(project, agent.id, this.kind);
     const mainRunner = this.agents;
-    await runner.loadProject(project.projectId, false);
     return { agent: { projectId: project.projectId, agentId: agent.id, name: agent.name,
       description: agent.description, projectName: path.basename(project.directoryPath) },
       runner: {
         async run(control?: import("../../usecase/AgentUseCase.ts").AgentStartControl) {
-          const result = await mainRunner.runWorkForceAgent(runner, project.projectId, agent.id, control);
+          const result = await mainRunner.runWorkForceAgent(runner, project.projectId, agent.id, {
+            ...control, label: agent.name,
+            beforeStart: async () => {
+              // Read the checkpoint only after admission: an earlier queued occurrence
+              // of this agent may have updated its native session in the meantime.
+              await runner.loadProject(project.projectId, false);
+              await control?.beforeStart?.();
+            }
+          });
           const parsed = parseAgentResponse(result.answer);
           return { answer: parsed ? [...parsed.items.map(item => item.content), parsed.notes].filter(Boolean).join("\n\n") : result.answer,
             waiting: runner.hasWorkflowWaits(project.projectId) };

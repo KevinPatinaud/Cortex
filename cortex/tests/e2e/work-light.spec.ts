@@ -71,20 +71,23 @@ test("select, drag, configure advanced multi-cron, persist, and show a red activ
   const toggle = page.getByRole("button", { name: "Work Light", exact: true });
   if (!await toggle.isVisible()) await page.getByRole("button", { name: "Afficher la liste des projets", exact: true }).click();
   await expect(toggle).toHaveAttribute("aria-pressed", "true"); await page.mouse.move(0, 0); await expect(toggle).toHaveCSS("background-color", "rgb(180, 35, 50)");
+  await expect(toggle).toHaveAttribute("title", /autres modes restent disponibles/);
   await toggle.click(); await page.getByRole("button", { name: "Arrêter Work Light", exact: true }).click();
 });
-test("one selected agent per slot, no chaining, independent quotas, duplicate rules, normal suspension and mutual exclusion", async ({ request }) => {
+test("one selected agent per slot, independent quotas, duplicate rules and coexistence with both other modes", async ({ request }) => {
   const p = await project(request); await configure(request, p.refs, ["0 12,20 * * *", "0 12 * * *"]);
   await request.put("/api/agents/codex-quota", { data: { enabled: true, minimumFiveHourRemainingPercent: 99, minimumWeeklyRemainingPercent: 99 } });
   expect((await request.post("/api/work-light/start", { data: {} })).status()).toBe(202);
   await request.put("/api/work-force/configuration", { data: { agents: p.refs, startsAt: null, endsAt: null } });
-  const force = await request.post("/api/work-force/start", { data: {} }); expect(force.status()).toBe(400); expect(await force.text()).toContain("Work Light");
-  expect((await request.post(`/api/agents/projects/${p.id}/agents/run`, { data: { agentId: p.agents[0].id } })).status()).toBe(409);
+  const force = await request.post("/api/work-force/start", { data: {} }); expect(force.status()).toBe(202);
+  await request.post("/api/work-force/stop", { data: {} });
+  const normal = await request.post(`/api/agents/projects/${p.id}/agents/run`, { data: { agentId: p.agents[0].id } });
+  expect(normal.status()).toBe(400); expect(await normal.text()).toContain("quotas");
   const schedulePath = "/api/agents/projects/" + p.id + "/workflow/schedule";
   expect((await request.put(schedulePath, { data: { cron: "* * * * *", crons: ["* * * * *"], timezone: "Europe/Paris", enabled: true, parameterValues: {} } })).ok()).toBe(true);
   await request.post("/__test/scheduled-scan", { data: { at: slot(0, 11) } });
   await expect.poll(async () => (await (await request.get(schedulePath)).json()).lastRunStatus).toBe("skipped");
-  expect((await (await request.get(schedulePath)).json()).lastRunError).toContain("Work Light");
+  expect((await (await request.get(schedulePath)).json()).lastRunError).toContain("quotas");
   await request.put(schedulePath, { data: { cron: "* * * * *", timezone: "Europe/Paris", enabled: false, parameterValues: {} } });
   const names: string[] = [];
   for (const at of [slot(0, 11), slot(0, 19), slot(1, 11), slot(1, 19)]) {
@@ -95,7 +98,7 @@ test("one selected agent per slot, no chaining, independent quotas, duplicate ru
   expect(names).toEqual([p.agents[0].name, p.agents[1].name, p.agents[2].name, p.agents[0].name]);
   expect((await overview(request)).runtime.completedCycles).toBeGreaterThanOrEqual(1);
 });
-test("quota-denied and overlapping slots are skipped, and the same next agent is retained", async ({ request }) => {
+test("quota-denied slots retain the next agent and overlapping slots enter the shared queue", async ({ request }) => {
   const p = await project(request, true); await configure(request, p.refs); await request.post("/api/work-light/start", { data: {} });
   await request.post("/__test/codex-quota", { data: { fiveHourUsed: 71, weeklyUsed: 92 } });
   await clock(request, slot(0, 11));
@@ -105,10 +108,10 @@ test("quota-denied and overlapping slots are skipped, and the same next agent is
   await request.post("/__test/codex-quota", { data: { fiveHourUsed: 70, weeklyUsed: 92 } });
   await clock(request, slot(0, 11, 5)); expect((await overview(request)).runtime.active).toBeNull();
   await clock(request, slot(0, 19)); await expect.poll(async () => (await overview(request)).runtime.active?.agent.name).toBe(p.agents[0].name);
-  await clock(request, slot(1, 11)); await expect.poll(async () => (await overview(request)).runtime.occurrences[0]?.reason).toContain("précédent");
-  await expect.poll(async () => (await overview(request)).runtime.phase).toBe("scheduled"); expect((await overview(request)).runtime.cursor).toBe(1);
+  await clock(request, slot(1, 11)); await expect.poll(async () => (await overview(request)).runtime.occurrences[0]?.outcome).toBe("queued");
+  await expect.poll(async () => (await overview(request)).runtime.phase).toBe("scheduled"); expect((await overview(request)).runtime.cursor).toBe(2);
   await clock(request, slot(1, 11, 5)); expect((await overview(request)).runtime.active).toBeNull();
-  await clock(request, slot(1, 19)); await expect.poll(async () => (await overview(request)).runtime.active?.agent.name).toBe(p.agents[1].name);
+  await clock(request, slot(1, 19)); await expect.poll(async () => (await overview(request)).runtime.active?.agent.name).toBe(p.agents[2].name);
 });
 test("invalid rules are rejected and Light quota controls save separately", async ({ page, request }) => {
   await page.goto("/?mode=work-light");
@@ -119,4 +122,23 @@ test("invalid rules are rejected and Light quota controls save separately", asyn
   expect((await overview(request)).settings.minimumFiveHourRemainingPercent).toBe(35);
   for (const crons of [[], ["0 25 * * *"], ["0 0 31 2 *"]]) expect((await request.put("/api/work-light/configuration", { data: { agents: [], crons, timezone: "Europe/Paris" } })).status()).toBe(400);
   expect((await request.post("/api/work-light/preview", { data: { cron: "0 12 * * *", timezone: "Invalid" } })).status()).toBe(400);
+});
+
+for (const sameAgent of [false, true]) test(`successive Light slots respect agent identity when parallelism is enabled (sameAgent=${sameAgent})`, async ({ request }) => {
+  const p = await project(request, true);
+  await configure(request, sameAgent ? [p.refs[0]] : p.refs);
+  await request.put("/api/execution-queue/settings", { data: { allowParallelExecutions: true } });
+  await request.post("/api/work-light/start", { data: {} });
+  await clock(request, slot(0, 11));
+  await expect.poll(async () => (await overview(request)).runtime.active?.agent.name).toBe(p.agents[0].name);
+  await clock(request, slot(0, 19));
+  if (sameAgent) {
+    await expect.poll(async () => (await overview(request)).runtime.pending.length).toBe(1);
+    expect((await overview(request)).runtime.activeExecutions.length).toBe(1);
+  } else {
+    await expect.poll(async () => (await overview(request)).runtime.activeExecutions.map((item: any) => item.agent.name)).toEqual([p.agents[0].name, p.agents[1].name]);
+  }
+  await expect.poll(async () => (await overview(request)).runtime.history.filter((item: any) => item.agent.projectId === p.id && item.outcome === "succeeded").length).toBe(2);
+  expect((await overview(request)).runtime.activeExecutions).toEqual([]);
+  expect((await overview(request)).runtime.pending).toEqual([]);
 });

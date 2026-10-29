@@ -2,8 +2,8 @@ import type { WorkForceAgentRef, WorkForceExecution, WorkForceSettings, WorkForc
 import type { CodexQuotaStatus } from "./CodexQuota.ts";
 
 export interface WorkLightConfiguration { agents: WorkForceAgentRef[]; crons: string[]; timezone: string }
-export type WorkLightPhase = "stopped" | "scheduled" | "running" | "stopping" | "failed" | "interrupted";
-export interface WorkLightOccurrence { at: string; outcome: "started" | "skipped"; reason: string | null }
+export type WorkLightPhase = "stopped" | "scheduled" | "queued" | "running" | "stopping" | "failed" | "interrupted";
+export interface WorkLightOccurrence { at: string; outcome: "queued" | "started" | "skipped"; reason: string | null }
 export interface WorkLightRuntime {
   armed: boolean;
   phase: WorkLightPhase;
@@ -12,6 +12,8 @@ export interface WorkLightRuntime {
   lastEvaluatedMinute: number;
   reason: string | null;
   active: WorkForceExecution | null;
+  activeExecutions: WorkForceExecution[];
+  pending: { at: string; agent: WorkForceAgentRef }[];
   history: WorkForceExecution[];
   occurrences: WorkLightOccurrence[];
 }

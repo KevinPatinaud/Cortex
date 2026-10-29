@@ -40,7 +40,8 @@ export function ExecutionConcurrencyPanel() {
       }} /></label>
     <p>{status?.settings.allowParallelExecutions
       ? fr ? "Plusieurs agents différents peuvent travailler en parallèle. Chaque projet organise la coordination de ses ressources et de ses fichiers." : "Different agents can run in parallel. Each project coordinates its resources and files."
-      : fr ? "Un seul agent ou prompt à la fois sur tout Cortex. Les autres attendent leur tour ; Work Light ignore les créneaux occupés." : "Only one agent or prompt runs across Cortex. Others wait their turn; Work Light skips busy slots."}</p>
+      : fr ? "Un seul agent ou prompt à la fois sur tout Cortex. Work Force, Work Light et le mode normal planifié alimentent la même file, dans l’ordre d’arrivée." : "Only one agent or prompt runs across Cortex. Work Force, Work Light and normal schedules join the same queue in arrival order."}</p>
+    <p>{fr ? "Les trois modes peuvent rester activés ensemble. Chacun conserve son rythme et ses seuils de quota." : "All three modes can stay enabled together. Each keeps its own timing and quota thresholds."}</p>
     <p>{fr ? "La désactivation laisse les exécutions en cours terminer. Les attentes de quotas et les horaires futurs ne réservent pas de créneau." : "Disabling lets active executions finish. Quota waits and future schedules do not reserve a slot."}</p>
     {status && <div role="status"><p>{fr ? "En cours" : "Active"} : {status.active.length} · {fr ? "Dans la file globale" : "In the global queue"} : {status.waiting.length}</p>
       {status.waiting.length > 0 && <ol tabIndex={0} aria-label={fr ? "File d’attente globale" : "Global queue"}>{status.waiting.map(entry => <li key={entry.id}>{entry.label} <small>({entry.source})</small></li>)}</ol>}</div>}
