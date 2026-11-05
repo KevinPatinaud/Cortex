@@ -27,6 +27,10 @@ import time
 import urllib.request
 import uuid
 
+# The CLI runs with Python isolated mode; only this installed root-owned directory
+# is added, never a working directory or an environment-provided search path.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 STATE = Path('/var/lib/lunaria-infra')
 DEPLOY_LOCK = Path('/home/kevin/.lunaria-deploy.lock')
 MAINTENANCE_LOCK = Path('/run/lock/lunaria-infra.lock')
@@ -38,7 +42,7 @@ BACKUP_UNITS = {'site': 'lunaria-backup.service', 'mail': 'lunaria-mail-backup.s
 URLS = {'site': 'https://savelunaria.com/', 'backend': 'http://127.0.0.1:8081/actuator/health',
         'cortex': 'http://127.0.0.1:3000/'}
 DOMAINS = ('savelunaria.com', 'cortex.savelunaria.com')
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 
 
 def utc_now():
@@ -211,6 +215,15 @@ def collect():
         add_check(checks, 'system:failed-units', 'unknown', str(error))
     add_check(checks, 'system:reboot-requested', 'warning' if Path('/run/reboot-required').exists() else 'ok',
               'Indicateur système de redémarrage requis ; aucun redémarrage automatique')
+    try:
+        import infra_maintenance
+        pid = infra_maintenance.cortex_pid()
+        current = infra_maintenance.runtime_current(pid)
+        add_check(checks, 'runtime:cortex-node', 'unknown' if pid <= 0 else 'ok' if current else 'warning',
+                  'Comparaison du runtime Cortex avec le binaire Node installé',
+                  usesInstalledBinary=current, plannedActivation=read_state('runtime-restart.json', {}).get('status'))
+    except Exception as error:
+        add_check(checks, 'runtime:cortex-node', 'unknown', str(error))
     previous = read_state('current.json', {})
     old = {item['id']: item for item in previous.get('checks', [])}
     for item in checks:
@@ -437,8 +450,11 @@ def execute_action(action, target=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest='command', required=True)
-    for name in ['version', 'collect', 'status', 'renew-tls', 'clear-stale-exim']:
+    for name in ['version', 'collect', 'status', 'renew-tls', 'clear-stale-exim',
+                 'inventory', 'validate-boot', 'plan-runtime-restart', 'runtime-maintenance']:
         subs.add_parser(name)
+    packages = subs.add_parser('upgrade-packages')
+    packages.add_argument('targets', nargs='+', metavar='PACKAGE=VERSION')
     service = subs.add_parser('repair-service')
     service.add_argument('target', choices=[*SERVICES, 'cortex.service'])
     timer = subs.add_parser('enable-timer')
@@ -458,11 +474,16 @@ def main():
         return
     if os.geteuid() != 0:
         raise PermissionError('Exécuter cet outil via le helper sudo installé')
-    result = collect() if args.command == 'collect' else execute_action(args.command, getattr(args, 'target', None))
+    if args.command in ('inventory', 'validate-boot', 'upgrade-packages', 'plan-runtime-restart', 'runtime-maintenance'):
+        import infra_maintenance
+        result = infra_maintenance.dispatch(args)
+    else:
+        result = collect() if args.command == 'collect' else execute_action(args.command, getattr(args, 'target', None))
     print(json.dumps(result, ensure_ascii=False))
 
 
 if __name__ == '__main__':
+    sys.modules['infra_health'] = sys.modules[__name__]
     try:
         main()
     except Exception as error:
