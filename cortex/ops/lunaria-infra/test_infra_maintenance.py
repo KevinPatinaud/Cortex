@@ -1,10 +1,13 @@
 import contextlib
 import datetime as dt
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -14,6 +17,64 @@ import install_system
 
 
 class MaintenanceTest(unittest.TestCase):
+    def test_unreconciled_package_transaction_is_preserved(self):
+        for status in ['prepared', 'applying', 'failed']:
+            with self.subTest(status=status), patch.object(infra, 'read_state', return_value={'status': status}), \
+                 patch.object(maintenance, 'inventory') as inventory, patch.object(maintenance, 'apt') as apt:
+                with self.assertRaisesRegex(RuntimeError, 'Réconcilier'):
+                    maintenance.upgrade_packages(['tzdata=2026f-0+deb13u1'])
+                inventory.assert_not_called()
+                apt.assert_not_called()
+
+    def test_rollback_prefers_apt_and_never_uses_snapshot_for_node(self):
+        with patch.object(maintenance, 'apt') as apt, patch.object(maintenance.urllib.request, 'urlopen') as network:
+            self.assertEqual(maintenance.prepare_rollback('tzdata', '2026e-0+deb13u1', Path('/unused')),
+                             {'source': 'apt-repository'})
+            network.assert_not_called()
+            apt.side_effect = RuntimeError('old version absent')
+            with self.assertRaisesRegex(RuntimeError, 'old version absent'):
+                maintenance.prepare_rollback('nodejs', '24.22.2-1nodesource1', Path('/unused'))
+            network.assert_not_called()
+
+    def test_cached_rollback_requires_protected_exact_snapshot_binary(self):
+        data = b'cached old package'; version = '2026e-0+deb13u1'
+        digest = hashlib.sha1(data).hexdigest()
+        proof = {'binary': 'tzdata', 'binary_version': version,
+                 'result': [{'architecture': 'all', 'hash': digest}],
+                 'fileinfo': {digest: [{'name': 'tzdata_' + version + '_all.deb',
+                                        'size': len(data), 'archive_name': 'debian'}]}}
+        cases = ['valid', 'bad-hash', 'bad-version', 'bad-size', 'bad-architecture', 'bad-owner', 'writable', 'symlink', 'bad-control']
+        for case in cases:
+            with self.subTest(case=case), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory); cache = root / 'cache'; cache.mkdir(); backup = root / 'backup'; backup.mkdir()
+                path = cache / ('tzdata_' + version + '_all.deb'); path.write_bytes(data)
+                value = json.loads(json.dumps(proof))
+                if case == 'bad-hash': value['result'][0]['hash'] = '0' * 40
+                if case == 'bad-version': value['binary_version'] = 'different'
+                if case == 'bad-size': value['fileinfo'][digest][0]['size'] += 1
+                if case == 'bad-architecture': value['result'][0]['architecture'] = 'arm64'
+                if case == 'symlink':
+                    path.rename(root / 'other'); path.symlink_to(root / 'other')
+                metadata = SimpleNamespace(st_uid=1001 if case == 'bad-owner' else 0,
+                                           st_mode=0o100666 if case == 'writable' else 0o100644)
+                control = 'Package: tzdata\nVersion: ' + version + '\nArchitecture: all'
+                if case == 'bad-control': control = control.replace('tzdata', 'other')
+                with patch.object(maintenance, 'APT_CACHE', cache), \
+                     patch.object(maintenance, 'apt', side_effect=RuntimeError('old version absent')), \
+                     patch.object(maintenance.os, 'fstat', return_value=metadata), \
+                     patch.object(maintenance.urllib.request, 'urlopen', return_value=io.BytesIO(json.dumps(value).encode())) as network, \
+                     patch.object(infra, 'text', return_value=control):
+                    if case == 'valid':
+                        result = maintenance.prepare_rollback('tzdata', version, backup)
+                        self.assertEqual((backup / path.name).read_bytes(), data)
+                        self.assertEqual(result['sha256'], hashlib.sha256(data).hexdigest())
+                        self.assertEqual(result['snapshotSha1'], digest)
+                        network.assert_called_once_with('https://snapshot.debian.org/mr/binary/tzdata/2026e-0%2Bdeb13u1/binfiles?fileinfo=1', timeout=30)
+                    else:
+                        with self.assertRaises((RuntimeError, OSError)):
+                            maintenance.prepare_rollback('tzdata', version, backup)
+                        self.assertEqual(list(backup.iterdir()), [])
+
     def test_only_reviewed_exact_minor_versions_are_allowed(self):
         before = {'packages': {'nodejs': {'installed': '24.21.0-1nodesource1', 'candidate': '24.22.2-1nodesource1'},
                                'tzdata': {'installed': '2026c-0+deb13u1', 'candidate': '2026e-0+deb13u1'}}, 'heldPackages': []}

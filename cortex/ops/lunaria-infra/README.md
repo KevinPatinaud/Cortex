@@ -81,7 +81,14 @@ une vulnérabilité du seul numéro de version.
 versions exactes examinées correspondant aux candidats APT. Une montée majeure
 Node, un paquet retenu, un retrait ou une dépendance supplémentaire annulent
 l’opération. Les sauvegardes récentes sont restaurées en isolation et les anciens
-paquets doivent être téléchargés avec leurs empreintes avant toute installation.
+paquets doivent être conservés avec leurs empreintes avant toute installation.
+Si l’ancienne version de tzdata a quitté les index APT, sa copie root-owned du
+cache APT est acceptée uniquement après vérification de l’identité et concordance
+avec le binaire exact référencé par l’API HTTPS Debian Snapshot (empreinte SHA-1,
+architecture, nom et taille). La provenance et une empreinte SHA-256 locale sont
+conservées. Cette voie ne concerne ni NodeSource ni une archive fournie librement.
+Une transaction préparée, interrompue ou échouée doit être réconciliée avant une
+nouvelle mise à jour ; elle n’est jamais écrasée par une nouvelle tentative.
 `package-maintenance.json` conserve la transaction et son répertoire de retour
 arrière privé. Un échec exige une réconciliation, sans restauration automatique.
 

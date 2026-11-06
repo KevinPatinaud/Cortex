@@ -8,8 +8,10 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import time
+import urllib.parse
 import urllib.request
 from zoneinfo import ZoneInfo
 
@@ -20,6 +22,48 @@ PACKAGES = ('nodejs', 'tzdata', 'linux-image-amd64', 'linux-image-cloud-amd64',
             'rspamd', 'fail2ban', 'certbot', 'openssl', 'systemd', 'libc6')
 RUNTIME_TIMER = 'lunaria-infra-runtime.timer'
 UPDATER_LOCK = Path('/home/kevin/.local/state/cortex-updater/update.lock')
+APT_CACHE = Path('/var/cache/apt/archives')
+
+
+def prepare_rollback(name, version, folder):
+    try:
+        apt(['download', name + '=' + version], cwd=folder)
+        return {'source': 'apt-repository'}
+    except RuntimeError:
+        # Debian drops superseded versions from its current indexes. Never use an
+        # arbitrary local archive: only the installed tzdata from APT's root cache,
+        # independently matched to Debian Snapshot's exact binary identity.
+        if name != 'tzdata':
+            raise
+    cache = APT_CACHE / ('tzdata_' + version + '_all.deb')
+    descriptor = os.open(cache, os.O_RDONLY | os.O_NOFOLLOW)
+    with os.fdopen(descriptor, 'rb') as stream:
+        metadata = os.fstat(stream.fileno())
+        if not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0 or metadata.st_mode & 0o022:
+            raise RuntimeError('Archive APT de retour arrière non protégée')
+        data = stream.read()
+    url = ('https://snapshot.debian.org/mr/binary/tzdata/' +
+           urllib.parse.quote(version, safe='') + '/binfiles?fileinfo=1')
+    with urllib.request.urlopen(url, timeout=30) as response:
+        proof = json.load(response)
+    digest = hashlib.sha1(data).hexdigest()
+    info = proof.get('fileinfo', {}).get(digest, [])
+    if (proof.get('binary') != name or proof.get('binary_version') != version or
+            not any(row.get('architecture') == 'all' and row.get('hash') == digest
+                    for row in proof.get('result', [])) or
+            not any(row.get('name') == cache.name and row.get('size') == len(data) and
+                    row.get('archive_name') == 'debian' for row in info)):
+        raise RuntimeError('Archive APT absente ou différente de Debian Snapshot')
+    destination = folder / cache.name
+    destination.write_bytes(data)
+    destination.chmod(0o600)
+    identity = infra.text(['dpkg-deb', '-f', str(destination), 'Package', 'Version', 'Architecture'])
+    if identity.splitlines() != ['Package: tzdata', 'Version: ' + version, 'Architecture: all']:
+        destination.unlink()
+        raise RuntimeError('Identité du paquet de retour arrière incorrecte')
+    return {'source': 'root-apt-cache-verified-with-debian-snapshot', 'url': url,
+            'snapshotSha1': digest, 'sha256': hashlib.sha256(data).hexdigest(),
+            'verifiedAt': infra.utc_now()}
 
 
 def cortex_pid():
@@ -105,6 +149,9 @@ def validate_apt_plan(plan, selected):
 
 
 def upgrade_packages(targets):
+    previous = infra.read_state('package-maintenance.json', {})
+    if previous.get('status') in ('prepared', 'applying', 'failed'):
+        raise RuntimeError('Réconcilier la transaction de paquets précédente avant toute nouvelle mise à jour')
     before = inventory()
     if not before['dpkgAuditClean']:
         raise RuntimeError('Résoudre l’état dpkg avant une mise à jour')
@@ -117,11 +164,11 @@ def upgrade_packages(targets):
     validate_apt_plan(apt(['--simulate', *options, 'install', *exact]), selected)
     folder = infra.STATE / 'package-backups' / dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     folder.mkdir(parents=True, mode=0o700)
-    # Both old and new signed repository packages must be obtainable before mutation.
-    apt(['download', *[name + '=' + before['packages'][name]['installed'] for name in selected]], cwd=folder)
+    # Preserve independently verified old packages before any installed-file change.
+    sources = {name: prepare_rollback(name, before['packages'][name]['installed'], folder) for name in selected}
     apt(['--download-only', '--assume-yes', *options, 'install', *exact])
     transaction = {'startedAt': infra.utc_now(), 'status': 'prepared', 'before': before,
-                   'selected': selected, 'rollbackDirectory': str(folder),
+                   'selected': selected, 'rollbackDirectory': str(folder), 'rollbackSources': sources,
                    'rollbackSha256': {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in folder.glob('*.deb')}}
     if len(transaction['rollbackSha256']) != len(selected):
         raise RuntimeError('Paquets de retour arrière incomplets')
