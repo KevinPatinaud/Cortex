@@ -42,7 +42,7 @@ BACKUP_UNITS = {'site': 'lunaria-backup.service', 'mail': 'lunaria-mail-backup.s
 URLS = {'site': 'https://savelunaria.com/', 'backend': 'http://127.0.0.1:8081/actuator/health',
         'cortex': 'http://127.0.0.1:3000/'}
 DOMAINS = ('savelunaria.com', 'cortex.savelunaria.com')
-VERSION = '1.1.0'
+VERSION = '1.2.0'
 
 
 def utc_now():
@@ -92,10 +92,17 @@ def atomic_json(path, value):
         with os.fdopen(fd, 'w', encoding='utf-8') as stream:
             json.dump(value, stream, ensure_ascii=False, indent=2)
             stream.write('\n')
+            stream.flush()
+            os.fsync(stream.fileno())
         os.chmod(temporary, 0o640)
         if os.geteuid() == 0:
             os.chown(temporary, 0, pwd.getpwnam('kevin').pw_gid)
         os.replace(temporary, path)
+        directory = os.open(path.parent, os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
@@ -451,7 +458,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     subs = parser.add_subparsers(dest='command', required=True)
     for name in ['version', 'collect', 'status', 'renew-tls', 'clear-stale-exim',
-                 'inventory', 'validate-boot', 'plan-runtime-restart', 'runtime-maintenance']:
+                 'inventory', 'validate-boot', 'plan-runtime-restart', 'runtime-maintenance',
+                 'service-refresh-inventory', 'plan-service-refresh', 'service-refresh-maintenance']:
         subs.add_parser(name)
     packages = subs.add_parser('upgrade-packages')
     packages.add_argument('targets', nargs='+', metavar='PACKAGE=VERSION')
@@ -474,7 +482,16 @@ def main():
         return
     if os.geteuid() != 0:
         raise PermissionError('Exécuter cet outil via le helper sudo installé')
-    if args.command in ('inventory', 'validate-boot', 'upgrade-packages', 'plan-runtime-restart', 'runtime-maintenance'):
+    if args.command.startswith('service-refresh-') or args.command == 'plan-service-refresh':
+        import infra_service_refresh
+        if args.command == 'service-refresh-maintenance':
+            result = infra_service_refresh.run()
+        elif args.command == 'service-refresh-inventory':
+            result = infra_service_refresh.inventory()
+        else:
+            with maintenance_lock():
+                result = infra_service_refresh.plan()
+    elif args.command in ('inventory', 'validate-boot', 'upgrade-packages', 'plan-runtime-restart', 'runtime-maintenance'):
         import infra_maintenance
         result = infra_maintenance.dispatch(args)
     else:

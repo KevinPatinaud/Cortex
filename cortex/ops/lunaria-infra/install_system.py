@@ -23,6 +23,8 @@ BOOT_UNIT = UNIT.with_name('lunaria-infra-boot.service')
 BOOT_TIMER = TIMER.with_name('lunaria-infra-boot.timer')
 RUNTIME_UNIT = UNIT.with_name('lunaria-infra-runtime.service')
 RUNTIME_TIMER = TIMER.with_name('lunaria-infra-runtime.timer')
+SERVICES_UNIT = UNIT.with_name('lunaria-infra-services.service')
+SERVICES_TIMER = TIMER.with_name('lunaria-infra-services.timer')
 RESOLVER = Path('/etc/systemd/resolved.conf.d/70-lunaria-infra.conf')
 RESOLVER_TEXT = '''# Managed by Cortex ops/lunaria-infra/install_system.py
 [Resolve]
@@ -112,6 +114,10 @@ Unit=lunaria-infra-runtime.service
 [Install]
 WantedBy=timers.target
 '''
+SERVICES_SERVICE_TEXT = RUNTIME_SERVICE_TEXT.replace('Node runtime activation', 'system library activation').replace(
+    'runtime-maintenance', 'service-refresh-maintenance').replace('TimeoutStartSec=300', 'TimeoutStartSec=600')
+SERVICES_TIMER_TEXT = RUNTIME_TIMER_TEXT.replace('runtime maintenance plan', 'system library maintenance plan').replace(
+    'lunaria-infra-runtime.service', 'lunaria-infra-services.service')
 
 
 def resolver_query():
@@ -210,9 +216,11 @@ def install_locked(harden_resolver):
     source = Path(__file__).parent / 'infra_health.py'
     files = {LIBRARY / 'infra_health.py': (source.read_text(), 0o644), HELPER: (HELPER_TEXT, 0o755),
              LIBRARY / 'infra_maintenance.py': ((source.parent / 'infra_maintenance.py').read_text(), 0o644),
+             LIBRARY / 'infra_service_refresh.py': ((source.parent / 'infra_service_refresh.py').read_text(), 0o644),
              UNIT: (SERVICE_TEXT, 0o644), TIMER: (TIMER_TEXT, 0o644),
              BOOT_UNIT: (BOOT_SERVICE_TEXT, 0o644), BOOT_TIMER: (BOOT_TIMER_TEXT, 0o644),
-             RUNTIME_UNIT: (RUNTIME_SERVICE_TEXT, 0o644), RUNTIME_TIMER: (RUNTIME_TIMER_TEXT, 0o644)}
+             RUNTIME_UNIT: (RUNTIME_SERVICE_TEXT, 0o644), RUNTIME_TIMER: (RUNTIME_TIMER_TEXT, 0o644),
+             SERVICES_UNIT: (SERVICES_SERVICE_TEXT, 0o644), SERVICES_TIMER: (SERVICES_TIMER_TEXT, 0o644)}
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')
     backup = STATE / 'installation-backups' / stamp
     backup.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -232,7 +240,8 @@ def install_locked(harden_resolver):
         os.chmod(temporary, mode)
         os.replace(temporary, target)
         changed.append(str(target))
-    subprocess.run(['systemd-analyze', 'verify', *map(str, [UNIT, TIMER, BOOT_UNIT, BOOT_TIMER, RUNTIME_UNIT, RUNTIME_TIMER])], check=True, capture_output=True)
+    subprocess.run(['systemd-analyze', 'verify', *map(str, [UNIT, TIMER, BOOT_UNIT, BOOT_TIMER, RUNTIME_UNIT, RUNTIME_TIMER,
+                                                        SERVICES_UNIT, SERVICES_TIMER])], check=True, capture_output=True)
     subprocess.run(['systemctl', 'daemon-reload'], check=True)
     subprocess.run(['systemctl', 'enable', '--now', TIMER.name], check=True, capture_output=True)
     subprocess.run(['systemctl', 'enable', '--now', BOOT_TIMER.name], check=True, capture_output=True)
@@ -243,7 +252,8 @@ def install_locked(harden_resolver):
     print(json.dumps({'helper': str(HELPER), 'passiveProbeTimer': TIMER.name, 'probeInterval': '5min',
         'changed': changed, 'rootToolSha256': hashlib.sha256((LIBRARY / 'infra_health.py').read_bytes()).hexdigest(),
         'resolverHardened': harden_resolver, 'bootValidationTimer': BOOT_TIMER.name,
-        'runtimeTimerEnabledByExplicitPlanOnly': True, 'newSudoPrivileges': False}))
+        'runtimeTimerEnabledByExplicitPlanOnly': True, 'serviceRefreshTimer': SERVICES_TIMER.name,
+        'serviceRefreshTimerEnabledByExplicitPlanOnly': True, 'newSudoPrivileges': False}))
 
 
 if __name__ == '__main__':

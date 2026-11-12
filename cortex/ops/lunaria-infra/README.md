@@ -11,6 +11,8 @@ sans envoi externe et sans réparation automatique entre les passages.
   actions explicitement délimitées. Installé root-owned sous `/usr/local/lib/lunaria-infra`.
 - `infra_maintenance.py` : inventaire, mises à jour examinées de Node/tzdata,
   activation différée du runtime et validation persistante après démarrage.
+- `infra_service_refresh.py` : activation planifiée des bibliothèques système
+  déjà installées, avec validation et reprise persistante par service.
 - `install_system.py` : installe le helper et la sonde avec les droits sudo déjà
   disponibles ; n’ajoute aucune règle sudo ni permission administrative générale.
 - `infra_agent.py` : lecture de l’état et préflight sans condition de santé du site.
@@ -22,7 +24,7 @@ sans envoi externe et sans réparation automatique entre les passages.
 
 ```sh
 cd /home/kevin/Cortex/cortex/ops/lunaria-infra
-PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test_infra_health.py test_infra_maintenance.py
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest -v test_infra_health.py test_infra_maintenance.py test_infra_service_refresh.py
 sudo -n python3 install_system.py
 python3 install.py
 ```
@@ -103,6 +105,30 @@ interrompu n’est jamais rejoué aveuglément ; consulter `runtime-restart.json
 démarrage, sans réparer ni provoquer de reboot. Le résultat et le noyau actif
 restent dans `boot-validation.json`. Un reboot nécessaire reste une intervention
 distincte avec récupération indépendante vérifiée et validation du retour.
+
+`service-refresh-inventory` observe les mappings supprimés sous `/usr` et `/lib`
+des processus principaux de PostgreSQL 17, Dovecot, Rspamd, Fail2ban et SSH.
+`plan-service-refresh` programme uniquement les services concernés dans la
+prochaine fenêtre 04:40–05:30 Europe/Paris. Le timer systemd dédié reste désactivé
+sans plan explicite et exécute `service-refresh-maintenance` indépendamment de
+Cortex. Les transactions de paquets et les résultats par service sont privés.
+
+Le worker reprend les verrous maintenance/déploiement/mise à jour Cortex et les
+verrous POSIX APT/dpkg. Il vérifie les restaurations isolées récentes, le repos de
+Cortex, des sauvegardes, de Certbot et des transactions PostgreSQL, puis toutes
+les configurations avant action. Il ne redémarre pas Cortex. SSH reçoit seulement
+un reload validé, qui réexécute son listener sans interrompre les sessions
+existantes ([OpenSSH](https://man.openbsd.org/sshd.8)). Les autres services sont
+redémarrés un par un, avec validation des nouveaux mappings et de la santé
+applicative ; SSH exige aussi une bannière sur le port 22. Cette bannière ne
+prouve pas une nouvelle authentification et les sessions SSH existantes ne sont
+pas forcées à charger les nouvelles bibliothèques.
+
+L'état `service-refresh.json` est synchronisé sur disque avant chaque action.
+Une opération interrompue ou un échec après action arrête le plan et exige une
+réconciliation ; une précondition occupée diffère l'opération, puis la fenêtre
+expire sans report automatique au lendemain. La sonde cinq minutes reste passive
+et le reboot reste une opération séparée avec récupération indépendante.
 
 L’option d’installation `--harden-resolver` désactive LLMNR et mDNS par un
 [drop-in systemd-resolved](https://www.freedesktop.org/software/systemd/man/257/resolved.conf.html#LLMNR=).
