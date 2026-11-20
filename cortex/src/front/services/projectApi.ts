@@ -18,7 +18,7 @@ export interface DeleteProjectResponse {
 
 export type CreateProjectInput = {
   name: string;
-  engine: "codex" | "claude" | "copilot";
+  engine: "codex" | "claude" | "copilot" | "gemini";
 } & (
   | { generationMode?: "ai"; description: string }
   | { generationMode: "empty"; instructions?: string }

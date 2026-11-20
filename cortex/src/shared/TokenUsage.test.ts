@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { addTokenUsage, claudeTokenUsage, codexTokenUsage, tokenUsage } from "./TokenUsage.ts";
+import { addTokenUsage, claudeTokenUsage, codexTokenUsage, geminiTokenUsage, tokenUsage } from "./TokenUsage.ts";
 
 test("native cache and reasoning breakdowns do not get counted twice", () => {
   assert.deepEqual(codexTokenUsage({ input_tokens: 100, cached_input_tokens: 80, output_tokens: 20, reasoning_output_tokens: 5 }),
     { inputTokens: 100, outputTokens: 20, totalTokens: 120, cachedInputTokens: 80, reasoningOutputTokens: 5 });
   assert.deepEqual(claudeTokenUsage({ input_tokens: 10, cache_read_input_tokens: 80, cache_creation_input_tokens: 10, output_tokens: 20 }),
     { inputTokens: 100, outputTokens: 20, totalTokens: 120, cachedInputTokens: 80, cacheWriteInputTokens: 10 });
+  assert.deepEqual(geminiTokenUsage({ input_tokens: 100, cache_read_tokens: 60, output_tokens: 20, thinking_tokens: 4, total_tokens: 120 }),
+    { inputTokens: 100, outputTokens: 20, totalTokens: 120, cachedInputTokens: 60, reasoningOutputTokens: 4 });
 });
 
 test("missing counters stay unavailable while measured zero is retained", () => {

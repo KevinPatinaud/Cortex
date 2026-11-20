@@ -67,7 +67,7 @@ export function assertProjectFileManifest(
     }
   }
   if (total > maximumProjectBytes) throw new TypeError("The project exceeds the 100 MB limit.");
-  if (!paths.has("agents.md") && !paths.has("claude.md")) {
-    throw new TypeError("The selected folder must contain AGENTS.md or CLAUDE.md at its root.");
+  if (!paths.has("agents.md") && !paths.has("claude.md") && !paths.has("gemini.md")) {
+    throw new TypeError("The selected folder must contain AGENTS.md, CLAUDE.md, or GEMINI.md at its root.");
   }
 }

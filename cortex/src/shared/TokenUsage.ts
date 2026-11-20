@@ -48,3 +48,7 @@ export function claudeTokenUsage(raw: any): TokenUsage | undefined {
   return tokenUsage(raw.input_tokens + (count(raw.cache_read_input_tokens) ?? 0) + (count(raw.cache_creation_input_tokens) ?? 0),
     raw.output_tokens, raw.cache_read_input_tokens, raw.cache_creation_input_tokens, raw.output_tokens_details?.thinking_tokens);
 }
+
+export function geminiTokenUsage(raw: any): TokenUsage | undefined {
+  return tokenUsage(raw?.input_tokens, raw?.output_tokens, raw?.cache_read_tokens, undefined, raw?.thinking_tokens);
+}

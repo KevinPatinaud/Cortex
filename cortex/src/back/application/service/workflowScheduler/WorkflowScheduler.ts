@@ -271,7 +271,7 @@ export class WorkflowScheduler {
     this.pendingRuns.set(projectId, pending);
     pending.add(controller);
     try {
-      await this.agentUseCase.assertScheduledQuota?.();
+      await this.agentUseCase.assertScheduledQuota?.(projectId);
       controller.signal.throwIfAborted();
       if (this.isSuspended()) throw new ExecutionWorkspaceBusyError(this.suspensionReason());
       const project = (await this.projectUseCase.getProjects()).find(

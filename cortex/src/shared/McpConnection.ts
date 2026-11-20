@@ -1,4 +1,4 @@
-export type McpConnectionEngine = "codex" | "claude" | "copilot";
+export type McpConnectionEngine = "codex" | "claude" | "copilot" | "gemini";
 
 export type McpConnectionScope = "user" | "project" | "local";
 

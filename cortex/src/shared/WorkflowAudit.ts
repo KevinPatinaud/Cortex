@@ -55,7 +55,7 @@ export interface WorkflowAuditAgentExecution {
   agentName: string;
   threadId: string;
   attempt: number;
-  engine: "codex" | "claude" | "copilot";
+  engine: "codex" | "claude" | "copilot" | "gemini";
   model: string | null;
   reasoningEffort: string | null;
   startedAt: string;
@@ -73,7 +73,7 @@ export interface WorkflowAuditAgentExecution {
 export interface WorkflowAuditRunDetail extends WorkflowAuditRunSummary {
   parameterValues: Record<string, string>;
   workflowSnapshot: {
-    engine: "codex" | "claude" | "copilot";
+    engine: "codex" | "claude" | "copilot" | "gemini";
     instructions: string | null;
     agents: Array<{
       id: string;

@@ -1,5 +1,5 @@
 import { boundedExecutionTrace, type ExecutionTraceInput } from "../../../../shared/ExecutionTrace.ts";
-import { codexTokenUsage, claudeTokenUsage, type TokenUsage } from "../../../../shared/TokenUsage.ts";
+import { codexTokenUsage, claudeTokenUsage, geminiTokenUsage, type TokenUsage } from "../../../../shared/TokenUsage.ts";
 type TraceReporter = (entry: ExecutionTraceInput) => void;
 
 /** Keep live previews bounded; the journal is retained separately. */
@@ -90,6 +90,75 @@ export function createClaudeProgress(onProgress?: (text: string) => void, onTrac
           if (message.result !== lastMessage) onTrace?.(boundedExecutionTrace({ kind: "message", content: message.result }));
         } else {
           onProgress?.("");
+        }
+      } catch { /* Ignore diagnostics mixed into the event stream. */ }
+    }
+    if (pending.length > 10 * 1024 * 1024) pending = "";
+  };
+}
+
+export function createGeminiProgress(
+  onProgress?: (text: string) => void,
+  onSessionId?: (sessionId: string) => void,
+  onTrace?: TraceReporter,
+  onUsage?: (usage: TokenUsage) => void
+) {
+  let pending = "";
+  let currentStepText = "";
+  let lastMessage = "";
+  const reportText = createTextProgress(onProgress);
+  return (chunk: string): void => {
+    pending += chunk;
+    let newline: number;
+    while ((newline = pending.indexOf("\n")) !== -1) {
+      const line = pending.slice(0, newline);
+      pending = pending.slice(newline + 1);
+      try {
+        const message = JSON.parse(line);
+        const conversationId = message.conversation_id
+          ?? message.result?.conversation_id
+          ?? message.step_update?.conversation_id;
+        if (typeof conversationId === "string" && conversationId.trim()) {
+          onSessionId?.(conversationId);
+        }
+        if (message.event === "step_update" && message.step_update) {
+          const step = message.step_update;
+          if (step.step_type === "agent_response") {
+            if (typeof step.text_delta === "string" && step.text_delta) {
+              currentStepText += step.text_delta;
+              reportText(step.text_delta);
+            }
+            if (step.state === "DONE" && currentStepText.trim()) {
+              lastMessage = currentStepText.trim();
+              onTrace?.(boundedExecutionTrace({ kind: "message", content: lastMessage }));
+              currentStepText = "";
+            }
+          } else if (
+            onTrace &&
+            step.step_type &&
+            !["user_input", "finish"].includes(step.step_type) &&
+            (step.state === "ACTIVE" || step.state === "DONE")
+          ) {
+            const detail = typeof step.text_delta === "string" && step.text_delta.trim()
+              ? step.text_delta.trim()
+              : JSON.stringify(step, null, 2);
+            onTrace(boundedExecutionTrace({ kind: "tool", content: `${step.step_type} · ${step.state}\n${detail}` }));
+          }
+        } else if (message.event === "result" && message.result) {
+          const result = message.result;
+          const usage = geminiTokenUsage(result.usage);
+          if (usage) onUsage?.(usage);
+          if (typeof result.response === "string" && result.response.trim()) {
+            const trimmed = result.response.trim();
+            onProgress?.(trimmed.slice(-4_000));
+            if (trimmed !== lastMessage) {
+              lastMessage = trimmed;
+              onTrace?.(boundedExecutionTrace({ kind: "message", content: trimmed }));
+            }
+          }
+          if (typeof result.error === "string" && result.error.trim()) {
+            onTrace?.(boundedExecutionTrace({ kind: "status", content: result.error.trim() }));
+          }
         }
       } catch { /* Ignore diagnostics mixed into the event stream. */ }
     }

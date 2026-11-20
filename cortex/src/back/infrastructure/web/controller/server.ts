@@ -17,6 +17,7 @@ import { readCodexRateLimits } from "../../../application/service/iaService/Code
 import { ClaudeAgentProvider } from "../../../application/service/iaService/providers/ClaudeAgentProvider.ts";
 import { CodexAgentProvider } from "../../../application/service/iaService/providers/CodexAgentProvider.ts";
 import { CopilotAgentProvider } from "../../../application/service/iaService/providers/CopilotAgentProvider.ts";
+import { GeminiAgentProvider } from "../../../application/service/iaService/providers/GeminiAgentProvider.ts";
 import { DirectoryPickerService } from "../../../application/service/projectService/DirectoryPickerService.ts";
 import { ProjectService } from "../../../application/service/projectService/ProjectService.ts";
 import { AgentUseCase } from "../../../application/usecase/AgentUseCase.ts";
@@ -80,7 +81,8 @@ const codexUpdates = new CodexUpdateService(codexRuntimeDirectory(), () => codex
 const agentService = new AgentService([
   new CodexAgentProvider(workspaceDirectory),
   new ClaudeAgentProvider(workspaceDirectory),
-  new CopilotAgentProvider(agentToolRegistry, mcpConfigurationService)
+  new CopilotAgentProvider(agentToolRegistry, mcpConfigurationService),
+  new GeminiAgentProvider(workspaceDirectory)
 ], agentConfigurationService, mcpConfigurationService, codexPluginService,
 new CodexModelService(workspaceDirectory, undefined, codexUpdates), executionQueue);
 const directoryPickerService = new DirectoryPickerService();

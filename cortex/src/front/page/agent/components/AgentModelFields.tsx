@@ -41,7 +41,11 @@ export function AgentModelFields({ engine, projectId, model, reasoningEffort, di
   const models = catalog?.models ?? [];
   const current = models.find(candidate => candidate.model === (model || catalog?.defaultModel));
   const modelMissing = Boolean(model && catalog?.available && !models.some(candidate => candidate.model === model));
-  const efforts = engine === "codex" ? current?.reasoningEfforts ?? [] : ["low", "medium", "high", "xhigh"];
+  const efforts = engine === "codex"
+    ? current?.reasoningEfforts ?? []
+    : engine === "gemini"
+      ? ["low", "medium", "high", "xhigh", "max"]
+      : ["low", "medium", "high", "xhigh"];
   const effortMissing = Boolean(reasoningEffort && !efforts.includes(reasoningEffort));
   function effortLabel(effort: string) {
     switch (effort) {
@@ -75,6 +79,16 @@ export function AgentModelFields({ engine, projectId, model, reasoningEffort, di
           <input value={model} disabled={disabled} placeholder={t("editor.defaultModel")} list={listId}
             onChange={event => onChange({ model: event.target.value })} />
           {engine === "claude" && <datalist id={listId}>{["sonnet", "opus", "haiku"].map(value => <option value={value} key={value} />)}</datalist>}
+          {engine === "gemini" && <datalist id={listId}>{[
+            "gemini-4-argon-medium",
+            "gemini-4-argon-high",
+            "gemini-4-argon-low",
+            "gemini-4-neon-high",
+            "gemini-4-neon-medium",
+            "gemini-3.8-flash-medium",
+            "gemini-3.8-flash-low",
+            "gemini-3.8-flash-high"
+          ].map(value => <option value={value} key={value} />)}</datalist>}
         </>}
       </label>
       {engine === "codex" && <div className="agent-model-fields__catalog">

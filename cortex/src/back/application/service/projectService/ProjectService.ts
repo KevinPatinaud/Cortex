@@ -64,7 +64,7 @@ export interface DeleteProjectResult {
   deleted: boolean;
 }
 
-export type ProjectAgentEngine = "codex" | "claude" | "copilot";
+export type ProjectAgentEngine = "codex" | "claude" | "copilot" | "gemini";
 
 export interface EditableProjectAgent {
   id?: string;
@@ -108,8 +108,8 @@ export interface UploadedProjectFile {
 
 
 interface AgentFileConfiguration {
-  rootDirectory: ".codex" | ".claude" | ".github";
-  instructionsFileName: "AGENTS.md" | "CLAUDE.md";
+  rootDirectory: ".codex" | ".claude" | ".github" | ".gemini";
+  instructionsFileName: "AGENTS.md" | "CLAUDE.md" | "GEMINI.md";
   extension: ".toml" | ".md" | ".agent.md";
 }
 
@@ -131,6 +131,11 @@ const agentFileConfigurations: Record<
     rootDirectory: ".github",
     instructionsFileName: "AGENTS.md",
     extension: ".agent.md"
+  },
+  gemini: {
+    rootDirectory: ".gemini",
+    instructionsFileName: "GEMINI.md",
+    extension: ".md"
   }
 };
 
@@ -1070,7 +1075,7 @@ export class ProjectService {
       `description: ${JSON.stringify(agent.description)}`,
       ...(agent.model ? [`model: ${JSON.stringify(agent.model)}`] : []),
       ...(agent.reasoningEffort
-        ? [`${engine === "claude" ? "effort" : "reasoning-effort"}: ${JSON.stringify(agent.reasoningEffort)}`]
+        ? [`${engine === "claude" || engine === "gemini" ? "effort" : "reasoning-effort"}: ${JSON.stringify(agent.reasoningEffort)}`]
         : []),
       "---",
       agent.prompt.trim(),

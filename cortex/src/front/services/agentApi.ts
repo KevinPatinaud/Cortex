@@ -48,7 +48,7 @@ export type {
   WorkflowAuditTrigger
 } from "../../shared/WorkflowAudit.ts";
 
-export type AgentEngine = "codex" | "claude" | "copilot";
+export type AgentEngine = "codex" | "claude" | "copilot" | "gemini";
 
 export interface AgentStatus {
   engine: AgentEngine | null;

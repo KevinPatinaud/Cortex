@@ -425,7 +425,7 @@ export class ProjectUseCase {
   }
 
   private getAgentEngine(value: unknown): ProjectAgentEngine {
-    if (value !== "codex" && value !== "claude" && value !== "copilot") {
+    if (value !== "codex" && value !== "claude" && value !== "copilot" && value !== "gemini") {
       throw new ValidationError("The selected agent engine is invalid.");
     }
 

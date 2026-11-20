@@ -13,6 +13,7 @@ async function withFixture(
       codexConfigurationFile: string;
       claudeConfigurationFile: string;
       copilotConfigurationFile: string;
+      geminiConfigurationFile: string;
     }
   ) => Promise<void>
 ): Promise<void> {
@@ -21,6 +22,7 @@ async function withFixture(
   const codexConfigurationFile = path.join(directory, "codex.toml");
   const claudeConfigurationFile = path.join(directory, "claude.json");
   const copilotConfigurationFile = path.join(directory, "copilot.json");
+  const geminiConfigurationFile = path.join(directory, "gemini.json");
 
   try {
     await mkdir(path.join(projectDirectory, ".github"), { recursive: true });
@@ -64,11 +66,13 @@ async function withFixture(
     await assertion(new McpConfigurationService({
       codexConfigurationFile,
       claudeConfigurationFile,
-      copilotConfigurationFile
+      copilotConfigurationFile,
+      geminiConfigurationFile
     }), projectDirectory, {
       codexConfigurationFile,
       claudeConfigurationFile,
-      copilotConfigurationFile
+      copilotConfigurationFile,
+      geminiConfigurationFile
     });
   } finally {
     await rm(directory, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 
 import type { ExecutionProfile } from "../../../../shared/ExecutionQuality.ts";
-export type AgentEngine = "codex" | "claude" | "copilot";
+export type AgentEngine = "codex" | "claude" | "copilot" | "gemini";
 
 export interface AgentConfiguration {
   autopilot: boolean;

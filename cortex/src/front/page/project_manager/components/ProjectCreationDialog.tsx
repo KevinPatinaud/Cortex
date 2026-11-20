@@ -38,7 +38,8 @@ const engines: Array<{
 }> = [
   { id: "codex", label: "Codex", detail: "Agents TOML", root: ".codex" },
   { id: "claude", label: "Claude", detail: "Agents Markdown", root: ".claude" },
-  { id: "copilot", label: "Copilot", detail: "Agents GitHub", root: ".github" }
+  { id: "copilot", label: "Copilot", detail: "Agents GitHub", root: ".github" },
+  { id: "gemini", label: "Gemini", detail: "Agents Markdown", root: ".gemini" }
 ];
 
 export function ProjectCreationDialog({
@@ -281,7 +282,7 @@ export function ProjectCreationDialog({
             <ul>
               <li>
                 <Code2 aria-hidden="true" size={15} />
-                {engine === "claude" ? "CLAUDE.md" : "AGENTS.md"}
+                {engine === "claude" ? "CLAUDE.md" : engine === "gemini" ? "GEMINI.md" : "AGENTS.md"}
               </li>
               <li>
                 <Folder aria-hidden="true" size={15} />

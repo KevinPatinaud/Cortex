@@ -97,3 +97,15 @@ test("model discovery stays available while an update is pending and uses the up
   f.busy(false); f.advance(30_000); await f.service.check();
   assert.equal((await modelService.getCatalog()).cliVersion, "9.2.0");
 });
+
+test("old Codex runtime versions beyond active and one previous release are automatically pruned", async t => {
+  const f = await fixture(t);
+  for (const stale of ["8.0.0", "9.0.0"]) {
+    const file = managedCodexCommand(f.root, stale).args[0];
+    await mkdir(path.dirname(file), { recursive: true });
+    await writeFile(file, "stale");
+  }
+  assert.equal((await f.service.check()).state, "updated");
+  const remaining = (await readdir(path.join(f.root, "versions"))).sort();
+  assert.deepEqual(remaining, ["9.1.0", "9.2.0"]);
+});

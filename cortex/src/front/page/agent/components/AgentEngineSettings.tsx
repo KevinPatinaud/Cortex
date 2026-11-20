@@ -658,10 +658,12 @@ function McpConnectionItem({
       ? "Codex"
       : connection.source === "claude"
         ? "Claude"
-        : "Copilot";
+        : connection.source === "gemini"
+          ? "Gemini"
+          : "Copilot";
   const scopeLabel = t(`mcp.scope.${connection.scope}`);
   const configuredFor = connection.configuredFor.map((engine) =>
-    engine === "codex" ? "Codex" : engine === "claude" ? "Claude" : "Copilot"
+    engine === "codex" ? "Codex" : engine === "claude" ? "Claude" : engine === "gemini" ? "Gemini" : "Copilot"
   ).join(" + ");
 
   return (

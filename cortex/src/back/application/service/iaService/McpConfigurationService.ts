@@ -31,6 +31,7 @@ interface McpConfigurationPaths {
   codexConfigurationFile: string;
   claudeConfigurationFile: string;
   copilotConfigurationFile: string;
+  geminiConfigurationFile: string;
 }
 
 interface ConfigurationSource {
@@ -42,7 +43,7 @@ interface ConfigurationSource {
   selectServers: (configuration: JsonRecord) => unknown;
 }
 
-const ALL_ENGINES: McpConnectionEngine[] = ["codex", "claude", "copilot"];
+const ALL_ENGINES: McpConnectionEngine[] = ["codex", "claude", "copilot", "gemini"];
 
 export class McpConfigurationService {
   private readonly paths: McpConfigurationPaths;
@@ -65,6 +66,10 @@ export class McpConfigurationService {
       copilotConfigurationFile: paths.copilotConfigurationFile ?? (
         process.env.CORTEX_COPILOT_MCP_CONFIG?.trim() ||
         path.join(copilotHome, "mcp-config.json")
+      ),
+      geminiConfigurationFile: paths.geminiConfigurationFile ?? (
+        process.env.CORTEX_GEMINI_MCP_CONFIG?.trim() ||
+        path.join(homeDirectory, ".gemini", "config", "mcp_config.json")
       )
     };
   }
@@ -259,6 +264,14 @@ export class McpConfigurationService {
         scope: "user",
         configurationFile: this.paths.copilotConfigurationFile,
         configuredFor: ["copilot"],
+        format: "json",
+        selectServers: (configuration) => configuration.mcpServers
+      },
+      {
+        source: "gemini",
+        scope: "user",
+        configurationFile: this.paths.geminiConfigurationFile,
+        configuredFor: ["gemini"],
         format: "json",
         selectServers: (configuration) => configuration.mcpServers
       }
@@ -472,7 +485,9 @@ export class McpConfigurationService {
       ? this.paths.codexConfigurationFile
       : engine === "claude"
         ? this.paths.claudeConfigurationFile
-        : this.paths.copilotConfigurationFile;
+        : engine === "gemini"
+          ? this.paths.geminiConfigurationFile
+          : this.paths.copilotConfigurationFile;
   }
 
   private async getRequiredMachineConnectionSummary(
@@ -586,7 +601,7 @@ function parseMachineConnectionInput(
 }
 
 function normalizeEngine(value: unknown): McpConnectionEngine {
-  if (value === "codex" || value === "claude" || value === "copilot") {
+  if (value === "codex" || value === "claude" || value === "copilot" || value === "gemini") {
     return value;
   }
 
@@ -836,7 +851,7 @@ function toConnectionSummary(
     configurationFile: source.configurationFile,
     configuredFor: [...source.configuredFor],
     compatibleEngines: transport === "sse"
-      ? ["claude", "copilot"]
+      ? ["claude", "copilot", "gemini"]
       : [...ALL_ENGINES],
     hasAuthentication: hasAuthenticationConfiguration(value),
     manageable: source.scope === "user" && source.source !== "shared"

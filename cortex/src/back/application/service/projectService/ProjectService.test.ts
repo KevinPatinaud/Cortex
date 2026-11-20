@@ -374,7 +374,7 @@ test("exige un fichier d'instructions à la racine lors d'un import", async () =
       service.importProject("Projet", [
         { relativePath: "src/index.ts", content: Buffer.from("export {}") }
       ]),
-      /AGENTS\.md or CLAUDE\.md/
+      /AGENTS\.md, CLAUDE\.md, or GEMINI\.md/
     );
     assert.deepEqual(await readdir(parentDirectory), []);
   });

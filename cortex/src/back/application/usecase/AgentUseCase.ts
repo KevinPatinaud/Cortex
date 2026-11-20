@@ -272,8 +272,8 @@ type ProjectDirectory = ProjectContentOutput["root"];
 
 interface AgentProjectConfiguration {
   engine: AgentEngine;
-  rootDirectory: ".codex" | ".claude" | ".github";
-  instructionsFileName: "AGENTS.md" | "CLAUDE.md";
+  rootDirectory: ".codex" | ".claude" | ".github" | ".gemini";
+  instructionsFileName: "AGENTS.md" | "CLAUDE.md" | "GEMINI.md";
 }
 
 const agentProjectConfigurations: AgentProjectConfiguration[] = [
@@ -291,6 +291,11 @@ const agentProjectConfigurations: AgentProjectConfiguration[] = [
     engine: "copilot",
     rootDirectory: ".github",
     instructionsFileName: "AGENTS.md"
+  },
+  {
+    engine: "gemini",
+    rootDirectory: ".gemini",
+    instructionsFileName: "GEMINI.md"
   }
 ];
 
@@ -479,7 +484,32 @@ export class AgentUseCase {
 
   usesGlobalExecutionQueue(): boolean { return Boolean(this.executionQueue); }
 
-  async assertScheduledQuota(): Promise<void> { await this.codexQuota?.assertMayStart(); }
+  private async resolveProjectEngineForQuota(projectId?: string): Promise<AgentEngine | undefined> {
+    const normalized = projectId?.trim();
+    if (!normalized) return undefined;
+    const loaded = this.loadedProjects.get(normalized)?.project.engine;
+    if (loaded) return loaded;
+    try {
+      const content = await this.projectUseCase.getProjectContent(normalized);
+      const detected = agentProjectConfigurations.filter((configuration) => {
+        const dir = this.findChildDirectory(content.root, configuration.rootDirectory);
+        if (!dir) return false;
+        return configuration.engine !== "copilot" || Boolean(this.findChildDirectory(dir, "agents"));
+      });
+      return detected.length === 1 ? detected[0].engine : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async assertCodexQuotaForProject(projectId?: string): Promise<void> {
+    if (!this.codexQuota) return;
+    const engine = await this.resolveProjectEngineForQuota(projectId);
+    if (engine === "gemini") return;
+    await this.codexQuota.assertMayStart();
+  }
+
+  async assertScheduledQuota(projectId?: string): Promise<void> { await this.assertCodexQuotaForProject(projectId); }
 
   async runWorkForceAgent(runner: AgentUseCase, projectId: string, agentId: string, control?: AgentStartControl): Promise<AgentRunOutput> {
     if (!this.executionQueue && this.isProjectRunning(projectId)) throw new ExecutionWorkspaceBusyError("Ce projet est déjà en cours d’exécution.");
@@ -823,7 +853,7 @@ export class AgentUseCase {
     const previous = { ...this.getAgentExecution(normalized, agentId) };
     let started = false;
     try {
-      await this.codexQuota?.assertMayStart();
+      await this.assertCodexQuotaForProject(normalized);
       return await this.executionQueue.run({ source: this.isolated?.kind ?? "normal", waitForSlot: control?.waitForSlot,
         key, projectId: normalized, label: control?.label ?? this.loadedProjects.get(normalized)?.project.agents.find(agent => agent.id === agentId)?.name ?? agentId,
         signal, onQueued: () => {
@@ -878,7 +908,7 @@ export class AgentUseCase {
       const pending = new AbortController();
       this.pendingQuotaChecks.set(key, pending);
       try {
-        await this.codexQuota.assertMayStart();
+        await this.assertCodexQuotaForProject(normalizedProjectId);
         pending.signal.throwIfAborted();
       } finally { this.pendingQuotaChecks.delete(key); }
     }
@@ -1517,7 +1547,7 @@ export class AgentUseCase {
     let auditRunId: string | undefined;
 
     try {
-      if (this.codexQuota) await this.codexQuota.assertMayStart();
+      await this.assertCodexQuotaForProject(normalizedProjectId);
       controller.signal.throwIfAborted();
       options.onStart?.();
       const activeManualAuditRunId = this.activeManualAuditRunIds.get(normalizedProjectId);
@@ -2118,7 +2148,7 @@ export class AgentUseCase {
 
     if (detectedConfigurations.length === 0) {
       throw new ValidationError(
-        "The project does not contain a Codex, Claude, or Copilot configuration."
+        "The project does not contain a Codex, Claude, Copilot, or Gemini configuration."
       );
     }
 
@@ -2212,6 +2242,7 @@ export class AgentUseCase {
       case "codex":
         return toCodexAgentDefinitions(configurationDirectory);
       case "claude":
+      case "gemini":
         return toClaudeAgentDefinitions(configurationDirectory);
       case "copilot":
         return toCopilotAgentDefinitions(configurationDirectory);

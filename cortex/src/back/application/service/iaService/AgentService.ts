@@ -182,7 +182,7 @@ export class AgentService {
       return {
         engine: null,
         label: null,
-        error: "No AI engine is configured. Install and connect Codex, Claude, or Copilot."
+        error: "No AI engine is configured. Install and connect Codex, Claude, Copilot, or Gemini."
       };
     }
 
@@ -251,7 +251,7 @@ export class AgentService {
 
       if (!provider) {
         throw new Error(
-          "No AI engine is configured. Install and connect Codex, Claude, or Copilot."
+          "No AI engine is configured. Install and connect Codex, Claude, Copilot, or Gemini."
         );
       }
 

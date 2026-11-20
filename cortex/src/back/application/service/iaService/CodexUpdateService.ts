@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readdir, rename, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import type { CodexEngineUpdateStatus } from "../../../../shared/CodexEngineUpdate.ts";
@@ -15,6 +15,8 @@ export interface CodexUpdateBackend {
 }
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const RETRY_MS = 5 * 60 * 1000;
+const MIN_FREE_DISK_BYTES = 1024 * 1024 * 1024;
+const MAX_RETAINED_VERSIONS = 2;
 
 /** Versioned installs never overwrite binaries used by running Codex processes. */
 export class CodexUpdateService {
@@ -54,17 +56,36 @@ export class CodexUpdateService {
       const installed = await this.backend.version(resolveCodexCommand(this.root));
       this.value = { ...this.value, installedVersion: installed, latestVersion: latest, checkedAt: new Date(this.now()).toISOString() };
       this.nextCheck = this.now() + CHECK_INTERVAL_MS;
-      if (installed && compareCodexVersions(installed, latest) >= 0) { this.value.state = "up_to_date"; return this.status(); }
+      if (installed && compareCodexVersions(installed, latest) >= 0) {
+        this.value.state = "up_to_date";
+        await this.pruneOldVersions(installed).catch(() => undefined);
+        return this.status();
+      }
       this.value.state = "installing";
       const command = managedCodexCommand(this.root, latest);
+      const versionPrefix = path.join(this.root, "versions", latest);
       // Reuse only a verified installation after a previous interrupted update.
       let valid = await this.backend.version(command) === latest;
       if (!valid) {
-        await this.backend.install(latest, path.join(this.root, "versions", latest));
-        valid = await this.backend.version(command) === latest;
+        await this.assertDiskSpaceAvailable();
+        try {
+          await this.backend.install(latest, versionPrefix);
+          valid = await this.backend.version(command) === latest;
+        } catch (error) {
+          await rm(versionPrefix, { recursive: true, force: true }).catch(() => undefined);
+          throw error;
+        }
       }
-      if (!valid) throw new Error("Installed Codex version mismatch.");
-      await this.backend.verify(command);
+      if (!valid) {
+        await rm(versionPrefix, { recursive: true, force: true }).catch(() => undefined);
+        throw new Error("Installed Codex version mismatch.");
+      }
+      try {
+        await this.backend.verify(command);
+      } catch (error) {
+        await rm(versionPrefix, { recursive: true, force: true }).catch(() => undefined);
+        throw error;
+      }
       this.candidate = { version: latest, command };
     }
     if (this.stopped) return this.status();
@@ -76,16 +97,55 @@ export class CodexUpdateService {
     // The pointer is the only shared mutation. A running invocation keeps its
     // captured version-specific path even if it began during this atomic swap.
     await mkdir(this.root, { recursive: true });
+    const activeVersion = this.candidate!.version;
     const temporary = path.join(this.root, `current-${randomUUID()}.json`);
     try {
-      await writeFile(temporary, JSON.stringify({ version: this.candidate!.version }), { mode: 0o600, flag: "wx" });
+      await writeFile(temporary, JSON.stringify({ version: activeVersion }), { mode: 0o600, flag: "wx" });
       if (this.stopped || this.isBusy()) { this.value.state = "waiting"; this.nextCheck = this.now() + 30_000; return this.status(); }
       await rename(temporary, path.join(this.root, "current.json"));
     } finally { await rm(temporary, { force: true }); }
-    this.value = { ...this.value, state: "updated", installedVersion: this.candidate!.version, updatedAt: new Date(this.now()).toISOString(), error: null };
+    this.value = { ...this.value, state: "updated", installedVersion: activeVersion, updatedAt: new Date(this.now()).toISOString(), error: null };
     this.candidate = null;
     this.nextCheck = this.now() + CHECK_INTERVAL_MS;
+    await this.pruneOldVersions(activeVersion).catch(() => undefined);
     return this.status();
+  }
+
+  private async assertDiskSpaceAvailable(): Promise<void> {
+    await mkdir(this.root, { recursive: true });
+    const stats = await statfs(this.root);
+    const availableBytes = Number(stats.bavail) * Number(stats.bsize);
+    if (Number.isFinite(availableBytes) && availableBytes < MIN_FREE_DISK_BYTES) {
+      throw new Error("Insufficient disk space to install Codex update.");
+    }
+  }
+
+  private async pruneOldVersions(activeVersion: string): Promise<void> {
+    const versionsDirectory = path.join(this.root, "versions");
+    let entries;
+    try {
+      entries = await readdir(versionsDirectory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    const candidates = await Promise.all(
+      entries
+        .filter((entry) => entry.isDirectory() && entry.name !== activeVersion)
+        .map(async (entry) => {
+          const fullPath = path.join(versionsDirectory, entry.name);
+          const info = await stat(fullPath).catch(() => null);
+          return { name: entry.name, fullPath, mtimeMs: info?.mtimeMs ?? 0 };
+        })
+    );
+    candidates.sort((left, right) => {
+      try {
+        const versionDiff = compareCodexVersions(right.name, left.name);
+        if (versionDiff !== 0) return versionDiff;
+      } catch { /* Non-semver directory name: fall back to mtime. */ }
+      return right.mtimeMs - left.mtimeMs;
+    });
+    const toRemove = candidates.slice(Math.max(0, MAX_RETAINED_VERSIONS - 1));
+    await Promise.all(toRemove.map((entry) => rm(entry.fullPath, { recursive: true, force: true }).catch(() => undefined)));
   }
 }
 

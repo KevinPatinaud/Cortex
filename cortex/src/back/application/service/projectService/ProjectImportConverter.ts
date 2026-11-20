@@ -16,8 +16,8 @@ interface ImportConversionResult {
 }
 
 interface ImportEngineConfiguration {
-  rootDirectory: ".codex" | ".claude" | ".github";
-  instructionsFileName: "AGENTS.md" | "CLAUDE.md";
+  rootDirectory: ".codex" | ".claude" | ".github" | ".gemini";
+  instructionsFileName: "AGENTS.md" | "CLAUDE.md" | "GEMINI.md";
   configurationPathPrefix: string;
   agentFilePattern: RegExp;
 }
@@ -43,6 +43,12 @@ const importEngineConfigurations: Record<
     instructionsFileName: "AGENTS.md",
     configurationPathPrefix: ".github/agents/",
     agentFilePattern: /^\.github\/agents\/[^/]+\.agent\.md$/i
+  },
+  gemini: {
+    rootDirectory: ".gemini",
+    instructionsFileName: "GEMINI.md",
+    configurationPathPrefix: ".gemini/agents/",
+    agentFilePattern: /^\.gemini\/agents\/[^/]+\.md$/i
   }
 };
 
@@ -150,7 +156,11 @@ function detectImportedProjectEngine(
     return detectedEngines[0] as ProjectAgentEngine;
   }
 
-  return findFile(files, "CLAUDE.md") ? "claude" : null;
+  if (findFile(files, "CLAUDE.md")) {
+    return "claude";
+  }
+
+  return findFile(files, "GEMINI.md") ? "gemini" : null;
 }
 
 function readImportedAgents(
@@ -187,7 +197,7 @@ function readCodexAgent(file: UploadedProjectFile): EditableProjectAgent {
 
 function readMarkdownAgent(
   file: UploadedProjectFile,
-  engine: "claude" | "copilot"
+  engine: "claude" | "copilot" | "gemini"
 ): EditableProjectAgent {
   const markdown = parseMarkdownFrontmatter(file.content.toString("utf8"));
   const extension = engine === "copilot" ? /\.agent\.md$/i : /\.md$/i;

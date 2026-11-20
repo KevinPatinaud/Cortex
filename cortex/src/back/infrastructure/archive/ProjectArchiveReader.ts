@@ -118,7 +118,7 @@ function removeOptionalRootDirectory(
     files.map(({ relativePath }) => relativePath.toLowerCase())
   );
 
-  if (lowerCasePaths.has("agents.md") || lowerCasePaths.has("claude.md")) {
+  if (lowerCasePaths.has("agents.md") || lowerCasePaths.has("claude.md") || lowerCasePaths.has("gemini.md")) {
     return files;
   }
 
@@ -145,7 +145,7 @@ function removeOptionalRootDirectory(
     strippedFiles.map(({ relativePath }) => relativePath.toLowerCase())
   );
 
-  return strippedPaths.has("agents.md") || strippedPaths.has("claude.md")
+  return strippedPaths.has("agents.md") || strippedPaths.has("claude.md") || strippedPaths.has("gemini.md")
     ? strippedFiles
     : files;
 }
