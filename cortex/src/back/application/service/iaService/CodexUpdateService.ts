@@ -15,7 +15,7 @@ export interface CodexUpdateBackend {
 }
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const RETRY_MS = 5 * 60 * 1000;
-const MIN_FREE_DISK_BYTES = 1024 * 1024 * 1024;
+const MIN_FREE_DISK_BYTES = 750 * 1024 * 1024;
 const MAX_RETAINED_VERSIONS = 2;
 
 /** Versioned installs never overwrite binaries used by running Codex processes. */
@@ -67,7 +67,6 @@ export class CodexUpdateService {
       // Reuse only a verified installation after a previous interrupted update.
       let valid = await this.backend.version(command) === latest;
       if (!valid) {
-        await this.assertDiskSpaceAvailable();
         try {
           await this.backend.install(latest, versionPrefix);
           valid = await this.backend.version(command) === latest;
@@ -109,15 +108,6 @@ export class CodexUpdateService {
     this.nextCheck = this.now() + CHECK_INTERVAL_MS;
     await this.pruneOldVersions(activeVersion).catch(() => undefined);
     return this.status();
-  }
-
-  private async assertDiskSpaceAvailable(): Promise<void> {
-    await mkdir(this.root, { recursive: true });
-    const stats = await statfs(this.root);
-    const availableBytes = Number(stats.bavail) * Number(stats.bsize);
-    if (Number.isFinite(availableBytes) && availableBytes < MIN_FREE_DISK_BYTES) {
-      throw new Error("Insufficient disk space to install Codex update.");
-    }
   }
 
   private async pruneOldVersions(activeVersion: string): Promise<void> {
@@ -174,6 +164,12 @@ export function createCodexUpdateBackend(): CodexUpdateBackend {
     },
     async version(command) { try { return (await run(command, ["--version"], 10_000)).match(/^codex-cli (\d+\.\d+\.\d+(?:-[\w.-]+)?)/)?.[1] ?? null; } catch { return null; } },
     async install(version, prefix) {
+      await mkdir(path.dirname(prefix), { recursive: true });
+      const stats = await statfs(path.dirname(prefix));
+      const availableBytes = Number(stats.bavail) * Number(stats.bsize);
+      if (Number.isFinite(availableBytes) && availableBytes < MIN_FREE_DISK_BYTES) {
+        throw new Error("Insufficient disk space to install Codex update.");
+      }
       const candidates = [path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js"),
         path.resolve(path.dirname(process.execPath), "..", "lib", "node_modules", "npm", "bin", "npm-cli.js"),
         ...(process.env.npm_execpath?.endsWith("npm-cli.js") ? [process.env.npm_execpath] : []),
