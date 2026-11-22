@@ -27,6 +27,7 @@ import type {
   McpMachineConnectionInput
 } from "../../../shared/McpConnection.ts";
 import type { CodexPluginCatalog } from "../../../shared/CodexPlugin.ts";
+import type { ModelCatalogEngine } from "../../../shared/CodexModel.ts";
 import type { CodexQuotaService } from "../service/iaService/CodexQuotaService.ts";
 import { DEFAULT_CODEX_QUOTA_CONFIGURATION } from "../../../shared/CodexQuota.ts";
 import { CodexQuotaBlockedError } from "../error/CodexQuotaBlockedError.ts";
@@ -226,6 +227,7 @@ interface WorkflowRunAuditContext {
 }
 
 interface AgentWorkflowThreadState {
+  engine?: AgentEngine;
   missionPromptVersion?: 2;
   responseMode?: "separate" | "integrated";
   pendingInterpretation?: ExecutionProcessing;
@@ -502,9 +504,18 @@ export class AgentUseCase {
     }
   }
 
-  private async assertCodexQuotaForProject(projectId?: string): Promise<void> {
+  private async assertCodexQuotaForProject(projectId?: string, agentId?: string): Promise<void> {
     if (!this.codexQuota) return;
-    const engine = await this.resolveProjectEngineForQuota(projectId);
+    let engine = await this.resolveProjectEngineForQuota(projectId);
+    if (projectId && agentId && (engine === "codex" || engine === "gemini") && typeof this.agentService.resolveModelEngine === "function") {
+      const loaded = this.loadedProjects.get(projectId);
+      const agent = loaded?.project.agents.find(candidate => candidate.id === agentId);
+      const policy = this.executionQuality ? await this.executionQuality.getPolicy(projectId).catch(() => undefined) : undefined;
+      const model = agent?.model || policy?.defaultModel || undefined;
+      if (model) {
+        engine = await this.agentService.resolveModelEngine(engine, model, loaded?.directoryPath);
+      }
+    }
     if (engine === "gemini") return;
     await this.codexQuota.assertMayStart();
   }
@@ -578,16 +589,23 @@ export class AgentUseCase {
     if (!this.executionQuality) throw new ValidationError("Profil d'exécution indisponible.");
     const policy = await this.executionQuality.getPolicy(projectId);
     const workingDirectory = await this.executionQuality.workspace(policy, project.directoryPath);
-    const profiles = project.engine === "codex" ? await Promise.all(project.agents.map(async agent => ({
+    const usesCatalog = project.engine === "codex" || project.engine === "gemini";
+    const primaryEngine: ModelCatalogEngine = project.engine === "gemini" ? "gemini" : "codex";
+    const catalog = usesCatalog
+      ? (typeof this.agentService.getModels === "function"
+        ? await this.agentService.getModels(workingDirectory, primaryEngine)
+        : await this.agentService.getCodexModels(workingDirectory))
+      : undefined;
+    const profiles = usesCatalog ? await Promise.all(project.agents.map(async agent => ({
       agentId: agent.id, name: agent.name,
       ...await this.agentService.resolveExecutionProfile({ workingDirectory,
         model: agent.model || policy.defaultModel || undefined,
         reasoningEffort: agent.reasoningEffort || policy.defaultReasoningEffort || undefined,
-        delegation: policy.delegation }).then(result => ({ profile: result.profile }), error => ({ error: error instanceof Error ? error.message : String(error) }))
+        delegation: policy.delegation }, project.engine, catalog).then(result => ({ profile: result.profile }), error => ({ error: error instanceof Error ? error.message : String(error) }))
     }))) : [];
     const memories = await Promise.all(project.agents.map(async agent => ({ agentId: agent.id, name: agent.name,
       record: await this.executionQuality!.readMemory(projectId, agent.id) })));
-    return { policy, profiles, memories, catalog: project.engine === "codex" ? await this.agentService.getCodexModels(workingDirectory) : undefined };
+    return { policy, profiles, memories, catalog };
   }
 
   async saveExecutionPolicy(projectId: string, input: unknown) {
@@ -615,8 +633,11 @@ export class AgentUseCase {
     return this.agentService.getMcpConnections(project?.directoryPath);
   }
 
-  async getCodexModels(projectId?: string) {
+  async getCodexModels(projectId?: string, primaryEngine: ModelCatalogEngine = "codex") {
     const project = projectId?.trim() ? await this.projectUseCase.getProject(projectId) : null;
+    if (primaryEngine !== "codex" && typeof this.agentService.getModels === "function") {
+      return this.agentService.getModels(project?.directoryPath, primaryEngine);
+    }
     return this.agentService.getCodexModels(project?.directoryPath);
   }
 
@@ -908,7 +929,7 @@ export class AgentUseCase {
       const pending = new AbortController();
       this.pendingQuotaChecks.set(key, pending);
       try {
-        await this.assertCodexQuotaForProject(normalizedProjectId);
+        await this.assertCodexQuotaForProject(normalizedProjectId, agentId);
         pending.signal.throwIfAborted();
       } finally { this.pendingQuotaChecks.delete(key); }
     }
@@ -1087,7 +1108,12 @@ export class AgentUseCase {
           const policy = this.executionQuality ? await this.executionQuality.getPolicy(normalizedProjectId) : undefined;
           const workingDirectory = policy
             ? await this.executionQuality!.workspace(policy, loadedProject.directoryPath) : loadedProject.directoryPath;
-          const twoPhase = Boolean(workflow?.pendingInterpretation) || Boolean(policy && loadedProject.project.engine === "codex" && policy.resultMode !== "integrated");
+          const configuredModel = agent.model || policy?.defaultModel || undefined;
+          const effectiveEngine = (loadedProject.project.engine === "codex" || loadedProject.project.engine === "gemini")
+            && configuredModel && typeof this.agentService.resolveModelEngine === "function"
+            ? await this.agentService.resolveModelEngine(loadedProject.project.engine, configuredModel, workingDirectory)
+            : loadedProject.project.engine;
+          const twoPhase = Boolean(workflow?.pendingInterpretation) || Boolean(policy && effectiveEngine === "codex" && policy.resultMode !== "integrated");
           const missionPromptVersion = workflow?.pendingInterpretation ? workflow.missionPromptVersion : 2;
           const contextFingerprint = this.executionQuality?.fingerprint({ workspace: workingDirectory,
             instructions: loadedProject.project.instructions.content, task: agent.prompt, policy,
@@ -1097,6 +1123,7 @@ export class AgentUseCase {
             ? await this.executionQuality.readMemory(normalizedProjectId, agent.id) : null;
           const prior = previous?.fingerprint === contextFingerprint ? previous : null;
           const compatibleSession = workflow && (workflow.workingDirectory ?? loadedProject.directoryPath) === workingDirectory &&
+            (!workflow.engine || workflow.engine === effectiveEngine) &&
             (!twoPhase || workflow.missionPromptVersion === 2) &&
             (workflow.responseMode ?? "integrated") === (twoPhase ? "separate" : "integrated")
             ? workflow.sessionId : undefined;
@@ -1162,7 +1189,8 @@ export class AgentUseCase {
             loadedProject.project,
             responseSchema,
             dossierOutput,
-            policy ? { policy, workingDirectory } : undefined
+            policy ? { policy, workingDirectory } : undefined,
+            effectiveEngine
           ));
           const auditExecutionId = auditContext && this.workflowAuditService
             ? this.workflowAuditService.startExecution({
@@ -1170,7 +1198,7 @@ export class AgentUseCase {
               agentId: agent.id,
               agentName: agent.name,
               threadId: id,
-              engine: loadedProject.project.engine,
+              engine: effectiveEngine,
               ...(agent.model ? { model: agent.model } : {}),
               ...(agent.reasoningEffort
                 ? { reasoningEffort: agent.reasoningEffort }
@@ -1207,7 +1235,7 @@ export class AgentUseCase {
               throw new ValidationError("Terminez l’interprétation du résultat enregistré avant de donner une nouvelle mission ou de nouvelles précisions.");
             }
             const execute = () => this.agentService.execute(
-              loadedProject.project.engine,
+              effectiveEngine,
               effectivePrompt,
               {
                 ...((agent.model || policy?.defaultModel) ? { model: agent.model || policy?.defaultModel } : {}),
@@ -1243,6 +1271,7 @@ export class AgentUseCase {
               }
               // Commit the business result before quota checks or interpretation. A retry must not repeat its effects.
               const cachedThread: AgentWorkflowThreadState = { ...workflow, id, sessionId: processing.mission.sessionId,
+                engine: effectiveEngine,
                 ...(missionPromptVersion ? { missionPromptVersion } : {}),
                 workingDirectory, responseMode: "separate", pendingInterpretation: processing,
                 conversation: workflow?.conversation ?? [], upstreamItems: [...upstreamItems] };
@@ -1269,7 +1298,11 @@ export class AgentUseCase {
                   criteria: policy!.acceptanceCriteria, dossierOutput });
                 processing.interpretation = { status: "pending", prompt: interpretationPrompt };
                 recordProcessing();
-                if (this.codexQuota) await this.codexQuota.assertMayStart();
+                const interpretationModel = policy!.interpretationModel || processing.mission.profile?.model || agent.model || policy?.defaultModel || undefined;
+                const interpretationEngine = interpretationModel && typeof this.agentService.resolveModelEngine === "function"
+                  ? await this.agentService.resolveModelEngine("codex", interpretationModel, workingDirectory)
+                  : "codex";
+                if (this.codexQuota && interpretationEngine !== "gemini") await this.codexQuota.assertMayStart();
                 signal.throwIfAborted();
                 processing.interpretation.status = "running";
                 onProgress("Interprétation du résultat de la mission…");
@@ -1335,6 +1368,7 @@ export class AgentUseCase {
             completedCount += 1;
             onProgress(`Completed ${completedCount}/${plannedExecutions.length} instance(s)`);
             const completedThread = {
+              engine: effectiveEngine,
               ...(twoPhase && missionPromptVersion ? { missionPromptVersion } : {}),
               workingDirectory,
               responseMode: twoPhase ? "separate" as const : "integrated" as const,
@@ -1370,6 +1404,7 @@ export class AgentUseCase {
             // caller records failure, including across a server restart.
             if (!processing && !rawResponse && returnedSessionId) {
               const interruptedThread: AgentWorkflowThreadState = { ...workflow, id, sessionId: returnedSessionId,
+                engine: effectiveEngine,
                 ...(missionPromptVersion ? { missionPromptVersion } : {}), workingDirectory,
                 responseMode: twoPhase ? "separate" : "integrated",
                 conversation: workflow?.conversation ?? [], upstreamItems: [...upstreamItems] };
@@ -4024,7 +4059,8 @@ Cortex-controlled random draw:
     project: AgentProject,
     responseSchema: Record<string, unknown>,
     dossierOutput: boolean,
-    execution?: { policy: ExecutionPolicy; workingDirectory: string }
+    execution?: { policy: ExecutionPolicy; workingDirectory: string },
+    effectiveEngine: AgentEngine = project.engine
   ): string {
     const nextAgents = agent.nextAgentIds.map((nextAgentId) => {
       const nextAgent = project.agents.find(
@@ -4040,7 +4076,7 @@ Cortex-controlled random draw:
     const routingContext = nextAgents.length > 0
       ? `Next agents available for routing:\n${JSON.stringify(nextAgents, null, 2)}`
       : "This agent is terminal. Set nextAgentIds to an empty array.";
-    const loadedNatively = project.engine === "codex" && (!execution || execution.workingDirectory === project.directoryPath);
+    const loadedNatively = effectiveEngine === "codex" && project.engine === "codex" && (!execution || execution.workingDirectory === project.directoryPath);
     const projectRoutingContext = loadedNatively
       ? `Shared project instructions are already loaded from ${project.instructions.fileName}. Apply them to execution, quality and routing; do not repeat them. Cortex alone launches business workflow successors.`
       : project.instructions.content?.trim()
@@ -4058,7 +4094,7 @@ Apply these shared rules throughout your task. Do not execute another workflow s
       ? "Execute the current agent's task. Cortex exclusively launches business workflow successors; internal research/review follows the bounded delegation policy below."
       : AGENT_EXECUTION_BOUNDARY_INSTRUCTIONS;
     const qualityInstructions = execution && this.executionQuality ? this.executionQuality.contract(execution.policy, agent.nextAgentIds.length === 0) : "";
-    const schemaInstructions = execution && project.engine === "codex"
+    const schemaInstructions = execution && effectiveEngine === "codex"
       ? "The final response must match the native JSON schema supplied to this execution."
       : `JSON Schema:\n${JSON.stringify(responseSchema, null, 2)}`;
     return `${prompt.trimEnd()}\n\n${boundary}\n\n${qualityInstructions}\n\n${projectRoutingContext}\n\n${routingContext}\n\n${AGENT_RESPONSE_FORMAT_INSTRUCTIONS}\n\n${dossierFormat}\n\n${timeContext}\n\nDurable waiting: When this task explicitly requires waiting for an external event or a future check, return status "waiting", nextAgentIds [], and a wait object matching the schema. Return promptly: Cortex saves the state and wakes this same agent on the eventKey, wakeAfterSeconds timer, or deadlineAt. Do not sleep, poll in a loop or start background processes. Use state to record completed actions, correlation IDs, remaining work and relaunch limits. Checking and sending a reminder are separate actions: only send a reminder when the task authorizes it and its own deadline is reached. On other statuses set wait to null. Never report a pending request as success.\n\n${schemaInstructions}`;

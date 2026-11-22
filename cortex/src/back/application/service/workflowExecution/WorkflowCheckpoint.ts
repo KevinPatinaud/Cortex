@@ -18,6 +18,7 @@ export interface WorkflowCheckpointState {
     threads: Array<{
       id: string;
       sessionId: string;
+      engine?: "codex" | "claude" | "copilot" | "gemini";
       workingDirectory?: string;
       responseMode?: "separate" | "integrated";
       missionPromptVersion?: 2;
@@ -57,6 +58,7 @@ export function readWorkflowCheckpoint(value: unknown): WorkflowCheckpointState 
     for (const thread of agent.threads) {
       if (!isRecord(thread) || typeof thread.id !== "string" || threadIds.has(thread.id) ||
           typeof thread.sessionId !== "string" || !thread.sessionId ||
+          (thread.engine !== undefined && !["codex", "claude", "copilot", "gemini"].includes(String(thread.engine))) ||
           (thread.workingDirectory !== undefined && typeof thread.workingDirectory !== "string") ||
           (thread.responseMode !== undefined && !["separate", "integrated"].includes(String(thread.responseMode))) ||
           (thread.missionPromptVersion !== undefined && thread.missionPromptVersion !== 2) ||

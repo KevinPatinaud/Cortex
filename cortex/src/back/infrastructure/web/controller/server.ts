@@ -10,6 +10,7 @@ import { createDefaultAgentToolRegistry } from "../../../application/service/iaS
 import { McpConfigurationService } from "../../../application/service/iaService/McpConfigurationService.ts";
 import { CodexPluginService } from "../../../application/service/iaService/CodexPluginService.ts";
 import { CodexModelService } from "../../../application/service/iaService/CodexModelService.ts";
+import { AntigravityModelService } from "../../../application/service/iaService/AntigravityModelService.ts";
 import { CodexUpdateService } from "../../../application/service/iaService/CodexUpdateService.ts";
 import { codexRuntimeDirectory } from "../../../application/service/iaService/CodexCommand.ts";
 import { CodexQuotaService } from "../../../application/service/iaService/CodexQuotaService.ts";
@@ -84,7 +85,8 @@ const agentService = new AgentService([
   new CopilotAgentProvider(agentToolRegistry, mcpConfigurationService),
   new GeminiAgentProvider(workspaceDirectory)
 ], agentConfigurationService, mcpConfigurationService, codexPluginService,
-new CodexModelService(workspaceDirectory, undefined, codexUpdates), executionQueue);
+new CodexModelService(workspaceDirectory, undefined, codexUpdates), executionQueue,
+new AntigravityModelService(workspaceDirectory));
 const directoryPickerService = new DirectoryPickerService();
 const projectService = new ProjectService(
   configurationFile,

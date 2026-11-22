@@ -25,13 +25,13 @@ async function fixture(t: TestContext, hold = false, freezeTime = false) {
     if (unavailable) throw new Error("Offline");
     return { rateLimits: { primary: { windowDurationMins: 300, usedPercent: used.fiveHour }, secondary: { windowDurationMins: 10080, usedPercent: used.weekly } } };
   }, () => clock);
-  const calls: { prompt: string; options: AgentExecutionOptions; release: () => void }[] = [];
+  const calls: { engine: "codex" | "claude" | "copilot" | "gemini"; prompt: string; options: AgentExecutionOptions; release: () => void }[] = [];
   const executor = {
-    async execute(_engine: "codex" | "claude" | "copilot", prompt: string, options: AgentExecutionOptions) {
+    async execute(engine: "codex" | "claude" | "copilot" | "gemini", prompt: string, options: AgentExecutionOptions) {
       let release!: () => void;
       const pending = new Promise<void>(resolve => { release = resolve; });
       const sessionId = options.sessionId ?? `session-${calls.length + 1}`;
-      calls.push({ prompt, options, release });
+      calls.push({ engine, prompt, options, release });
       options.onSessionId?.(sessionId);
       options.onProgress?.("Aperçu en cours");
       if (hold) await Promise.race([pending, new Promise<never>((_, reject) => {
@@ -661,4 +661,59 @@ test("invalid composer selections are rejected before changing the queue or pref
     assert.deepEqual(f.service.detail(chat.id), original);
   }
   assert.equal(f.calls.length, 0);
+});
+
+test("Antigravity models route to the gemini engine, bypass Codex quota blocks, and isolate sessions per engine", async t => {
+  const f = await fixture(t), chat = await f.create();
+  f.executor.getCodexModels = async () => ({
+    available: true,
+    cliVersion: "0.163.0",
+    defaultModel: "gpt-codex",
+    checkedAt: new Date().toISOString(),
+    error: null,
+    models: [
+      { model: "gpt-codex", displayName: "GPT Codex", reasoningEfforts: ["low", "high"], defaultReasoningEffort: "low", isDefault: true, engine: "codex" },
+      {
+        model: "gemini-4-neon",
+        displayName: "Gemini 4 Neon",
+        reasoningEfforts: ["low", "medium", "high", "xhigh"],
+        defaultReasoningEffort: "medium",
+        isDefault: false,
+        engine: "gemini",
+        effortModels: { low: "gemini-4-neon-low", medium: "gemini-4-neon-medium", high: "gemini-4-neon-high", xhigh: "gemini-4-neon-xhigh" }
+      }
+    ]
+  });
+
+  // First turn on Codex gets a Codex session.
+  f.service.enqueue(chat.id, { content: "Codex turn", model: "gpt-codex", reasoningEffort: "low" });
+  f.service.setPaused(chat.id, { paused: false });
+  await f.service.tick();
+  await until(() => f.service.detail(chat.id).prompts[0].status === "completed");
+  assert.equal(f.calls[0].engine, "codex");
+  const codexSession = f.store.chat(chat.id)?.sessionId;
+  assert.equal(codexSession, "session-1");
+
+  // Exhaust Codex quota: Antigravity prompt must neither warn nor block, and must not reuse the Codex session ID.
+  f.setUsed(99, 99);
+  const submitted = await f.service.submit(chat.id, { content: "Antigravity turn", model: "gemini-4-neon", reasoningEffort: "xhigh" });
+  assert.equal(submitted.quotaWarning, null);
+  await until(() => f.service.detail(chat.id).prompts[1].status === "completed");
+  assert.equal(f.calls[1].engine, "gemini");
+  assert.equal(f.calls[1].options.sessionId, undefined);
+  assert.equal(f.calls[1].options.model, "gemini-4-neon");
+  assert.equal(f.calls[1].options.reasoningEffort, "xhigh");
+
+  // Second Antigravity turn reuses the Antigravity session.
+  await f.service.submit(chat.id, { content: "Second Antigravity turn", model: "gemini-4-neon", reasoningEffort: "high" });
+  await until(() => f.service.detail(chat.id).prompts[2].status === "completed");
+  assert.equal(f.calls[2].engine, "gemini");
+  assert.equal(f.calls[2].options.sessionId, "session-2");
+
+  // Restoring Codex quota and switching back to Codex resumes the original Codex session.
+  f.setUsed(10, 10);
+  await f.service.submit(chat.id, { content: "Back to Codex", model: "gpt-codex", reasoningEffort: "high" });
+  await until(() => f.service.detail(chat.id).prompts[3].status === "completed");
+  assert.equal(f.calls[3].engine, "codex");
+  assert.equal(f.calls[3].options.sessionId, codexSession);
 });

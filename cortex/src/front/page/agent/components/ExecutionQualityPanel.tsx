@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { DEFAULT_EXECUTION_POLICY, type ExecutionPolicy, type ExecutionProfile, type AgentContinuity } from "../../../../shared/ExecutionQuality.ts";
-import type { CodexModelCatalog } from "../../../../shared/CodexModel.ts";
+import { findCatalogModel, type CodexModelCatalog } from "../../../../shared/CodexModel.ts";
 import { requestJson } from "../../../services/apiClient.ts";
 import { useTranslation } from "../../../i18n.tsx";
+import { ModelOptionGroups } from "../../shared/ModelOptionGroups.tsx";
 
 interface QualitySettings {
   policy: ExecutionPolicy;
@@ -44,8 +45,11 @@ export function ExecutionQualityPanel({ projectId }: { projectId: string }) {
     } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setSaving(false); }
   }
-  const selectedModel = settings?.catalog?.models.find(m => m.model === (draft.defaultModel || settings.catalog?.defaultModel));
-  const interpretationModel = settings?.catalog?.models.find(m => m.model === (draft.interpretationModel || draft.defaultModel || settings.catalog?.defaultModel));
+  const catalogModels = settings?.catalog?.models ?? [];
+  const defaultMatch = findCatalogModel(catalogModels, draft.defaultModel);
+  const selectedModel = defaultMatch?.model ?? findCatalogModel(catalogModels, draft.defaultModel || settings?.catalog?.defaultModel)?.model;
+  const interpretationMatch = findCatalogModel(catalogModels, draft.interpretationModel);
+  const interpretationModel = interpretationMatch?.model ?? findCatalogModel(catalogModels, draft.interpretationModel || draft.defaultModel || settings?.catalog?.defaultModel)?.model;
   return <details className="execution-quality">
     <summary><strong>{t("quality.title")}</strong></summary>
     <p>{t("quality.description")}</p>
@@ -54,27 +58,48 @@ export function ExecutionQualityPanel({ projectId }: { projectId: string }) {
     {settings && <>
       <fieldset disabled={saving}>
         <label>{t("quality.workspace")}<input value={draft.workspaceDirectory} onChange={e => change({ workspaceDirectory: e.target.value })} /></label>
-        <label>{t("quality.model")}<select value={draft.defaultModel} onChange={e => change({ defaultModel: e.target.value })}>
+        <label>{t("quality.model")}<select value={defaultMatch ? defaultMatch.model.model : draft.defaultModel} onChange={e => {
+          const next = e.target.value;
+          const nextModel = findCatalogModel(catalogModels, next || settings.catalog?.defaultModel)?.model;
+          change({
+            defaultModel: next,
+            ...(draft.defaultReasoningEffort && !nextModel?.reasoningEfforts.includes(draft.defaultReasoningEffort) ? { defaultReasoningEffort: "" } : {})
+          });
+        }}>
           <option value="">{t("quality.inherit")}</option>
-          {draft.defaultModel && !settings.catalog?.models.some(m => m.model === draft.defaultModel) && <option value={draft.defaultModel}>{draft.defaultModel}</option>}
-          {settings.catalog?.models.map(model => <option key={model.model} value={model.model}>{model.displayName}</option>)}
+          {draft.defaultModel && !defaultMatch && <option value={draft.defaultModel}>{draft.defaultModel}</option>}
+          <ModelOptionGroups models={catalogModels} />
         </select></label>
-        <label>{t("quality.reasoning")}<select value={draft.defaultReasoningEffort} onChange={e => change({ defaultReasoningEffort: e.target.value })}>
+        <label>{t("quality.reasoning")}<select value={draft.defaultReasoningEffort || defaultMatch?.matchedEffort || ""} onChange={e => change({
+          ...(defaultMatch?.matchedEffort && defaultMatch.model.model !== draft.defaultModel ? { defaultModel: defaultMatch.model.model } : {}),
+          defaultReasoningEffort: e.target.value
+        })}>
           <option value="">{t("quality.inherit")}</option>
-          {[...new Set([...(draft.defaultReasoningEffort ? [draft.defaultReasoningEffort] : []), ...(selectedModel?.reasoningEfforts ?? [])])].map(effort => <option key={effort} value={effort}>{effort}</option>)}
+          {[...new Set([...(draft.defaultReasoningEffort || defaultMatch?.matchedEffort ? [draft.defaultReasoningEffort || defaultMatch!.matchedEffort!] : []), ...(selectedModel?.reasoningEfforts ?? [])])].map(effort => <option key={effort} value={effort}>{effort}</option>)}
         </select></label>
         <label>{t("quality.resultMode")}<select value={draft.resultMode ?? "separate"} onChange={e => change({ resultMode: e.target.value as ExecutionPolicy["resultMode"] })}>
           <option value="separate">{t("quality.separate")}</option><option value="integrated">{t("quality.integrated")}</option>
         </select></label>
         {draft.resultMode !== "integrated" && <>
           <p>{t("quality.interpretationHelp")}</p>
-          <label>{t("quality.interpretationModel")}<select value={draft.interpretationModel ?? ""} onChange={e => change({ interpretationModel: e.target.value })}>
+          <label>{t("quality.interpretationModel")}<select value={interpretationMatch ? interpretationMatch.model.model : (draft.interpretationModel ?? "")} onChange={e => {
+            const next = e.target.value;
+            const nextModel = findCatalogModel(catalogModels, next || draft.defaultModel || settings.catalog?.defaultModel)?.model;
+            const currentEffort = draft.interpretationReasoningEffort ?? "low";
+            const nextEffort = nextModel && nextModel.reasoningEfforts.length && !nextModel.reasoningEfforts.includes(currentEffort)
+              ? (nextModel.reasoningEfforts.includes("low") ? "low" : nextModel.defaultReasoningEffort ?? nextModel.reasoningEfforts[0] ?? "")
+              : currentEffort;
+            change({ interpretationModel: next, interpretationReasoningEffort: nextEffort });
+          }}>
             <option value="">{t("quality.sameModel")}</option>
-            {draft.interpretationModel && !settings.catalog?.models.some(m => m.model === draft.interpretationModel) && <option value={draft.interpretationModel}>{draft.interpretationModel}</option>}
-            {settings.catalog?.models.map(model => <option key={model.model} value={model.model}>{model.displayName}</option>)}
+            {draft.interpretationModel && !interpretationMatch && <option value={draft.interpretationModel}>{draft.interpretationModel}</option>}
+            <ModelOptionGroups models={catalogModels} />
           </select></label>
-          <label>{t("quality.interpretationReasoning")}<select value={draft.interpretationReasoningEffort ?? "low"} onChange={e => change({ interpretationReasoningEffort: e.target.value })}>
-            {[...new Set([draft.interpretationReasoningEffort || "low", ...(interpretationModel?.reasoningEfforts ?? [])])].map(effort => <option key={effort} value={effort}>{effort}</option>)}
+          <label>{t("quality.interpretationReasoning")}<select value={draft.interpretationReasoningEffort ?? interpretationMatch?.matchedEffort ?? "low"} onChange={e => change({
+            ...(interpretationMatch?.matchedEffort && interpretationMatch.model.model !== draft.interpretationModel ? { interpretationModel: interpretationMatch.model.model } : {}),
+            interpretationReasoningEffort: e.target.value
+          })}>
+            {[...new Set([draft.interpretationReasoningEffort || interpretationMatch?.matchedEffort || "low", ...(interpretationModel?.reasoningEfforts ?? [])])].map(effort => <option key={effort} value={effort}>{effort}</option>)}
           </select></label>
         </>}
         <label>{t("quality.delegation")}<select value={draft.delegation} onChange={e => change({ delegation: e.target.value as ExecutionPolicy["delegation"] })}>

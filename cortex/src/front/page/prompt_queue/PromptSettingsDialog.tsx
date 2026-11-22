@@ -2,11 +2,13 @@ import { useEffect, useId, useRef, useState } from "react";
 import { RefreshCw, X } from "lucide-react";
 import { useTranslation } from "../../i18n.tsx";
 import type { PromptChatDetail, PromptQueueOverview } from "../../../shared/PromptQueue.ts";
-import type { CodexModelCatalog } from "../../../shared/CodexModel.ts";
+import { findCatalogModel, type CodexModelCatalog } from "../../../shared/CodexModel.ts";
 import { getSavedProjects, type Project } from "../../services/projectApi.ts";
 import { saveCodexQuotaConfiguration } from "../../services/codexQuotaApi.ts";
 import { checkPromptQueue, deletePromptChat, getPromptChatModels, getPromptDefaultModels, savePromptChat, savePromptQueueSettings } from "../../services/promptQueueApi.ts";
 import { trapDialogFocus } from "../shared/dialogFocus.ts";
+import { ModelOptionGroups } from "../shared/ModelOptionGroups.tsx";
+import { reasoningLabel } from "./PromptModelPicker.tsx";
 import { fr, en } from "./messages.ts";
 
 interface Props {
@@ -71,9 +73,12 @@ export function PromptSettingsDialog({ overview, chat, initialTab, onClose, onSa
   const model = tab === "defaults" ? defaults.model : chatModel;
   const effort = tab === "defaults" ? defaults.reasoningEffort : chatEffort;
   const models = catalog?.models ?? [];
+  const matched = findCatalogModel(models, model);
+  const selectModelValue = matched ? matched.model.model : model;
   const automaticModel = models.find(candidate => candidate.model === catalog?.defaultModel) ?? models.find(candidate => candidate.isDefault) ?? models[0];
-  const selectedModel = models.find(candidate => candidate.model === model) ?? (!model ? automaticModel : undefined);
-  const modelMissing = Boolean(model && catalog?.available && !models.some(candidate => candidate.model === model));
+  const selectedModel = matched?.model ?? (!model ? automaticModel : undefined);
+  const modelMissing = Boolean(model && catalog?.available && !matched);
+  const effectiveEffort = effort || matched?.matchedEffort || "";
   const valid = [fiveHour, weekly].every(value => value.trim() !== "" && Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= 100)
     && Number.isInteger(Number(concurrency)) && Number(concurrency) >= 1 && Number(concurrency) <= 8;
   function changeModel(value: string) {
@@ -82,16 +87,18 @@ export function PromptSettingsDialog({ overview, chat, initialTab, onClose, onSa
   }
   const modelFields = <>
     <div className="prompt-settings-fields">
-      <label>{copy.model}<select value={model} disabled={busy || loading || !catalog?.available || (tab === "chat" && running)} onChange={event => changeModel(event.target.value)}>
+      <label>{copy.model}<select value={selectModelValue} disabled={busy || loading || !catalog?.available || (tab === "chat" && running)} onChange={event => changeModel(event.target.value)}>
         <option value="">{copy.automatic}{automaticModel ? ` (${automaticModel.displayName})` : ""}</option>
         {modelMissing && <option value={model}>{model}</option>}
-        {models.map(candidate => <option key={candidate.model} value={candidate.model}>{candidate.displayName}</option>)}
+        <ModelOptionGroups models={models} />
       </select></label>
-      <label>{copy.effort}<select value={effort} disabled={busy || loading || !catalog?.available || (tab === "chat" && running)} onChange={event => {
-        if (tab === "defaults") setDefaults(current => ({ ...current, reasoningEffort: event.target.value })); else setChatEffort(event.target.value);
+      <label>{copy.effort}<select value={effectiveEffort} disabled={busy || loading || !catalog?.available || (tab === "chat" && running) || Boolean(selectedModel && !selectedModel.reasoningEfforts.length && !effectiveEffort)} onChange={event => {
+        const normalizedModel = matched?.matchedEffort && matched.model.model !== model ? matched.model.model : undefined;
+        if (tab === "defaults") setDefaults(current => ({ ...current, ...(normalizedModel ? { model: normalizedModel } : {}), reasoningEffort: event.target.value }));
+        else { if (normalizedModel) setChatModel(normalizedModel); setChatEffort(event.target.value); }
       }}><option value="">{copy.default}</option>
-        {effort && !selectedModel?.reasoningEfforts.includes(effort) && <option value={effort}>{effort}</option>}
-        {selectedModel?.reasoningEfforts.map(value => <option key={value}>{value}</option>)}
+        {effectiveEffort && !selectedModel?.reasoningEfforts.includes(effectiveEffort) && <option value={effectiveEffort}>{reasoningLabel(effectiveEffort, language)}</option>}
+        {selectedModel?.reasoningEfforts.map(value => <option key={value} value={value}>{reasoningLabel(value, language)}</option>)}
       </select></label>
     </div>
     <div className="prompt-model-refresh"><small>{loading ? t("models.loading") : !catalog?.available ? copy.modelsError : modelMissing ? copy.savedModelUnavailable : ""}</small>

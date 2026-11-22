@@ -257,8 +257,9 @@ export function createAgentController(
 
   router.get("/codex-models", asyncRoute(async (request, response) => {
     const projectId = typeof request.query.projectId === "string" ? request.query.projectId : undefined;
+    const primaryEngine = request.query.engine === "gemini" ? "gemini" : "codex";
     response.setHeader("Cache-Control", "no-store");
-    response.json(await agentUseCase.getCodexModels(projectId));
+    response.json(await agentUseCase.getCodexModels(projectId, primaryEngine));
   }, agentErrorMappings.getConfiguration));
 
   router.put("/codex-quota", asyncRoute(async (request, response) => {

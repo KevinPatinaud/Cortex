@@ -8,6 +8,7 @@ import { ExecutionQualityService } from "../../src/back/application/service/exec
 import { AgentConfigurationService } from "../../src/back/application/service/iaService/AgentConfigurationService.ts";
 import { CodexQuotaService } from "../../src/back/application/service/iaService/CodexQuotaService.ts";
 import { CodexModelService } from "../../src/back/application/service/iaService/CodexModelService.ts";
+import { AntigravityModelService, parseAntigravityModelOutput } from "../../src/back/application/service/iaService/AntigravityModelService.ts";
 import type { CodexModelCatalog } from "../../src/shared/CodexModel.ts";
 import type { CodexEngineUpdateStatus } from "../../src/shared/CodexEngineUpdate.ts";
 import type { AgentProvider } from "../../src/back/application/service/iaService/AgentProvider.ts";
@@ -41,9 +42,21 @@ const globalExecutionEvents: { marker: string; phase: string; event: "start" | "
 let automationScan = 0;
 let modelCatalogUnavailable = false;
 let fixtureModelName = "gpt-server-sol";
+let antigravityCatalogAvailable = false;
+const DEFAULT_ANTIGRAVITY_FIXTURE_OUTPUT = [
+  "gemini-4-neon-high\tGemini 4 Neon (High)",
+  "gemini-4-neon-xhigh\tGemini 4 Neon (XHigh)",
+  "gemini-4-neon-medium\tGemini 4 Neon (Medium)",
+  "gemini-4-neon-low\tGemini 4 Neon (Low)",
+  "gemini-pro-orchestrator-neon\tOrchestrator (Neon)",
+  "claude-opus-5-5-low\tClaude Opus 5.5 (Low)",
+  "claude-opus-5-5-high\tClaude Opus 5.5 (High)"
+].join("\n");
+let antigravityCatalogOutput = DEFAULT_ANTIGRAVITY_FIXTURE_OUTPUT;
 let fixtureEngineUpdate: CodexEngineUpdateStatus | null = null;
 let fixtureEngineChecks = 0;
 let lastCodexExecution: { model?: string; reasoningEffort?: string } = {};
+let lastGeminiExecution: { model?: string; reasoningEffort?: string } = {};
 let lastAttachmentExecution: { images: string[]; files: { name: string; bytes: string }[] } = { images: [], files: [] };
 const modelService = new CodexModelService(directory, async () => {
   if (modelCatalogUnavailable) throw new Error("Simulated model discovery failure");
@@ -54,6 +67,10 @@ const modelService = new CodexModelService(directory, async () => {
       { model: fixtureModelName, displayName: "Sol du serveur", reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"], defaultReasoningEffort: "low", isDefault: true },
       { model: "gpt-server-luna", displayName: "Luna du serveur", reasoningEfforts: ["low", "medium", "high"], defaultReasoningEffort: "medium", isDefault: false }
     ] } satisfies CodexModelCatalog;
+});
+const antigravityModelService = new AntigravityModelService(directory, async () => {
+  if (!antigravityCatalogAvailable) throw new Error("Simulated Antigravity discovery failure");
+  return parseAntigravityModelOutput(antigravityCatalogOutput, { cliVersion: "1.5.14-fixture" });
 });
 const simulatedProvider: AgentProvider = {
   engine: "codex",
@@ -175,7 +192,39 @@ const simulatedProvider: AgentProvider = {
     } finally { if (marker) { globalActive--; globalExecutionEvents.push({ marker, phase: options.purpose ?? "integrated", event: "end" }); } }
   }
 };
-const agentService = new AgentService([simulatedProvider], configuration, undefined, undefined, modelService, executionQueue);
+const simulatedGeminiProvider: AgentProvider = {
+  engine: "gemini",
+  label: "Gemini",
+  async isAvailable() { return antigravityCatalogAvailable; },
+  async ask(prompt, options = {}) {
+    lastGeminiExecution = { model: options.model, reasoningEffort: options.reasoningEffort };
+    if (prompt.startsWith("QUEUE_E2E")) {
+      const sessionId = options.sessionId ?? randomUUID();
+      options.onSessionId?.(sessionId);
+      options.onProgress?.("Exécution Antigravity simulée…");
+      await delay(50, undefined, { signal: options.signal });
+      return { sessionId, answer: `Antigravity (${options.model ?? "default"}) : ${prompt}` };
+    }
+    if (prompt.includes("Turn the user's project description")) {
+      return { answer: JSON.stringify({
+        instructions: "Instructions du projet Gemini de test.",
+        agents: [{ name: "Rédacteur", description: "Produit un résultat Antigravity.", prompt: "Rédige un résultat utile." }]
+      }) };
+    }
+    const responseSchema = prompt.split("JSON Schema:\n").at(-1);
+    const nextAgentIds: string[] = options.outputSchema
+      ? (options.outputSchema.properties as any).nextAgentIds.items.enum ?? []
+      : responseSchema && responseSchema !== prompt
+        ? JSON.parse(responseSchema).properties.nextAgentIds.items.enum ?? []
+        : [];
+    return {
+      sessionId: options.sessionId ?? randomUUID(),
+      answer: JSON.stringify({ status: "success", items: [{ content: `Résultat Antigravity vérifié (${options.model ?? "default"}).` }],
+        isMultiSelectionAllowed: false, isMultiSelectionThreaded: null, nextAgentIds, notes: null })
+    };
+  }
+};
+const agentService = new AgentService([simulatedProvider, simulatedGeminiProvider], configuration, undefined, undefined, modelService, executionQueue, antigravityModelService);
 const projectService = new ProjectService(path.join(directory, "config.json"), path.join(directory, "projects"));
 const projectUseCase = new ProjectUseCase(projectService, new DirectoryPickerService(), agentService);
 const repository = new SqliteWorkflowAuditRepository(path.join(directory, "audit.sqlite"));
@@ -242,11 +291,20 @@ app.post("/__test/codex-models", (request, response) => {
   fixtureModelName = request.body.model ?? "gpt-server-sol";
   response.json({ ok: true });
 });
+app.post("/__test/antigravity-models", (request, response) => {
+  antigravityCatalogAvailable = request.body.available === true;
+  antigravityCatalogOutput = typeof request.body.output === "string"
+    ? request.body.output
+    : DEFAULT_ANTIGRAVITY_FIXTURE_OUTPUT;
+  if (request.body.resetLastExecution) lastGeminiExecution = {};
+  response.json({ ok: true });
+});
 app.post("/__test/codex-engine-state", (request, response) => {
   fixtureEngineUpdate = request.body.state == null ? null : request.body;
   response.json({ checks: fixtureEngineChecks });
 });
 app.post("/__test/last-codex-execution", (_request, response) => response.json(lastCodexExecution));
+app.post("/__test/last-gemini-execution", (_request, response) => response.json(lastGeminiExecution));
 app.post("/__test/last-attachment-execution", (_request, response) => response.json(lastAttachmentExecution));
 app.post("/__test/prompt-queue-clock", async (request, response) => {
   const next = request.body.at == null ? null : Date.parse(request.body.at);

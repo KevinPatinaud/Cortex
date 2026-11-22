@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, RefreshCw, X } from "lucide-react";
-import type { CodexModelCatalog } from "../../../shared/CodexModel.ts";
+import {
+  findCatalogModel,
+  formatCatalogVersions,
+  type CodexModelCatalog
+} from "../../../shared/CodexModel.ts";
 import type { PromptModelSelection } from "../../../shared/PromptQueue.ts";
 import { getPromptChatModels, getPromptDefaultModels } from "../../services/promptQueueApi.ts";
 import { checkCodexEngineUpdate } from "../../services/codexEngineApi.ts";
 import { useTranslation } from "../../i18n.tsx";
+import { ModelOptionGroups } from "../shared/ModelOptionGroups.tsx";
 import { fr, en } from "./messages.ts";
 
 interface Props {
@@ -75,13 +80,17 @@ export function PromptModelPicker({ chatId, value, initial, disabled, onChange, 
 
   const profile = value ?? initial;
   const models = catalog?.models ?? [];
+  const matched = findCatalogModel(models, profile.model);
   const defaultModel = models.find(entry => entry.model === catalog?.defaultModel) ?? models.find(entry => entry.isDefault) ?? models[0];
-  const selectedModel = models.find(entry => entry.model === profile.model) ?? (!profile.model ? defaultModel : undefined);
-  const currentEffort = profile.reasoningEffort || (selectedModel?.reasoningEfforts.includes(catalog?.configuredReasoningEffort ?? "")
-    ? catalog!.configuredReasoningEffort! : selectedModel?.defaultReasoningEffort ?? "");
-  const modelMissing = Boolean(profile.model && catalog?.available && !models.some(entry => entry.model === profile.model));
+  const selectedModel = matched?.model ?? (!profile.model ? defaultModel : undefined);
+  const currentEffort = profile.reasoningEffort
+    || matched?.matchedEffort
+    || (selectedModel?.model === catalog?.defaultModel && selectedModel?.reasoningEfforts.includes(catalog?.configuredReasoningEffort ?? "")
+      ? catalog!.configuredReasoningEffort! : selectedModel?.defaultReasoningEffort ?? "");
+  const modelMissing = Boolean(profile.model && catalog?.available && !matched);
   const effortMissing = Boolean(currentEffort && selectedModel?.reasoningEfforts.length && !selectedModel.reasoningEfforts.includes(currentEffort));
   const engine = catalog?.engineUpdate;
+  const versions = formatCatalogVersions(catalog);
   const updating = Boolean(engine && ["checking", "installing", "waiting"].includes(engine.state));
   const updateLabels = { idle: copy.engineIdle, checking: copy.engineChecking, installing: copy.engineInstalling, waiting: copy.engineWaiting,
     updated: copy.engineUpdated, up_to_date: copy.engineCurrent, error: copy.engineUpdateError };
@@ -119,7 +128,7 @@ export function PromptModelPicker({ chatId, value, initial, disabled, onChange, 
         if (model) callbacks.current.onChange({ model: model.model, reasoningEffort: model.reasoningEfforts.includes(currentEffort) ? currentEffort : model.defaultReasoningEffort ?? model.reasoningEfforts[0] ?? "" });
       }}>
         {!selectedModel && <option value={profile.model}>{profile.model || copy.automatic}</option>}
-        {models.map(model => <option key={model.model} value={model.model}>{model.displayName}</option>)}
+        <ModelOptionGroups models={models} />
       </select></label>
       <label>{copy.reasoning}<select value={currentEffort} disabled={loading || !selectedModel || !selectedModel.reasoningEfforts.length} onChange={event => {
         if (selectedModel) callbacks.current.onChange({ model: selectedModel.model, reasoningEffort: event.target.value });
@@ -132,7 +141,7 @@ export function PromptModelPicker({ chatId, value, initial, disabled, onChange, 
       {(modelMissing || effortMissing) && <p className="prompt-model-error" role="alert">{modelMissing ? copy.savedModelUnavailable : copy.savedEffortUnavailable}</p>}
       {issue && <p className="prompt-model-error" role="status">{issue}</p>}
       {engine && <p className={engine.state === "error" ? "prompt-model-error" : "prompt-model-help"} role="status">{updateLabels[engine.state].replace("{version}", engine.latestVersion ?? "")}</p>}
-      <footer><small>{catalog?.cliVersion ? `Codex ${catalog.cliVersion} · ` : ""}{loading ? copy.loadingModels : copy.modelsAutoRefresh}</small><button type="button" aria-label={copy.loadModels} title={copy.loadModels} disabled={loading} onClick={() => {
+      <footer><small>{versions ? `${versions} · ` : ""}{loading ? copy.loadingModels : copy.modelsAutoRefresh}</small><button type="button" aria-label={copy.loadModels} title={copy.loadModels} disabled={loading} onClick={() => {
         if (!engine) { void refresh(); return; }
         void checkCodexEngineUpdate().then(() => refresh()).catch(() => setIssue(copy.engineUpdateError));
       }}><RefreshCw size={15} aria-hidden="true" /></button></footer>

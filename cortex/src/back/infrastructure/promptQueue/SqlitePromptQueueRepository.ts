@@ -3,7 +3,12 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { DEFAULT_PROMPT_CHAT_SETTINGS, type PromptChat, type PromptChatDefaults, type PromptChatSummary, type QueuedPrompt, type QueuedPromptStatus } from "../../../shared/PromptQueue.ts";
 
-export interface StoredPromptChat extends PromptChat { sessionId: string | null; automaticTitle?: boolean }
+export interface StoredPromptChat extends PromptChat {
+  sessionId: string | null;
+  sessionEngine?: "codex" | "gemini";
+  sessionIds?: Partial<Record<"codex" | "gemini", string>>;
+  automaticTitle?: boolean;
+}
 
 /** A prompt and its conversation session are committed together before advancing. */
 export class SqlitePromptQueueRepository {
@@ -44,7 +49,7 @@ export class SqlitePromptQueueRepository {
     return (this.db.prepare("SELECT value FROM prompt_chats ORDER BY rowid").all() as { value: string }[]).map(row => JSON.parse(row.value));
   }
   summaries(): PromptChatSummary[] {
-    return this.chats().map(({ sessionId, automaticTitle, ...chat }) => {
+    return this.chats().map(({ sessionId, sessionEngine, sessionIds, automaticTitle, ...chat }) => {
       const counts: Record<QueuedPromptStatus, number> = { queued: 0, running: 0, completed: 0, failed: 0, interrupted: 0, cancelled: 0 };
       for (const row of this.db.prepare("SELECT status, COUNT(*) AS count FROM queued_prompts WHERE chat_id=? GROUP BY status").all(chat.id) as { status: QueuedPromptStatus; count: number }[]) counts[row.status] = row.count;
       const head = this.head(chat.id);
