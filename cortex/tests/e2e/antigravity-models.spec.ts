@@ -53,6 +53,8 @@ test("Antigravity families appear in agent editor and execution policy dropdowns
   await expect(models.locator('optgroup[label="Codex"]')).toHaveCount(1);
   expect(await models.locator('optgroup[label="Antigravity"] option').evaluateAll(options => options.map(o => (o as HTMLOptionElement).value)))
     .toEqual(["gemini-4-neon", "gemini-pro-orchestrator-neon", "claude-opus-5-5"]);
+  await expect(models.locator('option[value="gemini-4-neon"]')).toHaveText("Gemini 4 Neon (gemini-4-neon) — Antigravity");
+  await expect(models.locator('option[value="gpt-server-sol"]')).toHaveText("Sol du serveur (gpt-server-sol) — Codex");
 
   await models.selectOption("gemini-pro-orchestrator-neon");
   await expect(efforts).toBeDisabled();
@@ -114,7 +116,8 @@ test("Prompt Queue picker and settings show Antigravity families, execute via An
   const pickerEfforts = picker.getByRole("combobox", { name: "Niveau de réflexion", exact: true });
   await expect(pickerModels).toBeEnabled();
   await expect(picker).toContainText("Codex 0.163.0-fixture · Antigravity 1.5.14-fixture");
-  await expect(pickerModels.locator('optgroup[label="Antigravity"] option[value="gemini-4-neon"]')).toHaveCount(1);
+  await expect(pickerModels.locator('optgroup[label="Antigravity"] option[value="gemini-4-neon"]')).toHaveText("Gemini 4 Neon — Antigravity");
+  await expect(pickerModels.locator('optgroup[label="Codex"] option[value="gpt-server-sol"]')).toHaveText("Sol du serveur — Codex");
 
   await pickerEfforts.selectOption("ultra");
   await pickerModels.selectOption("gemini-4-neon");
@@ -122,6 +125,7 @@ test("Prompt Queue picker and settings show Antigravity families, execute via An
   await pickerEfforts.selectOption("xhigh");
   expect((await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa", "wcag21aa"]).analyze()).violations).toEqual([]);
   await page.keyboard.press("Escape");
+  await expect(trigger).toContainText("Gemini 4 Neon · Antigravity");
 
   await page.getByRole("textbox", { name: "Votre message", exact: true }).fill("QUEUE_E2E Antigravity prompt");
   await page.getByRole("button", { name: "Envoyer", exact: true }).click();

@@ -1,4 +1,4 @@
-import { groupCatalogModels, type CodexModel } from "../../../shared/CodexModel.ts";
+import { formatModelOptionLabel, groupCatalogModels, type CodexModel } from "../../../shared/CodexModel.ts";
 
 interface Props {
   models: readonly CodexModel[];
@@ -7,7 +7,7 @@ interface Props {
 
 export function ModelOptionGroups({
   models,
-  formatLabel = model => model.displayName
+  formatLabel = model => formatModelOptionLabel(model)
 }: Props) {
   const groups = groupCatalogModels(models);
   if (groups.length <= 1) {

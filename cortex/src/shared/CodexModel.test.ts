@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   findCatalogModel,
   formatCatalogVersions,
+  formatModelOptionLabel,
   groupCatalogModels,
   mergeModelCatalogs,
   resolveCatalogExecutionModel,
@@ -70,6 +71,10 @@ test("merges Codex and Antigravity catalogs in priority order and formats source
   assert.equal(merged.models.find(m => m.model === "gemini-4-neon")?.isDefault, false);
   assert.equal(formatCatalogVersions(merged), "Codex 0.163.0 · Antigravity 1.5.14");
   assert.deepEqual(groupCatalogModels(merged.models).map(g => g.label), ["Codex", "Antigravity"]);
+  assert.equal(formatModelOptionLabel(merged.models[0]), "GPT-5.4 — Codex");
+  assert.equal(formatModelOptionLabel(merged.models[0], { includeId: true }), "GPT-5.4 (gpt-5.4) — Codex");
+  assert.equal(formatModelOptionLabel(merged.models[1]), "Gemini 4 Neon — Antigravity");
+  assert.equal(formatModelOptionLabel(merged.models[1], { includeId: true }), "Gemini 4 Neon (gemini-4-neon) — Antigravity");
 });
 
 test("falls back cleanly when only one CLI catalog is available", () => {

@@ -3,6 +3,9 @@ import { RefreshCw } from "lucide-react";
 import {
   findCatalogModel,
   formatCatalogVersions,
+  formatModelOptionLabel,
+  modelEngine,
+  modelSourceLabel,
   type CodexModelCatalog
 } from "../../../../shared/CodexModel.ts";
 import type { AgentEngine } from "../../../services/agentApi.ts";
@@ -45,9 +48,10 @@ export function AgentModelFields({ engine, projectId, model, reasoningEffort, di
   }, [engine, projectId, attempt, usesServerCatalog]);
 
   const models = catalog?.models ?? [];
+  const defaultEntry = findCatalogModel(models, catalog?.defaultModel)?.model;
   const matched = findCatalogModel(models, model);
   const selectModelValue = matched ? matched.model.model : model;
-  const current = matched?.model ?? (!model ? findCatalogModel(models, catalog?.defaultModel)?.model : undefined);
+  const current = matched?.model ?? (!model ? defaultEntry : undefined);
   const modelMissing = Boolean(model && catalog?.available && !matched);
   const effectiveEffort = reasoningEffort || matched?.matchedEffort || "";
   const efforts = usesServerCatalog
@@ -87,11 +91,16 @@ export function AgentModelFields({ engine, projectId, model, reasoningEffort, di
                   : {})
             });
           }}>
-          <option value="">{t("editor.defaultModel")}{catalog?.defaultModel ? ` (${catalog.defaultModel})` : ""}</option>
+          <option value="">
+            {t("editor.defaultModel")}
+            {catalog?.defaultModel
+              ? ` (${catalog.defaultModel}${defaultEntry ? ` — ${modelSourceLabel(modelEngine(defaultEntry))}` : ""})`
+              : ""}
+          </option>
           {model && !matched && <option value={model}>{model} — {t("models.savedValue")}</option>}
           <ModelOptionGroups
             models={models}
-            formatLabel={candidate => candidate.displayName === candidate.model ? candidate.model : `${candidate.displayName} (${candidate.model})`}
+            formatLabel={candidate => formatModelOptionLabel(candidate, { includeId: true })}
           />
         </select> : <>
           <input value={model} disabled={disabled} placeholder={t("editor.defaultModel")} list={listId}

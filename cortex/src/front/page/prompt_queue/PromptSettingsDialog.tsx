@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { RefreshCw, X } from "lucide-react";
 import { useTranslation } from "../../i18n.tsx";
 import type { PromptChatDetail, PromptQueueOverview } from "../../../shared/PromptQueue.ts";
-import { findCatalogModel, type CodexModelCatalog } from "../../../shared/CodexModel.ts";
+import { findCatalogModel, formatModelOptionLabel, type CodexModelCatalog } from "../../../shared/CodexModel.ts";
 import { getSavedProjects, type Project } from "../../services/projectApi.ts";
 import { saveCodexQuotaConfiguration } from "../../services/codexQuotaApi.ts";
 import { checkPromptQueue, deletePromptChat, getPromptChatModels, getPromptDefaultModels, savePromptChat, savePromptQueueSettings } from "../../services/promptQueueApi.ts";
@@ -88,7 +88,7 @@ export function PromptSettingsDialog({ overview, chat, initialTab, onClose, onSa
   const modelFields = <>
     <div className="prompt-settings-fields">
       <label>{copy.model}<select value={selectModelValue} disabled={busy || loading || !catalog?.available || (tab === "chat" && running)} onChange={event => changeModel(event.target.value)}>
-        <option value="">{copy.automatic}{automaticModel ? ` (${automaticModel.displayName})` : ""}</option>
+        <option value="">{copy.automatic}{automaticModel ? ` (${formatModelOptionLabel(automaticModel)})` : ""}</option>
         {modelMissing && <option value={model}>{model}</option>}
         <ModelOptionGroups models={models} />
       </select></label>

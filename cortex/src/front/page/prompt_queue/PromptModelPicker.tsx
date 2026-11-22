@@ -3,6 +3,8 @@ import { ChevronDown, RefreshCw, X } from "lucide-react";
 import {
   findCatalogModel,
   formatCatalogVersions,
+  modelEngine,
+  modelSourceLabel,
   type CodexModelCatalog
 } from "../../../shared/CodexModel.ts";
 import type { PromptModelSelection } from "../../../shared/PromptQueue.ts";
@@ -114,7 +116,9 @@ export function PromptModelPicker({ chatId, value, initial, disabled, onChange, 
   }, [open]);
 
   function close() { setOpen(false); triggerRef.current?.focus(); }
-  const modelLabel = selectedModel?.displayName || profile.model || copy.automatic;
+  const modelLabel = selectedModel
+    ? `${selectedModel.displayName} · ${modelSourceLabel(modelEngine(selectedModel))}`
+    : (profile.model || copy.automatic);
   return <div className="prompt-model-picker" ref={rootRef} onKeyDown={event => { if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); close(); } }}>
     <button type="button" className={`prompt-model-trigger${modelMissing || effortMissing ? " prompt-model-trigger--warning" : ""}`} ref={triggerRef}
       disabled={disabled} aria-label={copy.chooseModel} aria-expanded={open} aria-haspopup="dialog" aria-controls={open ? popoverId : undefined}

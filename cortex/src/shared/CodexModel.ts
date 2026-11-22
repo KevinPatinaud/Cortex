@@ -44,6 +44,17 @@ export function modelSourceLabel(engine: ModelCatalogEngine): string {
   return engine === "gemini" ? "Antigravity" : "Codex";
 }
 
+export function formatModelOptionLabel(
+  model: Pick<CodexModel, "model" | "displayName" | "engine">,
+  options: { includeId?: boolean } = {}
+): string {
+  const origin = modelSourceLabel(modelEngine(model));
+  const base = options.includeId && model.displayName !== model.model
+    ? `${model.displayName} (${model.model})`
+    : (model.displayName || model.model);
+  return `${base} — ${origin}`;
+}
+
 export function findCatalogModel(
   models: readonly CodexModel[],
   savedModel: string | null | undefined
