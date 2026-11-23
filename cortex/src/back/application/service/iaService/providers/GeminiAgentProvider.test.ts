@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { GeminiAgentProvider } from "./GeminiAgentProvider.ts";
+import { createAgentResponseSchema } from "../../../../../shared/AgentResponseSchema.ts";
+import { parseAgentResponse } from "../../../../../shared/AgentResponse.ts";
 import type { AgentExecutionOptions } from "../AgentProvider.ts";
 import { CliAgentProcessError } from "../CliAgentProvider.ts";
 
@@ -130,4 +132,56 @@ test("Gemini rejects error results and CLI failures while still reporting usage"
 
   provider.exitError = true;
   await assert.rejects(provider.ask("Run"), /Gemini engine failed/);
+});
+
+test("Gemini adapts nullable object fields like wait in JSON schema and restores null on omitted or inert placeholder wait", async () => {
+  const schema = createAgentResponseSchema([".gemini/agents/redacteur-journalistique.md"], false, true);
+  const provider = new StreamingGemini(process.cwd());
+
+  // 1. Omitted wait on success is restored to wait: null and accepted by parseAgentResponse.
+  provider.structuredOutput = {
+    continuity: { summary: "Done", decisions: [], evidence: [], remainingWork: [] },
+    acceptance: [],
+    status: "success",
+    items: [{ content: "Sujet 1" }],
+    isMultiSelectionAllowed: true,
+    isMultiSelectionThreaded: true,
+    nextAgentIds: [".gemini/agents/redacteur-journalistique.md"],
+    notes: null
+  };
+  const omittedResult = await provider.ask("Run", { outputSchema: schema });
+  const sentSchema = JSON.parse(provider.schemaContent!);
+  assert.equal(sentSchema.required.includes("wait"), false);
+  assert.equal(sentSchema.required.includes("status"), true);
+  assert.deepEqual(sentSchema.properties.wait.type, ["object", "null"]);
+  assert.equal(JSON.parse(omittedResult.answer).wait, null);
+  assert.equal(parseAgentResponse(omittedResult.answer)?.status, "success");
+
+  // 2. Inert placeholder wait (no eventKey, no wakeAfterSeconds, empty state) on non-waiting status is normalized to null.
+  provider.structuredOutput = {
+    ...provider.structuredOutput,
+    wait: { reason: "unused", eventKey: null, wakeAfterSeconds: null, deadlineAt: "2026-11-23T04:00:00+01:00", state: "" }
+  };
+  const placeholderResult = await provider.ask("Run", { outputSchema: schema });
+  assert.equal(JSON.parse(placeholderResult.answer).wait, null);
+  assert.equal(parseAgentResponse(placeholderResult.answer)?.status, "success");
+
+  // 3. A real wait payload on status=success is preserved so parseAgentResponse still fails closed.
+  provider.structuredOutput = {
+    ...provider.structuredOutput,
+    wait: { reason: "Waiting for reply", eventKey: "mail:1", wakeAfterSeconds: 60, deadlineAt: "2026-11-23T05:00:00+01:00", state: "sent" }
+  };
+  const realWaitOnSuccess = await provider.ask("Run", { outputSchema: schema });
+  assert.equal(parseAgentResponse(realWaitOnSuccess.answer), null);
+
+  // 4. A valid waiting response preserves its wait object unchanged.
+  provider.structuredOutput = {
+    ...provider.structuredOutput,
+    status: "waiting",
+    nextAgentIds: [],
+    wait: { reason: "Waiting for deploy", eventKey: null, wakeAfterSeconds: 180, deadlineAt: "2026-11-23T09:00:00+01:00", state: "step=1" }
+  };
+  const waitingResult = await provider.ask("Run", { outputSchema: schema });
+  assert.equal(parseAgentResponse(waitingResult.answer)?.status, "waiting");
+  assert.equal(parseAgentResponse(waitingResult.answer)?.wait?.wakeAfterSeconds, 180);
 });

@@ -81,8 +81,9 @@ export class GeminiAgentProvider extends CliAgentProvider implements AgentProvid
 
     let schemaFile: string | undefined;
     if (options.outputSchema) {
+      const geminiSchema = adaptOutputSchemaForGemini(options.outputSchema);
       schemaFile = path.join(os.tmpdir(), `cortex-gemini-schema-${randomUUID()}.json`);
-      await writeFile(schemaFile, JSON.stringify(options.outputSchema), { encoding: "utf8", mode: 0o600 });
+      await writeFile(schemaFile, JSON.stringify(geminiSchema), { encoding: "utf8", mode: 0o600 });
       args.push(`--json-schema=${schemaFile}`);
     }
 
@@ -165,7 +166,7 @@ export class GeminiAgentProvider extends CliAgentProvider implements AgentProvid
 
     let answer = "";
     if (options.outputSchema && result?.structured_output !== undefined) {
-      answer = JSON.stringify(result.structured_output);
+      answer = JSON.stringify(normalizeGeminiStructuredOutput(result.structured_output, options.outputSchema));
     } else if (typeof result?.response === "string") {
       answer = result.response.trim();
     } else {
@@ -206,4 +207,88 @@ function parseFinalGeminiResult(output: string): Record<string, any> | undefined
 
 function readNonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNullableType(schema: unknown, targetType?: string): boolean {
+  if (!isPlainObject(schema) || !Array.isArray(schema.type)) return false;
+  return schema.type.includes("null") && (!targetType || schema.type.includes(targetType));
+}
+
+/**
+ * Antigravity CLI converts --json-schema into Gemini tool parameters that only
+ * support a single OpenAPI type. Marking nullable objects (such as `wait`) as
+ * required causes Gemini to fabricate placeholder objects on non-waiting turns.
+ */
+export function adaptOutputSchemaForGemini(schema: Record<string, unknown>): Record<string, unknown> {
+  return adaptSchemaNode(schema) as Record<string, unknown>;
+}
+
+function adaptSchemaNode(node: unknown): unknown {
+  if (Array.isArray(node)) {
+    return node.map(adaptSchemaNode);
+  }
+  if (!isPlainObject(node)) {
+    return node;
+  }
+
+  const adapted: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (key === "properties" && isPlainObject(value)) {
+      const nextProperties: Record<string, unknown> = {};
+      for (const [propKey, propSchema] of Object.entries(value)) {
+        nextProperties[propKey] = adaptSchemaNode(propSchema);
+      }
+      adapted[key] = nextProperties;
+    } else if (key === "items") {
+      adapted[key] = adaptSchemaNode(value);
+    } else {
+      adapted[key] = value;
+    }
+  }
+
+  if (Array.isArray(adapted.required) && isPlainObject(node.properties)) {
+    adapted.required = adapted.required.filter(
+      (key) => typeof key !== "string" || !isNullableType(node.properties && (node.properties as Record<string, unknown>)[key], "object")
+    );
+  }
+
+  return adapted;
+}
+
+export function normalizeGeminiStructuredOutput(
+  value: unknown,
+  schema: Record<string, unknown>
+): unknown {
+  if (!isPlainObject(value) || !isPlainObject(schema.properties)) {
+    return value;
+  }
+
+  const normalized: Record<string, unknown> = { ...value };
+  const properties = schema.properties;
+
+  if (Array.isArray(schema.required)) {
+    for (const key of schema.required) {
+      if (typeof key === "string" && !(key in normalized) && isNullableType(properties[key])) {
+        normalized[key] = null;
+      }
+    }
+  }
+
+  if (
+    isNullableType(properties.wait, "object") &&
+    typeof normalized.status === "string" &&
+    normalized.status !== "waiting" &&
+    isPlainObject(normalized.wait) &&
+    normalized.wait.eventKey == null &&
+    normalized.wait.wakeAfterSeconds == null &&
+    (normalized.wait.state === "" || normalized.wait.state == null)
+  ) {
+    normalized.wait = null;
+  }
+
+  return normalized;
 }
