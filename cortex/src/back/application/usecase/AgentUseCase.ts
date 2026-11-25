@@ -8,6 +8,7 @@ import { createWorkflowCheckpointFingerprint, hasRecoverableInterpretation, read
 import { cancelExecution, isExecutionCancelled, settleWithConcurrency, WorkflowExecutionPool, type WorkflowExecutionLimits } from "../service/workflowExecution/WorkflowExecution.ts";
 import { createAgentWorkflowHash } from "../service/workflowExecution/WorkflowConfiguration.ts";
 import { createAgentResponseSchema } from "../../../shared/AgentResponseSchema.ts";
+import { adaptOutputSchemaForGemini } from "../service/iaService/providers/GeminiAgentProvider.ts";
 import { createAgentTimeContext, readAgentTimezone } from "../service/iaService/AgentTimeContext.ts";
 import { createMissionPrompt } from "../service/executionQuality/MissionPrompt.ts";
 import { validateWorkflowDossierBranches, type WorkflowDossierBranch } from "../../../shared/WorkflowAutomation.ts";
@@ -4094,9 +4095,15 @@ Apply these shared rules throughout your task. Do not execute another workflow s
       ? "Execute the current agent's task. Cortex exclusively launches business workflow successors; internal research/review follows the bounded delegation policy below."
       : AGENT_EXECUTION_BOUNDARY_INSTRUCTIONS;
     const qualityInstructions = execution && this.executionQuality ? this.executionQuality.contract(execution.policy, agent.nextAgentIds.length === 0) : "";
+    const promptSchema = effectiveEngine === "gemini"
+      ? adaptOutputSchemaForGemini(responseSchema)
+      : responseSchema;
     const schemaInstructions = execution && effectiveEngine === "codex"
       ? "The final response must match the native JSON schema supplied to this execution."
-      : `JSON Schema:\n${JSON.stringify(responseSchema, null, 2)}`;
-    return `${prompt.trimEnd()}\n\n${boundary}\n\n${qualityInstructions}\n\n${projectRoutingContext}\n\n${routingContext}\n\n${AGENT_RESPONSE_FORMAT_INSTRUCTIONS}\n\n${dossierFormat}\n\n${timeContext}\n\nDurable waiting: When this task explicitly requires waiting for an external event or a future check, return status "waiting", nextAgentIds [], and a wait object matching the schema. Return promptly: Cortex saves the state and wakes this same agent on the eventKey, wakeAfterSeconds timer, or deadlineAt. Do not sleep, poll in a loop or start background processes. Use state to record completed actions, correlation IDs, remaining work and relaunch limits. Checking and sending a reminder are separate actions: only send a reminder when the task authorizes it and its own deadline is reached. On other statuses set wait to null. Never report a pending request as success.\n\n${schemaInstructions}`;
+      : `JSON Schema:\n${JSON.stringify(promptSchema, null, 2)}`;
+    const waitNullInstruction = effectiveEngine === "gemini"
+      ? "On other statuses omit wait (do not populate a placeholder wait object)."
+      : "On other statuses set wait to null.";
+    return `${prompt.trimEnd()}\n\n${boundary}\n\n${qualityInstructions}\n\n${projectRoutingContext}\n\n${routingContext}\n\n${AGENT_RESPONSE_FORMAT_INSTRUCTIONS}\n\n${dossierFormat}\n\n${timeContext}\n\nDurable waiting: When this task explicitly requires waiting for an external event or a future check, return status "waiting", nextAgentIds [], and a wait object matching the schema. Return promptly: Cortex saves the state and wakes this same agent on the eventKey, wakeAfterSeconds timer, or deadlineAt. Do not sleep, poll in a loop or start background processes. Use state to record completed actions, correlation IDs, remaining work and relaunch limits. Checking and sending a reminder are separate actions: only send a reminder when the task authorizes it and its own deadline is reached. ${waitNullInstruction} Never report a pending request as success.\n\n${schemaInstructions}`;
   }
 }

@@ -166,6 +166,23 @@ test("Gemini adapts nullable object fields like wait in JSON schema and restores
   assert.equal(JSON.parse(placeholderResult.answer).wait, null);
   assert.equal(parseAgentResponse(placeholderResult.answer)?.status, "success");
 
+  // 2b. Placeholder wait with schema-minimum wakeAfterSeconds=1 or non-applicable reason on non-waiting status is normalized to null.
+  provider.structuredOutput = {
+    ...provider.structuredOutput,
+    wait: { reason: "Non applicable (statut success)", eventKey: null, wakeAfterSeconds: 1, deadlineAt: "2026-11-25T04:06:40+01:00", state: "" }
+  };
+  const minWakePlaceholderResult = await provider.ask("Run", { outputSchema: schema });
+  assert.equal(JSON.parse(minWakePlaceholderResult.answer).wait, null);
+  assert.equal(parseAgentResponse(minWakePlaceholderResult.answer)?.status, "success");
+
+  provider.structuredOutput = {
+    ...provider.structuredOutput,
+    wait: { reason: "Aucune attente requise", eventKey: null, wakeAfterSeconds: 60, deadlineAt: "2026-11-25T04:06:40+01:00", state: "" }
+  };
+  const nonApplicableReasonResult = await provider.ask("Run", { outputSchema: schema });
+  assert.equal(JSON.parse(nonApplicableReasonResult.answer).wait, null);
+  assert.equal(parseAgentResponse(nonApplicableReasonResult.answer)?.status, "success");
+
   // 3. A real wait payload on status=success is preserved so parseAgentResponse still fails closed.
   provider.structuredOutput = {
     ...provider.structuredOutput,
@@ -173,6 +190,14 @@ test("Gemini adapts nullable object fields like wait in JSON schema and restores
   };
   const realWaitOnSuccess = await provider.ask("Run", { outputSchema: schema });
   assert.equal(parseAgentResponse(realWaitOnSuccess.answer), null);
+
+  // 3b. A real timer-only wait payload on status=success is still rejected even with empty state.
+  provider.structuredOutput = {
+    ...provider.structuredOutput,
+    wait: { reason: "Recheck deployment", eventKey: null, wakeAfterSeconds: 180, deadlineAt: "2026-11-25T09:00:00+01:00", state: "" }
+  };
+  const realTimerWaitOnSuccess = await provider.ask("Run", { outputSchema: schema });
+  assert.equal(parseAgentResponse(realTimerWaitOnSuccess.answer), null);
 
   // 4. A valid waiting response preserves its wait object unchanged.
   provider.structuredOutput = {

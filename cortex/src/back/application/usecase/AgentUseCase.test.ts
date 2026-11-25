@@ -2056,3 +2056,85 @@ test("detects, validates, and propagates workflow parameters", async () => {
   assert.match(calls[2].prompt, /target_version/);
   assert.match(calls[2].prompt, /"20"/);
 });
+
+test("adapts the inline JSON schema and wait instructions for Gemini agents so wait is not required on non-waiting turns", async () => {
+  const calls: ExecutionCall[] = [];
+  const geminiProject: ProjectContentOutput = {
+    id: "gemini-project",
+    directoryPath: "C:\\projects\\gemini-sample",
+    root: {
+      type: "directory",
+      name: "gemini-sample",
+      relativePath: "",
+      children: [
+        {
+          type: "file",
+          name: "GEMINI.md",
+          relativePath: "GEMINI.md",
+          size: 32,
+          encoding: "utf8",
+          content: "Rédige proprement."
+        },
+        {
+          type: "directory",
+          name: ".gemini",
+          relativePath: ".gemini",
+          children: [
+            {
+              type: "directory",
+              name: "agents",
+              relativePath: ".gemini/agents",
+              children: [
+                {
+                  type: "file",
+                  name: "writer.md",
+                  relativePath: ".gemini/agents/writer.md",
+                  size: 128,
+                  encoding: "utf8",
+                  content: "---\nname: Writer\ndescription: Writes an article.\n---\nRédige un article."
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  };
+  const agentService = {
+    async execute(engine: string, prompt: string, options: AgentExecutionOptions): Promise<AgentExecutionResult> {
+      calls.push({ engine, prompt, options });
+      return {
+        ...(options.persistSession ? { sessionId: "gemini-session" } : {}),
+        answer: options.persistSession
+          ? createAgentAnswer(["Article rédigé"], false, null, null, [])
+          : JSON.stringify({
+            agents: [{ id: ".gemini/agents/writer.md", nextAgentIds: [], inputMode: "separate" }],
+            parameters: []
+          })
+      };
+    }
+  } as unknown as AgentService;
+  const projectUseCase = {
+    async getProjectContent(): Promise<ProjectContentOutput> {
+      return geminiProject;
+    },
+    async getAgentWorkflowConfiguration(): Promise<AgentWorkflowConfiguration | null> {
+      return null;
+    },
+    async saveAgentWorkflowConfiguration(): Promise<void> {}
+  } as unknown as ProjectUseCase;
+
+  const useCase = new AgentUseCase(agentService, projectUseCase);
+  await useCase.loadProject("gemini-project");
+  await useCase.runAgent("gemini-project", { agentId: ".gemini/agents/writer.md" });
+
+  const executionCall = calls.find((call) => call.options.persistSession);
+  assert.ok(executionCall);
+  assert.equal(executionCall.engine, "gemini");
+  assert.match(executionCall.prompt, /On other statuses omit wait \(do not populate a placeholder wait object\)\./);
+  const schemaSection = executionCall.prompt.split("JSON Schema:\n")[1];
+  assert.ok(schemaSection);
+  const inlineSchema = JSON.parse(schemaSection);
+  assert.equal(inlineSchema.required.includes("wait"), false);
+  assert.equal(inlineSchema.required.includes("status"), true);
+});

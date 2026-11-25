@@ -259,6 +259,35 @@ function adaptSchemaNode(node: unknown): unknown {
   return adapted;
 }
 
+const INERT_WAIT_REASON_PATTERN =
+  /^(?:unused|none|null|n\/?a|not\s+applicable|non\s+applicable|no\s+wait|no\s+waiting|aucune\s+attente|pas\s+d['’]attente|sans\s+objet|aucun(?:e)?)(?:[\s:(\-.,;].*)?$/i;
+
+function isEmptyOptionalText(value: unknown): boolean {
+  return value == null || (typeof value === "string" && value.trim().length === 0);
+}
+
+function isInertWaitReason(value: unknown): boolean {
+  if (isEmptyOptionalText(value)) return true;
+  if (typeof value !== "string") return false;
+  const normalized = value
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .trim();
+  return INERT_WAIT_REASON_PATTERN.test(normalized);
+}
+
+function isInertGeminiWaitPlaceholder(wait: Record<string, unknown>): boolean {
+  if (!isEmptyOptionalText(wait.eventKey) || !isEmptyOptionalText(wait.state)) {
+    return false;
+  }
+
+  return (
+    wait.wakeAfterSeconds == null ||
+    wait.wakeAfterSeconds === 1 ||
+    isInertWaitReason(wait.reason)
+  );
+}
+
 export function normalizeGeminiStructuredOutput(
   value: unknown,
   schema: Record<string, unknown>
@@ -283,9 +312,7 @@ export function normalizeGeminiStructuredOutput(
     typeof normalized.status === "string" &&
     normalized.status !== "waiting" &&
     isPlainObject(normalized.wait) &&
-    normalized.wait.eventKey == null &&
-    normalized.wait.wakeAfterSeconds == null &&
-    (normalized.wait.state === "" || normalized.wait.state == null)
+    isInertGeminiWaitPlaceholder(normalized.wait)
   ) {
     normalized.wait = null;
   }
