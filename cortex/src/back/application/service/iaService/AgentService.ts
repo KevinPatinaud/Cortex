@@ -16,6 +16,7 @@ import {
   mergeModelCatalogs,
   modelEngine,
   resolveCatalogExecutionModel,
+  type CodexModel,
   type CodexModelCatalog,
   type ModelCatalogEngine
 } from "../../../../shared/CodexModel.ts";
@@ -37,10 +38,99 @@ export interface AgentStatus {
   error: string | null;
 }
 
+const GEMINI_INDIVIDUAL_QUOTA_PATTERN = /\b(?:individual|model)\s+quota\s+(?:reached|exceeded|exhausted)\b/i;
+const QUOTA_RESET_DURATION_PATTERN = /resets?\s+in\s+((?:\d+\s*[dhms]\s*)+)/i;
+const DEFAULT_GEMINI_QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
+const MIN_GEMINI_QUOTA_COOLDOWN_MS = 30 * 1000;
+const MAX_GEMINI_QUOTA_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+const EFFORT_ORDER = ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"] as const;
+
+export function isGeminiIndividualQuotaError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return GEMINI_INDIVIDUAL_QUOTA_PATTERN.test(message);
+}
+
+export function parseGeminiQuotaResetMs(error: unknown): number {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  const match = message.match(QUOTA_RESET_DURATION_PATTERN);
+  if (!match) return DEFAULT_GEMINI_QUOTA_COOLDOWN_MS;
+
+  let totalSeconds = 0;
+  for (const part of match[1].matchAll(/(\d+)\s*([dhms])/gi)) {
+    const value = Number(part[1]);
+    const unit = part[2].toLowerCase();
+    if (!Number.isFinite(value)) continue;
+    if (unit === "d") totalSeconds += value * 86400;
+    else if (unit === "h") totalSeconds += value * 3600;
+    else if (unit === "m") totalSeconds += value * 60;
+    else if (unit === "s") totalSeconds += value;
+  }
+
+  if (totalSeconds <= 0) return DEFAULT_GEMINI_QUOTA_COOLDOWN_MS;
+  return Math.min(MAX_GEMINI_QUOTA_COOLDOWN_MS, Math.max(MIN_GEMINI_QUOTA_COOLDOWN_MS, totalSeconds * 1000));
+}
+
+function geminiModelVendorFamily(modelId: string | undefined): string {
+  const normalized = (modelId ?? "").trim().toLowerCase();
+  if (!normalized || normalized.startsWith("gemini-")) return "gemini-";
+  if (normalized.startsWith("claude-")) return "claude-";
+  return "";
+}
+
+function isSelectableGeminiFallback(entry: CodexModel, vendorFamily: string): boolean {
+  if (modelEngine(entry) !== "gemini") return false;
+  if (/\borchestrator\b/i.test(entry.model) || /\borchestrator\b/i.test(entry.displayName)) return false;
+  if (!vendorFamily) return false;
+  return entry.model.toLowerCase().startsWith(vendorFamily);
+}
+
+export function selectGeminiQuotaFallbackModels(
+  catalog: CodexModelCatalog | null | undefined,
+  requestedModel?: string
+): CodexModel[] {
+  if (!catalog?.models?.length) return [];
+  const requestedFamily = findCatalogModel(catalog.models, requestedModel)?.model.model ?? requestedModel;
+  const requestedLower = requestedFamily?.trim().toLowerCase();
+  const vendorFamily = geminiModelVendorFamily(requestedFamily);
+  const eligible = catalog.models.filter(entry =>
+    isSelectableGeminiFallback(entry, vendorFamily) && entry.model.toLowerCase() !== requestedLower
+  );
+  if (!eligible.length) return [];
+
+  const antigravitySource = catalog.sources?.find(source => source.engine === "gemini");
+  const defaultModelId = (antigravitySource?.defaultModel ?? catalog.defaultModel)?.trim().toLowerCase();
+  const preferred = defaultModelId
+    ? eligible.find(entry => entry.model.toLowerCase() === defaultModelId)
+    : undefined;
+  return preferred
+    ? [preferred, ...eligible.filter(entry => entry.model !== preferred.model)]
+    : eligible;
+}
+
+function resolveCompatibleReasoningEffort(target: CodexModel, requestedEffort?: string): string | undefined {
+  if (!target.reasoningEfforts.length) return undefined;
+  const normalized = requestedEffort?.trim().toLowerCase();
+  if (normalized && target.reasoningEfforts.includes(normalized)) return normalized;
+  if (normalized) {
+    const requestedIndex = EFFORT_ORDER.indexOf(normalized as (typeof EFFORT_ORDER)[number]);
+    if (requestedIndex >= 0) {
+      const ranked = target.reasoningEfforts
+        .map(effort => ({ effort, index: EFFORT_ORDER.indexOf(effort as (typeof EFFORT_ORDER)[number]) }))
+        .filter(entry => entry.index >= 0)
+        .sort((a, b) => a.index - b.index);
+      const lowerOrEqual = ranked.filter(entry => entry.index <= requestedIndex).at(-1);
+      if (lowerOrEqual) return lowerOrEqual.effort;
+      if (ranked[0]) return ranked[0].effort;
+    }
+  }
+  return target.defaultReasoningEffort ?? target.reasoningEfforts[0];
+}
+
 export class AgentService {
   private activeProvider: AgentProvider | null = null;
   private detectionPromise: Promise<AgentProvider | null> | null = null;
   private readonly executionControllers = new Set<AbortController>();
+  private readonly geminiQuotaCooldowns = new Map<string, number>();
   private shutdownRequested = false;
 
   cancelAllExecutions(): void {
@@ -88,7 +178,8 @@ export class AgentService {
     private readonly codexPluginService?: CodexPluginService,
     private readonly codexModelService?: CodexModelService,
     readonly executionQueue?: GlobalExecutionQueue,
-    private readonly antigravityModelService?: AntigravityModelService
+    private readonly antigravityModelService?: AntigravityModelService,
+    private readonly now: () => number = () => Date.now()
   ) {}
 
   private getCodexOnlyModels(workingDirectory?: string): Promise<CodexModelCatalog> {
@@ -275,10 +366,14 @@ export class AgentService {
         ? { autopilot: false, allowAll: false }
         : await this.configurationService.getConfiguration();
       options.signal?.throwIfAborted();
+      if (effectiveEngine === "gemini" && this.antigravityModelService && !prefetchedCatalog) {
+        prefetchedCatalog = await this.getModels(options.workingDirectory, "gemini").catch(() => undefined);
+      }
+      const includeProfile = Boolean(options.persistSession || options.purpose === "interpretation");
       let resolved: AgentExecutionOptions = options;
-      if (effectiveEngine === "codex" && (options.persistSession || options.purpose === "interpretation")) {
+      if (effectiveEngine === "codex" && includeProfile) {
         resolved = await this.resolveExecutionProfile(options, "codex", prefetchedCatalog);
-      } else if (effectiveEngine === "gemini" && this.antigravityModelService && (options.persistSession || options.purpose === "interpretation")) {
+      } else if (effectiveEngine === "gemini" && this.antigravityModelService && includeProfile) {
         resolved = await this.resolveExecutionProfile(options, "gemini", prefetchedCatalog);
       } else if (effectiveEngine === "gemini" && options.model && prefetchedCatalog) {
         const mapped = resolveCatalogExecutionModel(prefetchedCatalog, options.model, options.reasoningEffort);
@@ -288,11 +383,144 @@ export class AgentService {
           ...(mapped.reasoningEffort ? { reasoningEffort: mapped.reasoningEffort } : {})
         };
       }
-      if (resolved.profile) options.onProfile?.(resolved.profile);
-      const result = await provider.ask(prompt, { ...resolved, configuration });
-      return { ...result, ...(resolved.profile ? { profile: { ...resolved.profile,
-        observedCapabilities: result.profile?.observedCapabilities ?? [] } } : {}) };
+
+      const triedFamilies = new Set<string>();
+      let activeOptions = resolved;
+      let activeFamily = effectiveEngine === "gemini"
+        ? this.resolveGeminiFamilyId(prefetchedCatalog, activeOptions.profile?.model ?? activeOptions.model ?? options.model)
+        : undefined;
+
+      if (effectiveEngine === "gemini" && prefetchedCatalog && activeFamily && this.isGeminiModelInQuotaCooldown(activeFamily)) {
+        const proactiveFallback = this.pickNextGeminiFallback(prefetchedCatalog, activeFamily, triedFamilies);
+        if (proactiveFallback) {
+          const notice = `Quota temporairement épuisé sur ${activeFamily}, bascule vers ${proactiveFallback.model}…`;
+          options.onProgress?.(notice);
+          options.onTrace?.({ kind: "status", content: notice });
+          activeOptions = await this.buildGeminiFallbackExecutionOptions(
+            options,
+            activeOptions.reasoningEffort,
+            prefetchedCatalog,
+            proactiveFallback,
+            includeProfile
+          );
+          activeFamily = proactiveFallback.model;
+        }
+      }
+
+      while (true) {
+        if (activeFamily) triedFamilies.add(activeFamily.toLowerCase());
+        if (activeOptions.profile) options.onProfile?.(activeOptions.profile);
+        try {
+          const result = await provider.ask(prompt, { ...activeOptions, configuration });
+          return {
+            ...result,
+            ...(activeOptions.profile ? {
+              profile: {
+                ...activeOptions.profile,
+                observedCapabilities: result.profile?.observedCapabilities ?? []
+              }
+            } : {})
+          };
+        } catch (error) {
+          if (
+            effectiveEngine !== "gemini" ||
+            options.signal?.aborted ||
+            !prefetchedCatalog ||
+            !isGeminiIndividualQuotaError(error)
+          ) {
+            throw error;
+          }
+          if (activeFamily) {
+            this.markGeminiModelQuotaExhausted(activeFamily, error);
+          }
+          const nextModel = this.pickNextGeminiFallback(prefetchedCatalog, activeFamily ?? options.model, triedFamilies);
+          if (!nextModel) {
+            throw error;
+          }
+          const fromLabel = activeFamily ?? activeOptions.model ?? "modèle Gemini";
+          const notice = `Quota atteint sur ${fromLabel}, bascule vers ${nextModel.model}…`;
+          options.onProgress?.(notice);
+          options.onTrace?.({ kind: "status", content: notice });
+          activeOptions = await this.buildGeminiFallbackExecutionOptions(
+            options,
+            activeOptions.reasoningEffort,
+            prefetchedCatalog,
+            nextModel,
+            includeProfile
+          );
+          activeFamily = nextModel.model;
+          options.signal?.throwIfAborted();
+        }
+      }
     });
+  }
+
+  private resolveGeminiFamilyId(
+    catalog: CodexModelCatalog | undefined,
+    model: string | undefined
+  ): string | undefined {
+    if (catalog) {
+      const matched = findCatalogModel(catalog.models, model);
+      if (matched) return matched.model.model;
+      if (!model) {
+        const antigravitySource = catalog.sources?.find(source => source.engine === "gemini");
+        return antigravitySource?.defaultModel ?? catalog.defaultModel ?? undefined;
+      }
+    }
+    return model?.trim() || undefined;
+  }
+
+  private isGeminiModelInQuotaCooldown(modelId: string): boolean {
+    const key = modelId.trim().toLowerCase();
+    const until = this.geminiQuotaCooldowns.get(key);
+    if (until === undefined) return false;
+    if (until > this.now()) return true;
+    this.geminiQuotaCooldowns.delete(key);
+    return false;
+  }
+
+  private markGeminiModelQuotaExhausted(modelId: string, error: unknown): void {
+    const key = modelId.trim().toLowerCase();
+    if (!key) return;
+    this.geminiQuotaCooldowns.set(key, this.now() + parseGeminiQuotaResetMs(error));
+  }
+
+  private pickNextGeminiFallback(
+    catalog: CodexModelCatalog,
+    requestedModel: string | undefined,
+    triedFamilies: ReadonlySet<string>
+  ): CodexModel | undefined {
+    return selectGeminiQuotaFallbackModels(catalog, requestedModel).find(candidate => {
+      const key = candidate.model.toLowerCase();
+      return !triedFamilies.has(key) && !this.isGeminiModelInQuotaCooldown(candidate.model);
+    });
+  }
+
+  private async buildGeminiFallbackExecutionOptions(
+    originalOptions: AgentExecutionOptions,
+    resolvedEffort: string | undefined,
+    catalog: CodexModelCatalog,
+    nextModel: CodexModel,
+    includeProfile: boolean
+  ): Promise<AgentExecutionOptions> {
+    const compatibleEffort = resolveCompatibleReasoningEffort(
+      nextModel,
+      originalOptions.reasoningEffort ?? resolvedEffort
+    );
+    const nextOptions: AgentExecutionOptions = {
+      ...originalOptions,
+      model: nextModel.model,
+      reasoningEffort: compatibleEffort
+    };
+    if (includeProfile) {
+      return this.resolveExecutionProfile(nextOptions, "gemini", catalog);
+    }
+    const mapped = resolveCatalogExecutionModel(catalog, nextModel.model, compatibleEffort);
+    return {
+      ...nextOptions,
+      ...(mapped.model ? { model: mapped.model } : {}),
+      ...(mapped.reasoningEffort ? { reasoningEffort: mapped.reasoningEffort } : {})
+    };
   }
 
   async resolveExecutionProfile(

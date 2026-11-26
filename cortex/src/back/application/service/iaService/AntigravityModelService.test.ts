@@ -9,7 +9,12 @@ import {
   runAntigravityModelsCli
 } from "./AntigravityModelService.ts";
 import { CodexModelService } from "./CodexModelService.ts";
-import { AgentService } from "./AgentService.ts";
+import {
+  AgentService,
+  isGeminiIndividualQuotaError,
+  parseGeminiQuotaResetMs,
+  selectGeminiQuotaFallbackModels
+} from "./AgentService.ts";
 import { AgentConfigurationService } from "./AgentConfigurationService.ts";
 import type { AgentExecutionOptions } from "./AgentProvider.ts";
 
@@ -234,4 +239,171 @@ test("AgentService merges Codex and Antigravity catalogs and resolves grouped An
   });
   assert.equal(codexRun.answer, "codex-ok");
   assert.deepEqual(calls[2], { engine: "codex", model: "gpt-codex", effort: "high" });
+});
+
+test("detects Antigravity individual model quota errors and parses reset duration", () => {
+  const realError = new Error("Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 113h31m7s.");
+  assert.equal(isGeminiIndividualQuotaError(realError), true);
+  assert.equal(parseGeminiQuotaResetMs(realError), ((113 * 3600) + (31 * 60) + 7) * 1000);
+
+  assert.equal(isGeminiIndividualQuotaError(new Error("Model quota exceeded. Resets in 2d4h.")), true);
+  assert.equal(parseGeminiQuotaResetMs(new Error("Model quota exceeded. Resets in 2d4h.")), ((2 * 86400) + (4 * 3600)) * 1000);
+
+  assert.equal(isGeminiIndividualQuotaError(new Error("Individual quota reached.")), true);
+  assert.equal(parseGeminiQuotaResetMs(new Error("Individual quota reached.")), 15 * 60 * 1000);
+
+  assert.equal(isGeminiIndividualQuotaError(new Error("authentication failed or timed out")), false);
+  assert.equal(isGeminiIndividualQuotaError(new Error("Gemini execution failed.")), false);
+});
+
+test("selects same-family non-orchestrator Antigravity fallback models preferring default", () => {
+  const outputWithHydrogen = `${REAL_AGY_OUTPUT}\ngemini-4-hydrogen-high\tGemini 4 Hydrogen (High)\ngemini-4-hydrogen-xhigh\tGemini 4 Hydrogen (XHigh)\nclaude-sonnet-5-5-high\tClaude Sonnet 5.5 (High)`;
+  const catalog = parseAntigravityModelOutput(outputWithHydrogen, { cliVersion: "1.5.18" });
+
+  assert.deepEqual(
+    selectGeminiQuotaFallbackModels(catalog, "gemini-4-hydrogen").map(m => m.model),
+    ["gemini-4-neon", "gemini-4-argon", "gemini-3.8-flash"]
+  );
+  assert.deepEqual(
+    selectGeminiQuotaFallbackModels(catalog, "gemini-4-neon").map(m => m.model),
+    ["gemini-4-argon", "gemini-3.8-flash", "gemini-4-hydrogen"]
+  );
+  assert.deepEqual(
+    selectGeminiQuotaFallbackModels(catalog, "claude-opus-5-5").map(m => m.model),
+    ["claude-sonnet-5-5"]
+  );
+});
+
+test("AgentService falls back to another Gemini model on individual quota, clamps effort, caches cooldown, and recovers after reset", async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), "cortex-gemini-quota-"));
+  t.after(async () => { await rm(dir, { recursive: true, force: true }); });
+
+  const outputWithHydrogen = [
+    REAL_AGY_OUTPUT,
+    "gemini-4-hydrogen-high\tGemini 4 Hydrogen (High)",
+    "gemini-4-hydrogen-xhigh\tGemini 4 Hydrogen (XHigh)",
+    "gemini-4-hydrogen-medium\tGemini 4 Hydrogen (Medium)"
+  ].join("\n");
+
+  const agyModels = new AntigravityModelService(dir, async () =>
+    parseAntigravityModelOutput(outputWithHydrogen, { cliVersion: "1.5.18" })
+  );
+
+  let currentTime = Date.parse("2026-11-26T08:00:00Z");
+  const exhausted = new Set<string>(["gemini-4-hydrogen"]);
+  const attempts: Array<{ model?: string; effort?: string; sessionId?: string }> = [];
+
+  const service = new AgentService(
+    [{
+      engine: "gemini",
+      label: "Gemini",
+      isAvailable: async () => true,
+      ask: async (_prompt, options: AgentExecutionOptions = {}) => {
+        attempts.push({ model: options.model, effort: options.reasoningEffort, sessionId: options.sessionId });
+        if (options.model?.startsWith("gemini-4-hydrogen") && exhausted.has("gemini-4-hydrogen")) {
+          throw new Error("Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 2h0m0s.");
+        }
+        if (options.model?.startsWith("gemini-4-neon") && exhausted.has("gemini-4-neon")) {
+          throw new Error("Individual quota reached. Please upgrade your subscription to increase your limits. Resets in 1h0m0s.");
+        }
+        if (options.model?.startsWith("gemini-4-argon") && exhausted.has("gemini-4-argon")) {
+          throw new Error("authentication failed or timed out");
+        }
+        return { answer: `ok:${options.model}`, sessionId: options.sessionId ?? `sess-${attempts.length}` };
+      }
+    }],
+    new AgentConfigurationService(path.join(dir, "config.json")),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    agyModels,
+    () => currentTime
+  );
+
+  const observedProfiles: Array<string | null> = [];
+  const progressMessages: string[] = [];
+
+  // 1. Hydrogen fails with individual quota -> falls back to default gemini-4-neon with same effort.
+  const first = await service.execute("gemini", "Write article", {
+    model: "gemini-4-hydrogen",
+    reasoningEffort: "high",
+    persistSession: true,
+    workingDirectory: dir,
+    onProfile: profile => observedProfiles.push(profile.model),
+    onProgress: message => progressMessages.push(message)
+  });
+  assert.equal(first.answer, "ok:gemini-4-neon-high");
+  assert.equal(first.profile?.model, "gemini-4-neon");
+  assert.equal(first.profile?.reasoningEffort, "high");
+  assert.deepEqual(attempts, [
+    { model: "gemini-4-hydrogen-high", effort: "high", sessionId: undefined },
+    { model: "gemini-4-neon-high", effort: "high", sessionId: undefined }
+  ]);
+  assert.deepEqual(observedProfiles, ["gemini-4-hydrogen", "gemini-4-neon"]);
+  assert.equal(progressMessages.some(m => m.includes("gemini-4-hydrogen") && m.includes("gemini-4-neon")), true);
+
+  // 2. While Hydrogen is in cooldown, subsequent call skips Hydrogen proactively and goes straight to Neon.
+  attempts.length = 0;
+  const second = await service.execute("gemini", "Next article", {
+    model: "gemini-4-hydrogen",
+    reasoningEffort: "high",
+    persistSession: true,
+    workingDirectory: dir,
+    sessionId: "existing-session"
+  });
+  assert.equal(second.answer, "ok:gemini-4-neon-high");
+  assert.equal(second.profile?.model, "gemini-4-neon");
+  assert.deepEqual(attempts, [
+    { model: "gemini-4-neon-high", effort: "high", sessionId: "existing-session" }
+  ]);
+
+  // 3. When Neon also hits quota and xhigh is requested, Argon clamps xhigh -> high without ValidationError.
+  attempts.length = 0;
+  exhausted.add("gemini-4-neon");
+  const third = await service.execute("gemini", "Deep synthesis", {
+    model: "gemini-4-hydrogen",
+    reasoningEffort: "xhigh",
+    persistSession: true,
+    workingDirectory: dir
+  });
+  assert.equal(third.answer, "ok:gemini-4-argon-high");
+  assert.equal(third.profile?.model, "gemini-4-argon");
+  assert.equal(third.profile?.reasoningEffort, "high");
+  assert.deepEqual(attempts, [
+    { model: "gemini-4-neon-xhigh", effort: "xhigh", sessionId: undefined },
+    { model: "gemini-4-argon-high", effort: "high", sessionId: undefined }
+  ]);
+
+  // 4. Non-quota error on Argon is NOT retried on Flash.
+  attempts.length = 0;
+  exhausted.add("gemini-4-argon");
+  await assert.rejects(
+    service.execute("gemini", "Auth fail", {
+      model: "gemini-4-hydrogen",
+      reasoningEffort: "high",
+      persistSession: true,
+      workingDirectory: dir
+    }),
+    /authentication failed or timed out/
+  );
+  assert.deepEqual(attempts, [
+    { model: "gemini-4-argon-high", effort: "high", sessionId: undefined }
+  ]);
+
+  // 5. After Hydrogen's 2h reset window expires, Hydrogen is used again.
+  attempts.length = 0;
+  exhausted.delete("gemini-4-hydrogen");
+  currentTime += (2 * 3600 + 10) * 1000;
+  const recovered = await service.execute("gemini", "Back to Hydrogen", {
+    model: "gemini-4-hydrogen",
+    reasoningEffort: "high",
+    persistSession: true,
+    workingDirectory: dir
+  });
+  assert.equal(recovered.answer, "ok:gemini-4-hydrogen-high");
+  assert.equal(recovered.profile?.model, "gemini-4-hydrogen");
+  assert.deepEqual(attempts, [
+    { model: "gemini-4-hydrogen-high", effort: "high", sessionId: undefined }
+  ]);
 });
